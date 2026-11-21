@@ -34,14 +34,17 @@ gitops/
 
   | Wave | Contents |
   | --- | --- |
-  | 0 | CRDs and Argo CD itself |
-  | 10 | Controllers (cert-manager, Envoy Gateway, Sealed Secrets, Kyverno) |
+  | -10 | CRD-only Applications (Prometheus Operator, Gateway API, cert-manager, Rollouts CRDs) |
+  | 0 | Argo CD itself |
+  | 10 | Controllers (cert-manager, Envoy Gateway, Sealed Secrets, Kyverno, metrics-server) |
   | 20 | Observability |
   | 30 | Policies |
   | 40 | Apps (orders-gateway dev, staging, prod) |
 
   The gaps leave room for later additions.
 - **Every Application** gets `syncPolicy.automated` (prune + selfHeal), `ServerSideApply=true` for CRD-heavy charts, and the label `app.kubernetes.io/part-of: orders-gateway-platform`.
+- **Waves only work with an Application health check.** Argo CD removed the built-in one in 1.8, so `gitops/values/argocd.yaml` restores it (`resource.customizations.health.argoproj.io_Application`). Without it, every child counts as Healthy the moment it exists and later waves don't wait.
+- **CRDs come first, in their own Applications** (wave -10), so charts in later waves, including Argo CD's own ServiceMonitors, never render custom resources before their CRDs exist. Charts that also ship those CRDs run with their CRD install turned off. Applications whose templates may reference not-yet-installed CRDs also set `SkipDryRunOnMissingResource=true`.
 - **No resources-finalizer** on the `argocd` Application. Deleting it must never delete Argo CD.
 - **Bootstrap:** `scripts/argocd-bootstrap.sh` installs Argo CD once with Helm, using the same chart version and `gitops/values/argocd.yaml` as `gitops/apps/templates/argocd.yaml`. It then applies `root.yaml` with the repo and revision set, and waits until every Application is Synced and Healthy. From then on Argo CD manages itself from Git, and re-runs skip the Helm step.
 - **Trimmed Argo CD:** no Dex, no notifications controller, no Redis HA, single replicas, and resource requests set. Metrics are enabled, and the ServiceMonitors are switched on in the observability PR.

@@ -20,13 +20,30 @@ configs:
     # TLS is terminated at Envoy Gateway (gateway PR); Argo CD serves HTTP
     # inside the cluster.
     server.insecure: true
-    # Reconcile every 3 minutes (default), with jitter, to save CPU.
-    timeout.reconciliation: 180s
   cm:
-    # Show resource health for Argo Rollouts and other CRDs out of the box.
+    # Poll Git every 3 minutes (default 120s) to save CPU. The controller
+    # reads this from argocd-cm, not argocd-cmd-params-cm.
+    timeout.reconciliation: 180s
+    # No web terminal into pods.
     exec.enabled: false
     admin.enabled: true
     statusbadge.enabled: false
+    # Give Application resources a health status again (removed in Argo CD
+    # 1.8), so sync waves in the app-of-apps wait for each child to be
+    # Healthy before starting the next wave. From the Argo CD docs.
+    resource.customizations.health.argoproj.io_Application: |
+      hs = {}
+      hs.status = "Progressing"
+      hs.message = ""
+      if obj.status ~= nil then
+        if obj.status.health ~= nil then
+          hs.status = obj.status.health.status
+          if obj.status.health.message ~= nil then
+            hs.message = obj.status.health.message
+          end
+        end
+      end
+      return hs
   rbac:
     policy.default: role:readonly
 
