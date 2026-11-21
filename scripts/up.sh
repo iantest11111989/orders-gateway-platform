@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# ./platform up: creates the kind cluster and waits until it is healthy.
-# Safe to re-run: an existing cluster is reused.
+# ./platform up: creates the kind cluster, bootstraps Argo CD and waits until
+# every Application is Synced and Healthy. Safe to re-run.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
@@ -71,13 +71,15 @@ step "Waiting for system pods"
 kubectl -n kube-system wait --for=condition=Ready pods --all --timeout=180s >/dev/null
 ok "kube-system healthy"
 
+echo
+bash "$(dirname "$0")/argocd-bootstrap.sh"
+
 elapsed=$(( $(date +%s) - start ))
 cat <<EOF
 
 ${GREEN}Cluster is up${RESET} in ${elapsed}s.
 
+  URLs and logins:                             ./platform urls
   Shell with kubectl, helm, argocd, k6 ready:  ./platform shell
   Delete everything:                           ./platform down
-
-Argo CD and the rest of the platform arrive in the next pull requests.
 EOF

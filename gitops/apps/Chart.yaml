@@ -1,0 +1,5 @@
+apiVersion: v2
+name: platform-apps
+description: App-of-apps. Each template is one Argo CD Application for a platform component.
+type: application
+version: 0.1.0
