@@ -1,0 +1,29 @@
+# Root Application (app-of-apps). ./platform up applies this once. It renders
+# the gitops/apps Helm chart, where each template is one child Application.
+# For forks and branches, up.sh sets repoURL/targetRevision here and the
+# repo.* values, which every child uses (see decision 0005).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: orders-gateway-platform
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/iantest11111989/orders-gateway-platform.git
+    targetRevision: main
+    path: gitops/apps
+    helm:
+      valuesObject:
+        repo:
+          url: https://github.com/iantest11111989/orders-gateway-platform.git
+          revision: main
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

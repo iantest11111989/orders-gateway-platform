@@ -70,4 +70,9 @@ tool jq "$(gh jqlang/jq "$JQ_VERSION" "jq-linux-$A")" "$(gh jqlang/jq "$JQ_VERSI
 
 tool yq "$(gh mikefarah/yq "$YQ_VERSION" "yq_linux_$A")" "$(gh mikefarah/yq "$YQ_VERSION" checksums-bsd)"
 
+# promtool (from the Prometheus release) for alert-rule checks and tests
+v=${PROMETHEUS_VERSION#v}
+tool promtool "$(gh prometheus/prometheus "$PROMETHEUS_VERSION" "prometheus-$v.linux-$A.tar.gz")" \
+  "$(gh prometheus/prometheus "$PROMETHEUS_VERSION" sha256sums.txt)" "prometheus-$v.linux-$A/promtool"
+
 cd / && rm -rf "$WORK"

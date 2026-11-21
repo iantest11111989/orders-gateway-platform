@@ -1,0 +1,93 @@
+# Argo CD Helm values (chart argo/argo-cd). Used twice: by ./platform up for
+# the first install, and by gitops/apps/argocd.yaml once Argo CD manages
+# itself. Keep both in sync by editing only this file.
+
+global:
+  domain: argocd.localtest.me
+  # Every Argo CD pod on the control plane is fine to spread; nothing special.
+
+# Trimmed for the 6 CPU / 12 GB budget: no Dex (local admin only), no
+# notifications controller, single replicas, no Redis HA.
+dex:
+  enabled: false
+notifications:
+  enabled: false
+redis-ha:
+  enabled: false
+
+configs:
+  params:
+    # TLS is terminated at Envoy Gateway (gateway PR); Argo CD serves HTTP
+    # inside the cluster.
+    server.insecure: true
+  cm:
+    # Poll Git every 3 minutes (default 120s) to save CPU. The controller
+    # reads this from argocd-cm, not argocd-cmd-params-cm.
+    timeout.reconciliation: 180s
+    # No web terminal into pods.
+    exec.enabled: false
+    admin.enabled: true
+    statusbadge.enabled: false
+    # Give Application resources a health status again (removed in Argo CD
+    # 1.8), so sync waves in the app-of-apps wait for each child to be
+    # Healthy before starting the next wave. From the Argo CD docs.
+    resource.customizations.health.argoproj.io_Application: |
+      hs = {}
+      hs.status = "Progressing"
+      hs.message = ""
+      if obj.status ~= nil then
+        if obj.status.health ~= nil then
+          hs.status = obj.status.health.status
+          if obj.status.health.message ~= nil then
+            hs.message = obj.status.health.message
+          end
+        end
+      end
+      return hs
+  rbac:
+    policy.default: role:readonly
+
+controller:
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 512Mi}
+  metrics:
+    enabled: true
+    # ServiceMonitors are switched on in the observability PR, once the
+    # Prometheus Operator CRDs exist.
+    serviceMonitor:
+      enabled: false
+
+server:
+  resources:
+    requests: {cpu: 25m, memory: 64Mi}
+    limits: {memory: 256Mi}
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
+
+repoServer:
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 512Mi}
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
+
+applicationSet:
+  resources:
+    requests: {cpu: 10m, memory: 32Mi}
+    limits: {memory: 128Mi}
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
+
+redis:
+  resources:
+    requests: {cpu: 10m, memory: 32Mi}
+    limits: {memory: 128Mi}
+  metrics:
+    enabled: false

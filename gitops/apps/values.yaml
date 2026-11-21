@@ -1,0 +1,6 @@
+# Git source every child Application reads its values and manifests from.
+# ./platform up overrides these (from REPO_URL / REVISION) in the root
+# Application, so forks and branches work without editing files.
+repo:
+  url: https://github.com/iantest11111989/orders-gateway-platform.git
+  revision: main
