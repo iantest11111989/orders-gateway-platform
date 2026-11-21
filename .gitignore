@@ -1,0 +1,15 @@
+# Go
+/app/bin/
+*.test
+*.out
+coverage.*
+
+# Local tooling
+.kube/
+*.kubeconfig
+.DS_Store
+
+# Never commit plain secrets or private keys (the demo Sealed Secrets key is added explicitly later)
+*.key
+*.pem
+!**/demo-sealed-secrets-key/*.pem
