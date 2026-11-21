@@ -1,0 +1,87 @@
+# Loki values (chart grafana/loki): single binary, filesystem storage on a
+# local volume, 2 days of retention, no caches or gateway. One pod, about
+# 256 Mi. See decision 0007.
+
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false # single tenant ("fake")
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  schemaConfig:
+    configs:
+      - from: "2026-01-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+  limits_config:
+    retention_period: 48h
+    # Keep a misbehaving pod from flooding the small volume.
+    ingestion_rate_mb: 8
+    ingestion_burst_size_mb: 16
+    max_query_lookback: 48h
+    allow_structured_metadata: true
+    volume_enabled: true
+  compactor:
+    retention_enabled: true
+    delete_request_store: filesystem
+  pattern_ingester:
+    enabled: false
+  ruler:
+    enabled: false
+  server:
+    log_format: json
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    fsGroupChangePolicy: OnRootMismatch
+    seccompProfile: {type: RuntimeDefault}
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities: {drop: [ALL]}
+
+singleBinary:
+  replicas: 1
+  resources:
+    requests: {cpu: 50m, memory: 256Mi}
+    limits: {memory: 512Mi}
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: standard
+
+# Simple-scalable and distributed components: off.
+read: {replicas: 0}
+write: {replicas: 0}
+backend: {replicas: 0}
+
+# Memcached caches would cost more memory than this whole Loki; not needed at
+# this volume.
+chunksCache: {enabled: false}
+resultsCache: {enabled: false}
+
+# Grafana talks to the loki service directly; no nginx gateway.
+gateway: {enabled: false}
+
+# Rules sidecar: no Loki ruler here.
+sidecar:
+  rules: {enabled: false}
+
+lokiCanary: {enabled: false}
+test: {enabled: false}
+
+monitoring:
+  serviceMonitor:
+    enabled: true
+  dashboards:
+    enabled: false
+  rules:
+    enabled: false

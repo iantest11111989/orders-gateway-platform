@@ -1,0 +1,28 @@
+# PrometheusRules from alerts/ (SLO burn-rate alerts and more). Prometheus
+# picks up every PrometheusRule in the cluster (ruleSelector is open), so these
+# load as soon as they sync. Wave 25: after the observability stack.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-alerts
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: orders-gateway-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "25"
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repo.url }}
+    targetRevision: {{ .Values.repo.revision }}
+    path: alerts
+    directory:
+      # promtool unit tests live next to the rules; they aren't Kubernetes objects.
+      exclude: "tests/*"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

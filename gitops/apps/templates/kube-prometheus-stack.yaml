@@ -1,0 +1,45 @@
+# Metrics and alerting: Prometheus, Alertmanager, Grafana, the Prometheus
+# Operator, kube-state-metrics and node-exporter, in namespace monitoring.
+# Values: gitops/values/kube-prometheus-stack.yaml.
+#
+# Pod Security: "privileged" here, because node-exporter needs the host's
+# network, PID namespace and filesystem to report node metrics. That is the
+# only exception; every other pod in this namespace is restricted-compliant
+# (enforced by Kyverno in the security PR). See decision 0007.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: orders-gateway-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+spec:
+  project: default
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 93.6.1 # operator v0.95.2, same as prometheus-operator-crds
+      helm:
+        releaseName: kube-prometheus-stack
+        valueFiles:
+          - $values/gitops/values/kube-prometheus-stack.yaml
+    - repoURL: {{ .Values.repo.url }}
+      targetRevision: {{ .Values.repo.revision }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: privileged
+        pod-security.kubernetes.io/warn: baseline
+        pod-security.kubernetes.io/audit: restricted
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

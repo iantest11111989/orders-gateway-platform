@@ -1,0 +1,31 @@
+# Prometheus Operator CRDs (ServiceMonitor, PodMonitor, PrometheusRule, ...)
+# in their own Application at wave -10, so everything that renders these
+# kinds (Argo CD's ServiceMonitors at wave 0, the observability stack at
+# wave 20, alerts/) finds them installed. kube-prometheus-stack runs with
+# crds.enabled: false. Keep the chart's operator version (appVersion) equal to
+# kube-prometheus-stack's.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prometheus-operator-crds
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: orders-gateway-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: prometheus-operator-crds
+    targetRevision: 33.0.2 # operator v0.95.2
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # The CRDs are too large for client-side apply's last-applied annotation.
+      - ServerSideApply=true

@@ -20,6 +20,12 @@ configs:
     # TLS is terminated at Envoy Gateway (gateway PR); Argo CD serves HTTP
     # inside the cluster.
     server.insecure: true
+    # JSON logs, so Loki can parse them with `| json` like every other component.
+    controller.log.format: json
+    server.log.format: json
+    reposerver.log.format: json
+    applicationsetcontroller.log.format: json
+    commitserver.log.format: json
   cm:
     # Poll Git every 3 minutes (default 120s) to save CPU. The controller
     # reads this from argocd-cm, not argocd-cmd-params-cm.
@@ -53,10 +59,9 @@ controller:
     limits: {memory: 512Mi}
   metrics:
     enabled: true
-    # ServiceMonitors are switched on in the observability PR, once the
-    # Prometheus Operator CRDs exist.
+    # Scraped by Prometheus (CRDs from prometheus-operator-crds, wave -10).
     serviceMonitor:
-      enabled: false
+      enabled: true
 
 server:
   resources:
@@ -65,7 +70,7 @@ server:
   metrics:
     enabled: true
     serviceMonitor:
-      enabled: false
+      enabled: true
 
 repoServer:
   resources:
@@ -74,7 +79,7 @@ repoServer:
   metrics:
     enabled: true
     serviceMonitor:
-      enabled: false
+      enabled: true
 
 applicationSet:
   resources:
@@ -83,7 +88,7 @@ applicationSet:
   metrics:
     enabled: true
     serviceMonitor:
-      enabled: false
+      enabled: true
 
 redis:
   resources:
