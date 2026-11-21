@@ -15,3 +15,4 @@ Records are not edited after they are accepted. If a decision changes, add a new
 | --- | --- | --- |
 | [0001](0001-record-decisions.md) | Record decisions in this log | Accepted |
 | [0002](0002-baseline-architecture.md) | Baseline architecture | Accepted |
+| [0003](0003-gitops-directory-name.md) | Argo CD Applications live in `gitops/` | Accepted |

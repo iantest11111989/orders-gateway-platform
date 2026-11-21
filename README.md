@@ -64,11 +64,12 @@ All hostnames use `*.localtest.me`, which resolves to `127.0.0.1`.
 app/                    Go source, Dockerfile, tests, k6 scripts
 charts/orders-gateway/  Helm chart
 environments/           dev, staging and prod values
-platform/               Argo CD Applications per component
+gitops/                 Argo CD Applications per component
 policies/               Kyverno policies and tests
 dashboards/             Grafana dashboards (JSON)
 alerts/                 PrometheusRules
 runbooks/               one per alert
+platform                the CLI script (coming)
 toolbox/                toolbox image
 docs/decisions/         architecture decision records
 docs/learn/             hands-on exercises
