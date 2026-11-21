@@ -26,10 +26,17 @@ Option 3.
   - **Metrics:** the scheduler, controller-manager, etcd (`:2381`) and kube-proxy (`:10249`) bind their metrics endpoints to `0.0.0.0` so Prometheus can scrape them.
   - **NetworkPolicy:** kind's default CNI (kindnet) enforces it. This was verified: a default-deny policy blocked a working pod-to-pod request.
 - **Resource caps:** kind has no resource settings, so `up` caps each node container with `docker update` at 2 CPU / 4 GiB, which adds up to the 6 CPU / 12 GiB budget. Under Colima the VM is already capped. On Linux this is what keeps the stack inside the budget.
+- **Kubelet reservations:** a container cap alone is not enough. The kubelet reads the Docker host's CPU and memory, not the container's cgroup limit, so without help every node advertises the whole host (6 CPU / 11.7 GiB on the Mac). The scheduler would overcommit, and the kernel's cgroup OOM killer, not the kubelet, would pick what dies (possibly etcd or the kubelet itself).
+  - **Fix:** at create time `up` reads the host totals from `docker info` and adds a `KubeletConfiguration` patch to every node:
+    - `systemReserved` = host − cap (+ 256 Mi headroom)
+    - `evictionHard: memory.available: 200Mi`
+  - **Result:** each node advertises 2 CPU / about 3.6 GiB allocatable.
+  - **Check:** `up` then asserts allocatable ≤ cap on every node, and fails with "recreate it: `./platform down && ./platform up`" for clusters created before this existed.
 
 ## Consequences
 
 - Reviewers run `./platform up` and nothing else. The first run builds or pulls a toolbox of about 1.3 GB (the argocd, k6, cosign and kubectl binaries are most of it).
-- The toolbox has root-equivalent access to Docker through the socket. That's inherent to kind-in-Docker and acceptable for a local demo.
+- **Docker socket:** mounting it gives the toolbox root-equivalent access to the Docker host. Anything running in the toolbox could start privileged containers. That's inherent to kind-in-Docker and acceptable for a local demo, but don't run the toolbox on a machine you don't control.
+- **Checkout location:** under Colima the checkout must be inside `$HOME` (Colima's default share). `./platform` checks this and says so if Docker can't see the repo.
 - Checksums are fetched from the same release as the binaries. That protects against corrupted or swapped downloads, but not against a compromised release. Verifying cosign or GPG signatures where projects publish them is a possible follow-up for the supply-chain work.
 - With hard per-node caps, a busy node can be throttled while others sit idle. `./platform budget` (coming) will measure real use.

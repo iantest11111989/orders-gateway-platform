@@ -60,6 +60,10 @@ ensure_toolbox() {
 run_toolbox() {
   img=$(toolbox_image)
   ensure_toolbox "$img"
+  # Docker can only mount folders it shares with this machine. Colima shares
+  # $HOME by default, so a checkout elsewhere (e.g. /tmp) shows up empty.
+  docker run --rm -v "$REPO_ROOT":/work --entrypoint test "$img" -f /work/platform ||
+    die "Docker can't see this checkout ($REPO_ROOT). With Colima, clone the repo inside your home folder (Colima shares \$HOME by default), or add a mount in ~/.colima/default/colima.yaml."
   tty=""
   if [ -t 0 ] && [ -t 1 ]; then tty="-it"; fi
   # Host network so kind's API server (127.0.0.1) and ports are reachable.

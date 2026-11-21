@@ -32,6 +32,8 @@ Today `up` creates the kind cluster (1 control plane + 2 workers, about 35 secon
 
 `./platform` runs everything inside a **toolbox** container with every tool pinned and checksum-verified (`toolbox/versions.env`). The first run pulls or builds it. Set `TOOLBOX_IMAGE` to use a different image.
 
+> **Security note:** the toolbox mounts the Docker socket so kind can create its node containers. That gives it root-equivalent access to your Docker host, which is normal for kind but worth knowing. Run it on a machine you control. With Colima, keep the checkout inside your home folder.
+
 ## What's inside _(coming)_
 
 | Area | Choice |
