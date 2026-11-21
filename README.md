@@ -1,3 +1,85 @@
 # orders-gateway-platform
 
-A local, reproducible "cluster in a box" for running, shipping, observing and operating a small HTTP service on Kubernetes. Work in progress.
+A local, reproducible **"cluster in a box"** that shows how a platform team would **run, ship, observe and operate** a small stateless HTTP service, `orders-gateway`, on Kubernetes.
+
+The service is a small Go stand-in. The platform around it is the real point: GitOps with Argo CD, canary releases with Argo Rollouts, HTTPS through Envoy Gateway, metrics and logs with Prometheus, Grafana and Loki, and a security baseline that keeps itself patched.
+
+> **Status: work in progress.** This repo is being built in small, reviewed pull requests. Sections marked _(coming)_ are placeholders.
+
+## Prerequisites
+
+**Docker only.** Every other tool (kind, kubectl, helm, kubeseal, cosign, k6, the argocd CLI, jq, yq) is pinned and shipped in a toolbox container image that the `./platform` script runs for you.
+
+| | Reference machine | Development machine |
+| --- | --- | --- |
+| Hardware | 8 vCPU / 16 GB, x86-64 Linux | Apple silicon Mac (arm64), 16 GB |
+| Docker | Docker Engine | Colima: `colima start --cpu 6 --memory 12` |
+
+The whole stack is designed to fit in **6 CPUs and 12 GB RAM**.
+
+## Quick start _(coming)_
+
+```sh
+git clone https://github.com/iantest11111989/orders-gateway-platform.git
+cd orders-gateway-platform
+./platform doctor   # check Docker, CPU, memory, disk and ports
+./platform up       # cluster + everything, about 10 minutes
+./platform urls     # every URL and login
+./platform verify   # end-to-end checks
+./platform down     # delete it all
+```
+
+## What's inside _(coming)_
+
+| Area | Choice |
+| --- | --- |
+| Local cluster | kind: 1 control plane + 2 workers |
+| Packaging | Helm chart |
+| GitOps | Argo CD, app-of-apps, Argo CD manages itself |
+| Progressive delivery | Argo Rollouts with `workloadRef` |
+| Traffic | Gateway API with Envoy Gateway |
+| TLS | cert-manager with a local demo CA |
+| Metrics | Prometheus, Alertmanager, Grafana (kube-prometheus-stack) |
+| Logs | Loki (single binary) + Alloy |
+| Policy | Kyverno |
+| Secrets | Sealed Secrets (demo key, **demo only**) |
+| Scanning and signing | Trivy (CI and Trivy Operator), cosign keyless |
+| CI and updates | GitHub Actions, Renovate |
+| Environments | dev, staging, prod namespaces |
+
+## URLs _(coming)_
+
+All hostnames use `*.localtest.me`, which resolves to `127.0.0.1`.
+
+- `https://orders.dev.localtest.me`, `https://orders.staging.localtest.me`, `https://orders.localtest.me`
+- `https://argocd.localtest.me`, `https://grafana.localtest.me`, `https://prometheus.localtest.me`, `https://alertmanager.localtest.me`, `https://rollouts.localtest.me`
+
+## Demos _(coming)_
+
+`./platform demo <name>`: `rolling-update`, `canary`, `canary-fail`, `autoscale`, `chaos`, `policy`, `gitops-revert`.
+
+## Repository layout
+
+```
+app/                    Go source, Dockerfile, tests, k6 scripts
+charts/orders-gateway/  Helm chart
+environments/           dev, staging and prod values
+gitops/                 Argo CD Applications per component
+policies/               Kyverno policies and tests
+dashboards/             Grafana dashboards (JSON)
+alerts/                 PrometheusRules
+runbooks/               one per alert
+platform                the CLI script (coming)
+toolbox/                toolbox image
+docs/decisions/         architecture decision records
+docs/learn/             hands-on exercises
+.github/workflows/      CI
+```
+
+## Further sections _(coming)_
+
+Architecture diagram, resource budget (measured), production differences, why these choices, troubleshooting.
+
+## License
+
+[MIT](LICENSE)
