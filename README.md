@@ -28,7 +28,9 @@ cd orders-gateway-platform
 ./platform down     # delete it all (safe to re-run)
 ```
 
-Today `up` creates the kind cluster (1 control plane + 2 workers, about 35 seconds). Argo CD and the rest of the platform arrive in the next pull requests, along with `./platform urls`, `verify`, `budget` and `demo`.
+Today `up` creates the kind cluster (1 control plane + 2 workers), installs Argo CD and hands it the root Application, then waits until every Application is Synced and Healthy. That takes about 80 seconds from a clean machine with images cached. From then on Argo CD manages everything, including itself, from Git. `./platform urls` prints the Argo CD login. The rest of the platform arrives in the next pull requests, along with `verify`, `budget` and `demo`.
+
+To run from your fork or a branch: `REPO_URL=https://github.com/<you>/orders-gateway-platform.git REVISION=my-branch ./platform up`.
 
 `./platform` runs everything inside a **toolbox** container with every tool pinned and checksum-verified (`toolbox/versions.env`). The first run pulls or builds it. Set `TOOLBOX_IMAGE` to use a different image.
 

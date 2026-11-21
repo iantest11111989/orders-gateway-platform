@@ -12,3 +12,4 @@ echo "  Until the gateway PR adds https://argocd.localtest.me, open it with a po
 echo "    ./platform kubectl -n argocd port-forward --address 127.0.0.1 svc/argocd-server 8080:80"
 echo "    then http://localhost:8080"
 echo "  Login: admin / ${pw:-<not found: run ./platform up>}"
+echo "  CLI (inside ./platform shell): argocd login --username admin --password <above>, then argocd app list"
