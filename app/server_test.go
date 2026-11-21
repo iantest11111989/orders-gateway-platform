@@ -347,8 +347,13 @@ func TestWarmUp(t *testing.T) {
 
 // ---- helpers ----
 
+// noKeepAlive closes each connection after one request. Idle keep-alive
+// connections would otherwise make http.Server.Shutdown wait for them and
+// slow down (or time out) the shutdown tests.
+var noKeepAlive = &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+
 func status(url string) int {
-	resp, err := http.Get(url) //nolint:gosec // test helper against a local server
+	resp, err := noKeepAlive.Get(url)
 	if err != nil {
 		return 0
 	}
