@@ -1,0 +1,98 @@
+#!/bin/sh
+# ./platform: the only command a reviewer runs. Everything except the Docker
+# check happens inside the toolbox container, which carries every pinned tool.
+#
+#   ./platform doctor     check Docker, CPU, memory, disk, ports, arch
+#   ./platform up         create the cluster (idempotent)
+#   ./platform down       delete the cluster (idempotent)
+#   ./platform urls       print URLs and logins
+#   ./platform shell [script]  open a shell (or run a script) in the toolbox
+#   ./platform kubectl …  run kubectl in the toolbox
+#
+# Environment:
+#   TOOLBOX_IMAGE   use this toolbox image instead of the pinned one
+#   REPO_URL        Git repo Argo CD syncs from (default: this repo on GitHub)
+#   REVISION        branch or tag Argo CD syncs (default: main)
+set -eu
+
+cd "$(dirname "$0")"
+REPO_ROOT=$(pwd)
+TOOLBOX_REPO=ghcr.io/iantest11111989/orders-gateway-platform-toolbox
+
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+usage() {
+  sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-0}"
+}
+
+check_docker() {
+  command -v docker >/dev/null 2>&1 ||
+    die "Docker is not installed. Install Docker Engine (Linux) or Colima / Docker Desktop (macOS), then re-run."
+  docker info >/dev/null 2>&1 ||
+    die "Docker is installed but not running (or you lack permission to use it). Start Docker and re-run. On macOS with Colima: colima start --cpu 6 --memory 12"
+}
+
+# The toolbox tag is a hash of toolbox/, so a change to any pinned version
+# gives a new image. CI publishes that tag; if it isn't published yet (for
+# example on a branch), build it locally.
+toolbox_image() {
+  if [ -n "${TOOLBOX_IMAGE:-}" ]; then
+    echo "$TOOLBOX_IMAGE"
+    return
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then sum=sha256sum; else sum="shasum -a 256"; fi
+  hash=$(cd toolbox && find . -type f | LC_ALL=C sort | xargs cat | $sum | cut -c1-12)
+  echo "$TOOLBOX_REPO:sha-$hash"
+}
+
+ensure_toolbox() {
+  img=$1
+  docker image inspect "$img" >/dev/null 2>&1 && return
+  if [ -z "${TOOLBOX_IMAGE:-}" ] && docker pull -q "$img" >/dev/null 2>&1; then
+    return
+  fi
+  [ -z "${TOOLBOX_IMAGE:-}" ] || die "toolbox image $img not found"
+  echo "Building the toolbox image locally (one time, about a minute)..." >&2
+  docker build -q -t "$img" toolbox >/dev/null || die "toolbox build failed"
+}
+
+run_toolbox() {
+  img=$(toolbox_image)
+  ensure_toolbox "$img"
+  tty=""
+  if [ -t 0 ] && [ -t 1 ]; then tty="-it"; fi
+  # Host network so kind's API server (127.0.0.1) and ports are reachable.
+  # The Docker socket lets kind create its node containers. The kubeconfig
+  # lives in a named volume, not the repo, so no root-owned or locked files
+  # land in the reviewer's checkout.
+  # shellcheck disable=SC2086
+  exec docker run --rm $tty \
+    --network host \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "$REPO_ROOT":/work \
+    -v ogp-kube:/root/.kube \
+    -w /work \
+    -e TOOLBOX_IMAGE="$img" \
+    -e REPO_URL="${REPO_URL:-}" \
+    -e REVISION="${REVISION:-}" \
+    "$img" "$@"
+}
+
+[ $# -ge 1 ] || usage 1
+cmd=$1
+shift
+
+case "$cmd" in
+  -h|--help|help) usage 0 ;;
+  doctor|up|down|urls)
+    check_docker
+    run_toolbox bash "scripts/$cmd.sh" "$@" ;;
+  shell)
+    check_docker
+    run_toolbox bash "$@" ;;
+  kubectl)
+    check_docker
+    run_toolbox kubectl "$@" ;;
+  *) printf 'unknown command: %s\n\n' "$cmd" >&2; usage 1 ;;
+esac

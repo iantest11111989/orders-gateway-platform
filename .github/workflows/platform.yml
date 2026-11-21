@@ -1,0 +1,63 @@
+name: platform
+
+on:
+  pull_request:
+    paths: ["platform", "scripts/**", "toolbox/**", "cluster/**", ".github/workflows/**", ".shellcheckrc"]
+  push:
+    branches: [main]
+    paths: ["platform", "scripts/**", "toolbox/**", "cluster/**", ".github/workflows/**", ".shellcheckrc"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: shellcheck + actionlint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: shellcheck
+        run: |
+          docker run --rm -v "$PWD":/mnt -w /mnt \
+            koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d \
+            -x platform scripts/*.sh toolbox/install-tools.sh
+      - name: actionlint
+        run: |
+          docker run --rm -v "$PWD":/repo -w /repo \
+            rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
+
+  toolbox:
+    name: toolbox builds (amd64 + arm64)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # Build only: every download is checksum-verified during the build.
+      # Publishing to GHCR comes with the release workflow.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: toolbox
+          platforms: linux/amd64,linux/arm64
+          push: false
+
+  cluster:
+    name: ./platform doctor, up, up again, down
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: ./platform doctor # runners have 4 CPUs: a warning, not a failure
+      - run: ./platform up
+      - run: ./platform up # idempotent
+      - run: ./platform kubectl get nodes -L topology.kubernetes.io/zone
+      - if: always()
+        run: ./platform down

@@ -17,17 +17,20 @@ The service is a small Go stand-in. The platform around it is the real point: Gi
 
 The whole stack is designed to fit in **6 CPUs and 12 GB RAM**.
 
-## Quick start _(coming)_
+## Quick start
 
 ```sh
 git clone https://github.com/iantest11111989/orders-gateway-platform.git
 cd orders-gateway-platform
 ./platform doctor   # check Docker, CPU, memory, disk and ports
-./platform up       # cluster + everything, about 10 minutes
-./platform urls     # every URL and login
-./platform verify   # end-to-end checks
-./platform down     # delete it all
+./platform up       # create the cluster (safe to re-run)
+./platform shell    # a shell with kubectl, helm, argocd, k6, ... pointed at the cluster
+./platform down     # delete it all (safe to re-run)
 ```
+
+Today `up` creates the kind cluster (1 control plane + 2 workers, about 35 seconds). Argo CD and the rest of the platform arrive in the next pull requests, along with `./platform urls`, `verify`, `budget` and `demo`.
+
+`./platform` runs everything inside a **toolbox** container with every tool pinned and checksum-verified (`toolbox/versions.env`). The first run pulls or builds it. Set `TOOLBOX_IMAGE` to use a different image.
 
 ## What's inside _(coming)_
 
@@ -69,7 +72,9 @@ policies/               Kyverno policies and tests
 dashboards/             Grafana dashboards (JSON)
 alerts/                 PrometheusRules
 runbooks/               one per alert
-platform                the CLI script (coming)
+platform                the CLI script
+scripts/                what ./platform runs inside the toolbox
+cluster/                kind cluster config
 toolbox/                toolbox image
 docs/decisions/         architecture decision records
 docs/learn/             hands-on exercises
