@@ -8,17 +8,17 @@ The repo must run on a clean machine with only Docker, fit in 6 CPUs and 12 GB R
 
 ## Options
 
-The main alternatives considered for each area are listed in the table. The README's "Why these choices" section (coming) explains each in more depth.
+The main alternatives considered for each area are listed in the table. Alternatives marked "(our addition)" were not in the original brief. The README's "Why these choices" section (coming) explains each in more depth.
 
 | Area | Choice | Alternatives considered |
 | --- | --- | --- |
 | Local cluster | kind, 1 control plane + 2 workers | k3d, minikube |
-| Packaging | Helm chart | Kustomize |
+| Packaging | Helm chart | Kustomize (our addition) |
 | GitOps | Argo CD, app-of-apps, self-managed after bootstrap | Flux |
 | Progressive delivery | Argo Rollouts with `workloadRef` (the app stays a Deployment in Git) | Flagger, Rollout as the primary object |
 | Traffic | Gateway API with Envoy Gateway | ingress-nginx (retired) |
 | TLS | cert-manager with a local demo CA | mkcert, self-signed per service |
-| Metrics | kube-prometheus-stack (Prometheus, Alertmanager, Grafana) | Datadog, VictoriaMetrics |
+| Metrics | kube-prometheus-stack (Prometheus, Alertmanager, Grafana) | Datadog, VictoriaMetrics (our addition) |
 | Logs | Loki single binary + Alloy | Elasticsearch/OpenSearch, Promtail (deprecated) |
 | Tracing | None for now | OpenTelemetry + Tempo |
 | Policy | Kyverno (admission controller only) | OPA Gatekeeper |
