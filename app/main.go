@@ -58,7 +58,7 @@ func serve(ctx context.Context, cfg Config, log *slog.Logger, ln net.Listener) e
 		Handler:           s.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      70 * time.Second, // above the largest FAULT/PAYMENTS latency
+		WriteTimeout:      125 * time.Second, // above FAULT_LATENCY_MS + PAYMENTS_LATENCY_MS at their 60s maximums
 		IdleTimeout:       60 * time.Second,
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}

@@ -17,9 +17,9 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
     go build -trimpath -ldflags="-s -w -X main.buildVersion=${VERSION} -X main.commit=${COMMIT}" \
       -o /out/orders-gateway .
 
-# gcr.io/distroless/static-debian12:nonroot (multi-arch index digest):
+# gcr.io/distroless/static-debian13:nonroot (multi-arch index digest):
 # no shell, no package manager, runs as uid 65532.
-FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:aafe993665bf6200db38a02c11a9351e782a84b6a45e7f33b6695638c88e3931
 COPY --from=build /out/orders-gateway /orders-gateway
 USER 65532:65532
 EXPOSE 8080

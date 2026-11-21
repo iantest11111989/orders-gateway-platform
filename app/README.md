@@ -48,7 +48,7 @@ JSON on stdout, one line per request:
 {"time":"…","level":"INFO","msg":"request","method":"POST","route":"/orders","status":201,"duration_ms":36.1,"request_id":"demo-1","version":"v1","order_id":"ord_d52a933e6f14972c"}
 ```
 
-Level is `info` for successful requests, `warn` for `4xx`, and `error` for `5xx`. Probe and scrape requests log at `debug`, so they're hidden by default. `X-Request-ID` is read from the request if it looks like an ID (otherwise a new one is generated) and returned in the response.
+Level is `info` for successful requests, `warn` for `4xx`, and `error` for `5xx`. A request the client abandons (disconnect or timeout) before a response is written is recorded as **`499`** (the nginx/Envoy convention) at `warn`. It isn't a success, it isn't a server error, and it doesn't count as a payments failure; the SLO excludes it. Probe and scrape requests log at `debug`, so they're hidden by default. `X-Request-ID` is read from the request if it looks like an ID (otherwise a new one is generated) and returned in the response.
 
 ## Metrics
 
@@ -91,4 +91,4 @@ docker run --rm --network host -v "$PWD/k6":/k6 -e BASE_URL=http://localhost:808
 
 ## Image
 
-Multi-stage build: Go cross-compiles on the build machine for each target architecture (`linux/amd64`, `linux/arm64`), and the result runs on `gcr.io/distroless/static-debian12:nonroot`. There's no shell or package manager, it runs as uid 65532, and it works with a read-only root filesystem and all capabilities dropped. Base images are pinned by digest. The image is about 18 MB.
+Multi-stage build: Go cross-compiles on the build machine for each target architecture (`linux/amd64`, `linux/arm64`), and the result runs on `gcr.io/distroless/static-debian13:nonroot`. There's no shell or package manager, it runs as uid 65532, and it works with a read-only root filesystem and all capabilities dropped. Base images are pinned by digest. The image is about 18 MB.

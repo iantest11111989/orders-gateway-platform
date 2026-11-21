@@ -114,7 +114,7 @@ func (s *Server) callPayments(ctx context.Context) error {
 		select {
 		case <-t.C:
 		case <-ctx.Done():
-			s.metrics.PaymentsErrors.Inc()
+			// The client went away; that is not a payments failure.
 			return ctx.Err()
 		}
 	}
@@ -170,6 +170,9 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.callPayments(r.Context()); err != nil {
+		if r.Context().Err() != nil {
+			return // client gone: nothing to write, observe records 499
+		}
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "payments service unavailable, try again"})
 		return
 	}

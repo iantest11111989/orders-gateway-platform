@@ -60,6 +60,10 @@ func NewServer(cfg Config, log *slog.Logger, commit string) *Server {
 func (s *Server) Handler() http.Handler { return s.handler }
 func (s *Server) SetReady(v bool)       { s.ready.Store(v) }
 
+// statusClientClosed is the de facto code (nginx, Envoy) for a request the
+// client abandoned before a response was written.
+const statusClientClosed = 499
+
 // faults injects FAULT_LATENCY_MS and FAULT_ERROR_RATE for demos.
 func (s *Server) faults(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +73,7 @@ func (s *Server) faults(next http.Handler) http.Handler {
 			case <-t.C:
 			case <-r.Context().Done():
 				t.Stop()
-				return
+				return // observe records 499
 			}
 		}
 		if s.cfg.FaultErrorRate > 0 && s.rand() < s.cfg.FaultErrorRate {
@@ -164,6 +168,12 @@ func (s *Server) observe(next http.Handler) http.Handler {
 			}
 			if rec.status == 0 {
 				rec.status = http.StatusOK
+				if r.Context().Err() != nil {
+					// The handler gave up because the client disconnected
+					// or timed out. Record nginx/Envoy's 499 so this counts
+					// neither as a success nor as a server error.
+					rec.status = statusClientClosed
+				}
 			}
 			s.record(r, rec.status, time.Since(start), info)
 		}()

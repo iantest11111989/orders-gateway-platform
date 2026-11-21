@@ -381,3 +381,44 @@ func lastLog(t *testing.T, logs *bytes.Buffer) map[string]any {
 	}
 	return m
 }
+
+// A client that disconnects or times out is recorded as 499: not a success,
+// not a server error, and not a payments failure.
+func TestClientDisconnect(t *testing.T) {
+	cases := map[string]func(*Config){
+		"during payments call": func(c *Config) { c.PaymentsLatency = time.Second },
+		"during fault latency": func(c *Config) { c.FaultLatency = time.Second },
+	}
+	for name, tweak := range cases {
+		t.Run(name, func(t *testing.T) {
+			cfg := testConfig()
+			tweak(&cfg)
+			s, logs := newTestServer(t, cfg)
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+			defer cancel()
+			req := httptest.NewRequest("POST", "/orders", strings.NewReader(goodOrder)).WithContext(ctx)
+			s.Handler().ServeHTTP(httptest.NewRecorder(), req)
+
+			line := lastLog(t, logs)
+			if line["level"] != "WARN" || line["status"] != float64(499) {
+				t.Errorf("log line %v, want WARN status 499", line)
+			}
+
+			m := scrape(t, s)
+			for _, want := range []string{
+				`http_requests_total{code="499",method="POST",route="/orders"} 1`,
+				"payments_call_errors_total 0",
+				"orders_created_total 0",
+			} {
+				if !strings.Contains(m, want) {
+					t.Errorf("metrics missing %q", want)
+				}
+			}
+			for _, bad := range []string{`code="502"`, `code="200",method="POST"`} {
+				if strings.Contains(m, bad) {
+					t.Errorf("metrics contain %s", bad)
+				}
+			}
+		})
+	}
+}

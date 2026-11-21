@@ -26,8 +26,8 @@ type Config struct {
 	ShutdownLimit time.Duration // max time to finish in-flight requests
 }
 
-// DefaultConfig returns production defaults. WarmUp + DrainDelay +
-// ShutdownLimit stays under the chart's 30s terminationGracePeriodSeconds.
+// DefaultConfig returns production defaults. DrainDelay + ShutdownLimit
+// (25s) stays under the chart's 30s terminationGracePeriodSeconds.
 func DefaultConfig() Config {
 	return Config{
 		Port:            8080,
