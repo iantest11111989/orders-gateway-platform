@@ -1,4 +1,5 @@
 # Argo CD manages itself after ./platform up installs it once with Helm.
+# No resources-finalizer: deleting this Application must never delete Argo CD.
 # Chart version and values must match scripts/argocd-bootstrap.sh.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -9,7 +10,6 @@ metadata:
     app.kubernetes.io/part-of: orders-gateway-platform
   annotations:
     argocd.argoproj.io/sync-wave: "0"
-  finalizers: []   # never cascade-delete Argo CD from under itself
 spec:
   project: default
   sources:
