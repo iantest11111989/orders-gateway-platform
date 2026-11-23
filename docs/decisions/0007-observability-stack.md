@@ -40,13 +40,13 @@ Log labels: `namespace`, `pod`, `app` (first of `app.kubernetes.io/name`, `app`,
 | --- | --- | --- |
 | Prometheus (+ config reloader) | 768 Mi (+16) | 1.5 Gi (+32) |
 | Alertmanager (+ reloader) | 32 Mi (+16) | 64 Mi (+32) |
-| Grafana + 2 sidecars | 128 + 2 × 64 Mi | 256 + 2 × 128 Mi |
+| Grafana + 2 sidecars | 256 + 2 × 64 Mi | 512 + 2 × 128 Mi |
 | Prometheus Operator | 64 Mi | 128 Mi |
 | kube-state-metrics | 64 Mi | 128 Mi |
 | node-exporter (× 3) | 32 Mi | 64 Mi |
 | Loki | 256 Mi | 512 Mi |
 | Alloy + reloader (× 3) | 96 + 16 Mi | 192 + 32 Mi |
-| **Total requested** | **about 1.9 Gi** | |
+| **Total requested** | **about 2.0 Gi** | |
 
 These are first estimates. The numbers measured on the running stack replace them in the budget PR (`./platform budget`). Prometheus prefers a different node from Loki (soft anti-affinity), so a log burst can't starve it.
 
