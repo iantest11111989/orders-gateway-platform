@@ -1,0 +1,31 @@
+# The shared HTTPS entry point: demo CA and *.localtest.me certificate
+# (cert-manager), the Envoy GatewayClass and Gateway, the HTTP -> HTTPS
+# redirect, and HTTPRoutes for the platform UIs. Plain manifests in
+# gitops/manifests/gateway/. Wave 15: after cert-manager and Envoy Gateway.
+# See decision 0008.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-gateway
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: orders-gateway-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repo.url }}
+    targetRevision: {{ .Values.repo.revision }}
+    path: gitops/manifests/gateway
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: envoy-gateway-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # HTTPRoutes for Grafana/Prometheus (wave 20) may sync before their
+      # backends exist; that's fine, the route resolves once they appear.
+      - SkipDryRunOnMissingResource=true

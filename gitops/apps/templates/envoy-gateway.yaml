@@ -1,0 +1,44 @@
+# Envoy Gateway: the Gateway API controller. It turns the Gateway in
+# gitops/manifests/gateway/ into an Envoy proxy Deployment and a NodePort
+# Service (30080/30443, which kind maps to host 80/443).
+# Values: gitops/values/envoy-gateway.yaml. Wave 10 (controllers); CRDs come
+# from gateway-crds.yaml at wave -10. See decision 0008.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: envoy-gateway
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: orders-gateway-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: default
+  sources:
+    - repoURL: docker.io/envoyproxy
+      chart: gateway-helm
+      targetRevision: 1.10.0 # same as gateway-crds.yaml
+      helm:
+        releaseName: envoy-gateway
+        valueFiles:
+          - $values/gitops/values/envoy-gateway.yaml
+    - repoURL: {{ .Values.repo.url }}
+      targetRevision: {{ .Values.repo.revision }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: envoy-gateway-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    managedNamespaceMetadata:
+      labels:
+        # Restricted: the controller and the Envoy proxies it creates run as
+        # non-root with no capabilities (gitops/manifests/gateway/envoyproxy.yaml).
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/warn: restricted
+        pod-security.kubernetes.io/audit: restricted
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
