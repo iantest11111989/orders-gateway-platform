@@ -1,0 +1,26 @@
+# prod: promoted from staging by a pull request the owner approves. The
+# canary (Argo Rollouts) comes in its own PR.
+env: prod
+
+image:
+  tag: sha-85cbba12fef7
+  digest: sha256:09c2177caeb2c7b701c1f091fd65600065c836d4b25b930bff82cb6ec62b3476
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+route:
+  hostname: orders.localtest.me
+
+podDisruptionBudget:
+  enabled: true
+
+topologySpread:
+  enabled: true
+
+resources:
+  requests: {cpu: 50m, memory: 32Mi}
+  limits: {memory: 64Mi}

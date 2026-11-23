@@ -1,0 +1,17 @@
+# staging: promoted from dev by a pull request the owner approves.
+env: staging
+
+image:
+  tag: sha-85cbba12fef7
+  digest: sha256:09c2177caeb2c7b701c1f091fd65600065c836d4b25b930bff82cb6ec62b3476
+
+replicas: 2
+
+route:
+  hostname: orders.staging.localtest.me
+
+podDisruptionBudget:
+  enabled: true
+
+topologySpread:
+  enabled: true

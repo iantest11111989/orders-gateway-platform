@@ -16,8 +16,10 @@ Sync waves: -10 CRDs, 0 Argo CD, 10 controllers, 20 observability, 30 policies, 
 | `argocd` | 0 | Argo CD, managing itself |
 | `cert-manager` | 10 | Certificates from the demo CA |
 | `envoy-gateway` | 10 | Gateway API controller (Envoy) |
+| `metrics-server` | 10 | CPU/memory metrics for HPAs and `kubectl top` |
 | `platform-gateway` | 15 | Demo CA, `*.localtest.me` certificate, Gateway, HTTP→HTTPS redirect, UI routes (`manifests/gateway/`) |
 | `kube-prometheus-stack` | 20 | Prometheus, Alertmanager, Grafana, exporters ([0007](../docs/decisions/0007-observability-stack.md)) |
 | `loki` | 20 | Loki, single binary |
 | `alloy` | 20 | Log collection DaemonSet |
 | `platform-alerts` | 25 | PrometheusRules from `alerts/` |
+| `orders-dev`, `orders-staging`, `orders-prod` | 40 | orders-gateway per environment: `charts/orders-gateway` + `environments/<env>/values.yaml` ([0009](../docs/decisions/0009-chart-and-environments.md)) |

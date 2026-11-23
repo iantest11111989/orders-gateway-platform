@@ -21,3 +21,4 @@ Records are not edited after they are accepted. If a decision changes, add a new
 | [0006](0006-slo-rules.md) | How the orders-gateway SLO is measured and alerted | Accepted |
 | [0007](0007-observability-stack.md) | Observability stack layout, sizing and security | Accepted |
 | [0008](0008-gateway-and-tls.md) | HTTPS entry point: Envoy Gateway, cert-manager and a demo CA | Accepted |
+| [0009](0009-chart-and-environments.md) | orders-gateway Helm chart and the dev/staging/prod environments | Accepted |
