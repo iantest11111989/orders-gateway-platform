@@ -77,6 +77,17 @@ jobs:
           build-args: |
             VERSION=ci
             COMMIT=${{ github.sha }}
+      # The v2-bad demo stage, so a PR that breaks it fails before main.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: app
+          target: bad
+          platforms: linux/amd64,linux/arm64
+          push: false
+          build-args: |
+            VERSION=ci-bad
+            COMMIT=${{ github.sha }}
+            FEATURES=delivery-estimates
 
   # Publishes multi-arch images to GHCR from main, after the tests pass:
   #   sha-<12 chars>, main   this commit (what environments/dev deploys)
