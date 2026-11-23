@@ -1,0 +1,19 @@
+{{- if .Values.serviceMonitor.enabled }}
+# Scraped by Prometheus. The SLO recording rules and burn-rate alerts are
+# cluster-wide, per namespace (alerts/orders-gateway-slo.yaml), so the chart
+# ships no PrometheusRule of its own.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "orders-gateway.name" . }}
+  labels:
+    {{- include "orders-gateway.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "orders-gateway.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.serviceMonitor.interval }}
+{{- end }}

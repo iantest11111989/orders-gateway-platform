@@ -1,0 +1,36 @@
+# orders-gateway in namespace orders-prod: charts/orders-gateway with
+# environments/prod/values.yaml. Wave 40 (apps), after the gateway and
+# monitoring. Promotion changes environments/prod/values.yaml only.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: orders-prod
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: orders-gateway-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "40"
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repo.url }}
+    targetRevision: {{ .Values.repo.revision }}
+    path: charts/orders-gateway
+    helm:
+      releaseName: orders-gateway
+      valueFiles:
+        - ../../environments/prod/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: orders-prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/warn: restricted
+        pod-security.kubernetes.io/audit: restricted
+    syncOptions:
+      - CreateNamespace=true

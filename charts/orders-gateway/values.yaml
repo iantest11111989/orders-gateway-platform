@@ -1,0 +1,68 @@
+# Defaults for every environment. environments/<env>/values.yaml overrides
+# them; Argo CD passes both (gitops/apps/templates/orders-<env>.yaml).
+
+# Environment name: the `env` label on pods (Loki, Grafana) and APP_ENV.
+env: dev
+
+image:
+  repository: ghcr.io/iantest11111989/orders-gateway
+  # Required. A sha-<12> tag from CI (or a demo tag: v1, v2, v2-bad).
+  # Promotion between environments changes only this line.
+  tag: ""
+  # Optional sha256:... digest. When set, the pod runs repository@digest,
+  # so a re-pushed tag (the demo tags are rebuilt from main) can't change
+  # what runs; the tag stays for readability (APP_VERSION, labels).
+  digest: ""
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+# App settings (app/README.md). FAULT_* are left unset unless given here,
+# so an image's own defaults (the v2-bad demo) still apply.
+config:
+  logLevel: info
+  paymentsLatencyMs: 40
+  paymentsErrorRate: 0
+  faultErrorRate: null
+  faultLatencyMs: null
+
+resources:
+  requests: {cpu: 25m, memory: 32Mi}
+  limits: {memory: 64Mi}
+
+# Shared Gateway from gitops/manifests/gateway/ (decision 0008).
+route:
+  enabled: true
+  hostname: orders.dev.localtest.me
+  gateway:
+    name: platform
+    namespace: envoy-gateway-system
+    sectionName: https
+
+autoscaling:
+  enabled: false
+  minReplicas: 3
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: false
+  maxUnavailable: 1
+
+# Spread pods across nodes and zones (kind nodes carry topology.kubernetes.io/zone).
+topologySpread:
+  enabled: false
+
+serviceMonitor:
+  enabled: true
+  interval: 30s
+
+# Ingress only from the gateway (traffic) and Prometheus (metrics); egress
+# only to DNS. The app has no real downstream: payments is simulated.
+networkPolicy:
+  enabled: true
+  gatewayNamespace: envoy-gateway-system
+  monitoringNamespace: monitoring
+
+# The app's drain (5 s) + shutdown limit (20 s) fits inside this.
+terminationGracePeriodSeconds: 30
