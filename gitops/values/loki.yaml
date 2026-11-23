@@ -27,6 +27,8 @@ loki:
     max_query_lookback: 48h
     allow_structured_metadata: true
     volume_enabled: true
+    # No automatic service_name label: streams keep only namespace/app/env/pod.
+    discover_service_name: []
   compactor:
     retention_enabled: true
     delete_request_store: filesystem

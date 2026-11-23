@@ -70,6 +70,15 @@ alloy:
 
       loki.source.kubernetes "pods" {
         targets    = discovery.relabel.pods.output
+        forward_to = [loki.process.labels.receiver]
+      }
+
+      // loki.source.kubernetes adds instance (namespace/pod:container) and
+      // job after relabeling; drop them so only namespace/app/env/pod remain.
+      loki.process "labels" {
+        stage.label_drop {
+          values = ["instance", "job"]
+        }
         forward_to = [loki.write.default.receiver]
       }
 
