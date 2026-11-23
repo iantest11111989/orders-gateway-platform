@@ -88,6 +88,8 @@ docs/learn/             hands-on exercises
 ## Production differences
 
 - **Metrics retention.** Prometheus here keeps 24 hours of data, enough for the burn-rate alerts (at most 6 h), so the error-budget panel covers only that window. Production would keep 30+ days, for example in long-term storage, so the true 30-day error budget can be computed.
+- **TLS and DNS.** Certificates here come from a demo CA created inside each cluster, and `*.localtest.me` resolves to 127.0.0.1. Production would use a public CA (Let's Encrypt via ACME DNS-01) or the company PKI, with real DNS records.
+- **Ingress.** Here Envoy listens on NodePorts mapped to 127.0.0.1:80/443, with one proxy replica. Production would use a cloud load balancer, two or more proxy replicas spread across zones, and SSO in front of Prometheus and Alertmanager, which have no login of their own.
 
 ## Further sections _(coming)_
 

@@ -33,6 +33,7 @@ ok "root applied"
 
 step "Waiting for every Application to be Synced and Healthy (up to ${APPS_TIMEOUT}s)"
 deadline=$(( $(date +%s) + APPS_TIMEOUT ))
+polls=0
 while :; do
   # name sync health, one line per Application
   status=$(kubectl -n argocd get applications.argoproj.io \
@@ -48,6 +49,17 @@ while :; do
       if [ "$sync" = Synced ] && [ "$health" = Healthy ]; then ok "$name: Synced, Healthy"; else fail "$name: ${sync:-Unknown}, ${health:-Unknown}"; fi
     done <<<"$status"
     die "not every Application became Synced and Healthy in ${APPS_TIMEOUT}s. Inspect with: ./platform kubectl -n argocd get applications"
+  fi
+  # Argo CD re-checks health only every timeout.reconciliation (3 min), so an
+  # Application that synced but was still Progressing (CRDs not yet
+  # Established, pods starting) can look stuck for minutes and hold back the
+  # next sync wave. Every 30 s, ask Argo CD to refresh those.
+  polls=$((polls + 1))
+  if [ $((polls % 6)) -eq 0 ]; then
+    awk '$2 == "Synced" && $3 == "Progressing" {print $1}' <<<"$status" |
+      while read -r app; do
+        kubectl -n argocd annotate applications.argoproj.io "$app" argocd.argoproj.io/refresh=normal --overwrite >/dev/null 2>&1 || true
+      done
   fi
   sleep 5
 done

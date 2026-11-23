@@ -1,0 +1,42 @@
+# Gateway API CRDs (Gateway, HTTPRoute, ...) and Envoy Gateway's own CRDs
+# (EnvoyProxy, ClientTrafficPolicy, ...), in their own Application at wave -10
+# so the gateway config (wave 15) and later Argo Rollouts' Gateway API plugin
+# find them installed. envoy-gateway.yaml runs with crds.enabled: false.
+# Keep the version equal to envoy-gateway.yaml's. See decision 0008.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gateway-crds
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: orders-gateway-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  project: default
+  source:
+    # Helm chart in an OCI registry: no scheme, the chart name goes in `chart`.
+    repoURL: docker.io/envoyproxy
+    chart: gateway-crds-helm
+    targetRevision: 1.10.0 # Envoy Gateway v1.10.0
+    helm:
+      valuesObject:
+        crds:
+          gatewayAPI:
+            enabled: true
+            # Experimental is a superset of standard; Envoy Gateway supports
+            # the experimental kinds (TCPRoute, ...), and nothing here relies
+            # on them.
+            channel: experimental
+          envoyGateway:
+            enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: envoy-gateway-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # The CRDs are too large for client-side apply's last-applied annotation.
+      - ServerSideApply=true
