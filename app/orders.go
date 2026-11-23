@@ -44,6 +44,23 @@ type Order struct {
 	TotalItems int       `json:"total_items"`
 	Status     string    `json:"status"`
 	CreatedAt  time.Time `json:"created_at"`
+	// EstimatedDelivery is set only when Config.DeliveryEstimates is on (v2).
+	EstimatedDelivery *time.Time `json:"estimated_delivery,omitempty"`
+}
+
+// deliveryDays is how long after creation an order is estimated to arrive:
+// 2 to 5 days, derived from the order ID so GET stays deterministic.
+func deliveryDays(id string) int {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(id))
+	return 2 + int(h.Sum32()%4)
+}
+
+// withDeliveryEstimate fills EstimatedDelivery.
+func withDeliveryEstimate(o Order) Order {
+	t := o.CreatedAt.Add(time.Duration(deliveryDays(o.OrderID)) * 24 * time.Hour)
+	o.EstimatedDelivery = &t
+	return o
 }
 
 type validationError struct {
@@ -188,6 +205,9 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 		Status:     "created",
 		CreatedAt:  time.Now().UTC(),
 	}
+	if s.cfg.DeliveryEstimates {
+		order = withDeliveryEstimate(order)
+	}
 	setOrderID(r.Context(), order.OrderID)
 	s.metrics.OrdersCreated.Inc()
 	w.Header().Set("Location", "/orders/"+order.OrderID)
@@ -201,7 +221,11 @@ func (s *Server) handleGetOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setOrderID(r.Context(), id)
-	writeJSON(w, http.StatusOK, fakeOrder(id))
+	order := fakeOrder(id)
+	if s.cfg.DeliveryEstimates {
+		order = withDeliveryEstimate(order)
+	}
+	writeJSON(w, http.StatusOK, order)
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

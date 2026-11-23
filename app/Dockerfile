@@ -12,15 +12,27 @@ COPY *.go ./
 ARG TARGETOS TARGETARCH
 ARG VERSION=dev
 ARG COMMIT=unknown
+# Build-time features: "delivery-estimates" makes the v2 demo image.
+ARG FEATURES=
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -ldflags="-s -w -X main.buildVersion=${VERSION} -X main.commit=${COMMIT}" \
+    go build -trimpath -ldflags="-s -w -X main.buildVersion=${VERSION} -X main.commit=${COMMIT} -X main.buildFeatures=${FEATURES}" \
       -o /out/orders-gateway .
 
 # gcr.io/distroless/static-debian13:nonroot (multi-arch index digest):
 # no shell, no package manager, runs as uid 65532.
-FROM gcr.io/distroless/static-debian13:nonroot@sha256:aafe993665bf6200db38a02c11a9351e782a84b6a45e7f33b6695638c88e3931
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:aafe993665bf6200db38a02c11a9351e782a84b6a45e7f33b6695638c88e3931 AS app
 COPY --from=build /out/orders-gateway /orders-gateway
 USER 65532:65532
 EXPOSE 8080
 ENTRYPOINT ["/orders-gateway"]
+
+# The v2-bad demo image (--target bad): fault injection on by default, so a
+# canary's analysis sees 10% errors and p99 above the 300 ms SLO and rolls
+# back. The chart sets FAULT_* only when its values ask for it, so these
+# defaults survive. Never deploy this outside the canary demo.
+FROM app AS bad
+ENV FAULT_ERROR_RATE=0.1 FAULT_LATENCY_MS=400
+
+# Default target: the normal image.
+FROM app
