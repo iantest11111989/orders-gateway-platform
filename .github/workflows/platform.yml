@@ -78,6 +78,8 @@ jobs:
                 echo "::group::describe $ns/$pod"
                 ./platform kubectl -n "$ns" describe pod "$pod" || true
                 ./platform kubectl -n "$ns" logs "$pod" --all-containers --tail=50 || true
+                # A crash-looping container's useful output is in its last run.
+                ./platform kubectl -n "$ns" logs "$pod" --all-containers --tail=50 --previous 2>/dev/null || true
                 echo "::endgroup::"
               done
       - if: always()
