@@ -116,7 +116,9 @@ prometheusOperator:
 prometheus:
   prometheusSpec:
     replicas: 1
-    retention: 2d
+    # 24 h (owner decision, 2026-11-23): enough for the 6 h burn-rate alerts.
+    # Production would keep 30+ days; see the README's production differences.
+    retention: 24h
     retentionSize: 4GB
     scrapeInterval: 30s
     evaluationInterval: 30s

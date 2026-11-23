@@ -85,9 +85,13 @@ docs/learn/             hands-on exercises
 .github/workflows/      CI
 ```
 
+## Production differences
+
+- **Metrics retention.** Prometheus here keeps 24 hours of data, enough for the burn-rate alerts (at most 6 h), so the error-budget panel covers only that window. Production would keep 30+ days, for example in long-term storage, so the true 30-day error budget can be computed.
+
 ## Further sections _(coming)_
 
-Architecture diagram, resource budget (measured), production differences, why these choices, troubleshooting.
+Architecture diagram, resource budget (measured), why these choices, troubleshooting.
 
 ## License
 

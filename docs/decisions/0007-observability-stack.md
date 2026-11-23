@@ -20,7 +20,7 @@ The brief (section 8) asks for kube-prometheus-stack (Prometheus with 2-day rete
 
 **CRDs separately.** The operator CRDs come from the upstream `prometheus-operator-crds` chart at wave -10, and kube-prometheus-stack runs with `crds.enabled: false`. The two charts' operator versions must match (v0.95.2 today); Renovate will group them.
 
-**Prometheus** picks up every ServiceMonitor, PodMonitor, Probe, ScrapeConfig and PrometheusRule in the cluster (`*SelectorNilUsesHelmValues: false`), so other charts only need `serviceMonitor.enabled: true`. Retention is 2 days (also capped at 4 GB) on a 5 Gi volume from kind's `standard` (local-path) class. Several high-cardinality API server and cAdvisor series that nothing here uses are dropped.
+**Prometheus** picks up every ServiceMonitor, PodMonitor, Probe, ScrapeConfig and PrometheusRule in the cluster (`*SelectorNilUsesHelmValues: false`), so other charts only need `serviceMonitor.enabled: true`. Retention is 24 hours, cut by the owner from the brief's 2 days (see 0006), and capped at 4 GB, on a 5 Gi volume from kind's `standard` (local-path) class. Several high-cardinality API server and cAdvisor series that nothing here uses are dropped.
 
 **Loki** is one pod: filesystem storage on a 5 Gi volume, TSDB schema v13, retention of 48 h through the compactor. The memcached caches, the nginx gateway, the canary and the ruler are all off. At this log volume, the caches would cost more memory than Loki itself.
 
