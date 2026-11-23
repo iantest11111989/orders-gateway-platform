@@ -64,5 +64,23 @@ jobs:
       - run: ./platform up # idempotent
       - run: ./platform kubectl get nodes -L topology.kubernetes.io/zone
       - run: ./platform kubectl -n argocd get applications
+      # On failure, show why: pods that aren't ready, their descriptions
+      # (image pulls, probes, OOM) and recent events. Best effort: the cluster
+      # may not exist if `up` failed early.
+      - name: Diagnostics (on failure)
+        if: failure()
+        run: |
+          ./platform kubectl get pods -A -o wide || true
+          ./platform kubectl get events -A --sort-by=.lastTimestamp || true
+          ./platform kubectl get pods -A --no-headers 2>/dev/null \
+            | awk '{ split($3, r, "/") } r[1] != r[2] && $4 != "Completed"' \
+            | while read -r ns pod _; do
+                echo "::group::describe $ns/$pod"
+                ./platform kubectl -n "$ns" describe pod "$pod" || true
+                ./platform kubectl -n "$ns" logs "$pod" --all-containers --tail=50 || true
+                # A crash-looping container's useful output is in its last run.
+                ./platform kubectl -n "$ns" logs "$pod" --all-containers --tail=50 --previous 2>/dev/null || true
+                echo "::endgroup::"
+              done
       - if: always()
         run: ./platform down
