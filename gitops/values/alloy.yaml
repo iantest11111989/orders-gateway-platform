@@ -75,7 +75,16 @@ alloy:
 
       // loki.source.kubernetes adds instance (namespace/pod:container) and
       // job after relabeling; drop them so only namespace/app/env/pod remain.
+      // The container name moves to structured metadata first, so lines from
+      // multi-container pods can still be told apart ({...} | container="x").
       loki.process "labels" {
+        stage.regex {
+          source     = "instance"
+          expression = "^[^/]+/[^:]+:(?P<container>.+)$"
+        }
+        stage.structured_metadata {
+          values = {container = ""}
+        }
         stage.label_drop {
           values = ["instance", "job"]
         }

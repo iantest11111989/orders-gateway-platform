@@ -22,11 +22,11 @@ The brief (section 8) asks for kube-prometheus-stack (Prometheus with 2-day rete
 
 **Prometheus** picks up every ServiceMonitor, PodMonitor, Probe, ScrapeConfig and PrometheusRule in the cluster (`*SelectorNilUsesHelmValues: false`), so other charts only need `serviceMonitor.enabled: true`. Retention is 24 hours, cut by the owner from the brief's 2 days (see 0006), and capped at 4 GB, on a 5 Gi volume from kind's `standard` (local-path) class. Several high-cardinality API server and cAdvisor series that nothing here uses are dropped.
 
-**Loki** is one pod: filesystem storage on a 5 Gi volume, TSDB schema v13, retention of 48 h through the compactor. The memcached caches, the nginx gateway, the canary and the ruler are all off. At this log volume, the caches would cost more memory than Loki itself.
+**Loki** is one pod: filesystem storage on a 5 Gi volume, TSDB schema v13, retention of 48 h through the compactor. That is longer than Prometheus's 24 h on purpose: logs cost little on disk here, and a second day helps when looking into last night's alert. The memcached caches, the nginx gateway, the canary and the ruler are all off. At this log volume, the caches would cost more memory than Loki itself.
 
 **Alloy** tails logs **through the Kubernetes API** (`loki.source.kubernetes`), not from `/var/log/pods` on the host. Each DaemonSet pod only watches pods on its own node (field selector on `NODE_NAME`), so the load is spread and nothing is read twice. The trade-off is more API server traffic than file tailing. In return Alloy needs no `hostPath` volumes, runs as `nobody` with a read-only root filesystem, and its namespace can enforce "restricted". Its RBAC is cut down to `pods`, `pods/log` and `namespaces`. The chart's default role can read every Secret in the cluster.
 
-Log labels: `namespace`, `pod`, `app` (first of `app.kubernetes.io/name`, `app`, `k8s-app`, `component`) and `env` (the pod's `env` label, else `platform`). Fields such as `level`, `route` and `request_id` are parsed at query time with `| json`, so they never become labels.
+Log labels: `namespace`, `pod`, `app` (first of `app.kubernetes.io/name`, `app`, `k8s-app`, `component`) and `env` (the pod's `env` label, else `platform`). Fields such as `level`, `route` and `request_id` are parsed at query time with `| json`, so they never become labels. The container name is kept as structured metadata (`{pod="x"} | container="y"`), not as a label, so multi-container pods share one stream but their lines can still be filtered.
 
 **JSON logs everywhere we can:** Argo CD, Grafana, Loki and Alloy are switched to JSON in their values.
 
