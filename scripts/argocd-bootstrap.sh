@@ -32,20 +32,31 @@ REPO_URL="$REPO_URL" REVISION="$REVISION" yq '
 ok "root applied"
 
 step "Waiting for every Application to be Synced and Healthy (up to ${APPS_TIMEOUT}s)"
-deadline=$(( $(date +%s) + APPS_TIMEOUT ))
+start=$(date +%s)
+deadline=$(( start + APPS_TIMEOUT ))
+# Seconds after the root was applied when each Application first appeared and
+# first became Synced+Healthy, so slow sync waves show up in the output.
+declare -A seen_at healthy_at
+timing() { echo "(appeared +${seen_at[$1]:-?}s, healthy +${healthy_at[$1]:-never}s)"; }
 while :; do
   # name sync health, one line per Application
   status=$(kubectl -n argocd get applications.argoproj.io \
     -o jsonpath='{range .items[*]}{.metadata.name} {.status.sync.status} {.status.health.status}{"\n"}{end}' 2>/dev/null || true)
+  now=$(( $(date +%s) - start ))
+  while read -r name sync health; do
+    [ -n "$name" ] || continue
+    [ -n "${seen_at[$name]:-}" ] || seen_at[$name]=$now
+    if [ "$sync" = Synced ] && [ "$health" = Healthy ] && [ -z "${healthy_at[$name]:-}" ]; then healthy_at[$name]=$now; fi
+  done <<<"$status"
   total=$(grep -c . <<<"$status" || true)
   ready=$(awk '$2 == "Synced" && $3 == "Healthy"' <<<"$status" | grep -c . || true)
   if [ "$total" -gt 0 ] && [ "$ready" -eq "$total" ]; then
-    while read -r name _ _; do ok "$name: Synced, Healthy"; done <<<"$status"
+    while read -r name _ _; do ok "$name: Synced, Healthy $(timing "$name")"; done <<<"$status"
     break
   fi
   if [ "$(date +%s)" -ge "$deadline" ]; then
     while read -r name sync health; do
-      if [ "$sync" = Synced ] && [ "$health" = Healthy ]; then ok "$name: Synced, Healthy"; else fail "$name: ${sync:-Unknown}, ${health:-Unknown}"; fi
+      if [ "$sync" = Synced ] && [ "$health" = Healthy ]; then ok "$name: Synced, Healthy $(timing "$name")"; else fail "$name: ${sync:-Unknown}, ${health:-Unknown} $(timing "$name")"; fi
     done <<<"$status"
     die "not every Application became Synced and Healthy in ${APPS_TIMEOUT}s. Inspect with: ./platform kubectl -n argocd get applications"
   fi
