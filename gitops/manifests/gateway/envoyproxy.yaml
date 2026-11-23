@@ -18,7 +18,8 @@ spec:
               time: "%START_TIME%"
               method: "%REQ(:METHOD)%"
               host: "%REQ(:AUTHORITY)%"
-              path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+              # Path without the query string, which can carry tokens.
+              path: "%REQ_WITHOUT_QUERY(X-ENVOY-ORIGINAL-PATH?:PATH)%"
               status: "%RESPONSE_CODE%"
               duration_ms: "%DURATION%"
               upstream: "%UPSTREAM_HOST%"

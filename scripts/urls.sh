@@ -34,7 +34,10 @@ pw=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.dat
 step "Argo CD"
 echo "  https://argocd.localtest.me"
 echo "  Login: admin / ${pw:-<not found: run ./platform up>}"
-echo "  CLI (inside ./platform shell): argocd login argocd.localtest.me --grpc-web --username admin --password <above>"
+# The toolbox sets ARGOCD_OPTS to reach Argo CD by port-forward, so the CLI
+# works even if the gateway is down; no server address needed there.
+echo "  CLI (inside ./platform shell): argocd login --username admin --password <above>, then argocd app list"
+echo "  CLI on your machine, through the gateway: argocd login argocd.localtest.me --grpc-web --username admin"
 
 step "Grafana"
 echo "  https://grafana.localtest.me"
