@@ -427,3 +427,32 @@ func TestClientDisconnect(t *testing.T) {
 		})
 	}
 }
+
+// v1 images leave estimated_delivery out entirely; v2 images (built with
+// FEATURES=delivery-estimates) set it 2-5 days after creation, the same
+// value on every GET.
+func TestDeliveryEstimates(t *testing.T) {
+	off, _ := newTestServer(t, testConfig())
+	if body := do(off, "POST", "/orders", goodOrder).Body.String(); strings.Contains(body, "estimated_delivery") {
+		t.Errorf("v1 response has estimated_delivery: %s", body)
+	}
+
+	cfg := testConfig()
+	cfg.DeliveryEstimates = true
+	on, _ := newTestServer(t, cfg)
+
+	rec := do(on, "POST", "/orders", goodOrder)
+	var created Order
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil || created.EstimatedDelivery == nil {
+		t.Fatalf("v2 create: no estimated_delivery in %s (err %v)", rec.Body, err)
+	}
+	if d := created.EstimatedDelivery.Sub(created.CreatedAt); d < 48*time.Hour || d > 120*time.Hour {
+		t.Errorf("estimate %v after creation, want 2-5 days", d)
+	}
+
+	id := "ord_0123456789abcdef"
+	a, b := do(on, "GET", "/orders/"+id, ""), do(on, "GET", "/orders/"+id, "")
+	if a.Body.String() != b.Body.String() || !strings.Contains(a.Body.String(), "estimated_delivery") {
+		t.Errorf("v2 GET not deterministic or missing estimate:\n%s\n%s", a.Body, b.Body)
+	}
+}

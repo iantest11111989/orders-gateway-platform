@@ -92,3 +92,21 @@ docker run --rm --network host -v "$PWD/k6":/k6 -e BASE_URL=http://localhost:808
 ## Image
 
 Multi-stage build: Go cross-compiles on the build machine for each target architecture (`linux/amd64`, `linux/arm64`), and the result runs on `gcr.io/distroless/static-debian13:nonroot`. There's no shell or package manager, it runs as uid 65532, and it works with a read-only root filesystem and all capabilities dropped. Base images are pinned by digest. The image is about 18 MB.
+
+### Published images
+
+CI (`.github/workflows/app.yml`, job `publish`) pushes multi-arch images to `ghcr.io/iantest11111989/orders-gateway` from `main` only, after the tests and lint pass. Pull requests build without pushing.
+
+| Tag | What | Built with |
+| --- | --- | --- |
+| `sha-<12 chars>`, `main` | This commit. Environments deploy by `sha-` tag. | defaults |
+| `v1` | Demo: the normal app | `VERSION=v1` |
+| `v2` | Demo: a visible change, `estimated_delivery` (2-5 days) on every order | `VERSION=v2`, `FEATURES=delivery-estimates` |
+| `v2-bad` | Demo: v2 with fault injection on by default (10% 500s, +400 ms), so a canary fails its analysis and rolls back | as `v2`, plus `--target bad` |
+
+There's no `:latest`. The demo tags are rebuilt from each `main` commit, so they always match the current code. Build any of them locally:
+
+```sh
+docker build --build-arg VERSION=v2 --build-arg FEATURES=delivery-estimates -t orders-gateway:v2 .
+docker build --target bad --build-arg VERSION=v2-bad --build-arg FEATURES=delivery-estimates -t orders-gateway:v2-bad .
+```

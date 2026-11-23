@@ -21,6 +21,10 @@ type Config struct {
 	FaultLatency      time.Duration // FAULT_LATENCY_MS: extra delay added to /orders requests
 	Version           string        // APP_VERSION
 
+	// DeliveryEstimates adds estimated_delivery to orders. Build-time only
+	// (buildFeatures), so v1 and v2 images differ visibly.
+	DeliveryEstimates bool
+
 	WarmUp        time.Duration // readiness fails for this long after start
 	DrainDelay    time.Duration // after SIGTERM, keep serving while endpoints are removed
 	ShutdownLimit time.Duration // max time to finish in-flight requests
@@ -37,6 +41,8 @@ func DefaultConfig() Config {
 		WarmUp:          2 * time.Second,
 		DrainDelay:      5 * time.Second,
 		ShutdownLimit:   20 * time.Second,
+
+		DeliveryEstimates: buildFeatures == "delivery-estimates",
 	}
 }
 

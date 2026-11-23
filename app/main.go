@@ -17,10 +17,15 @@ import (
 	"time"
 )
 
-// Set at build time with -ldflags "-X main.buildVersion=... -X main.commit=...".
+// Set at build time with -ldflags "-X main.buildVersion=... -X main.commit=...
+// -X main.buildFeatures=...".
 var (
 	buildVersion = "dev"
 	commit       = "unknown"
+	// buildFeatures switches on build-time features. "delivery-estimates"
+	// adds estimated_delivery to orders: the visible change in the v2 demo
+	// image (Dockerfile build-arg FEATURES).
+	buildFeatures = ""
 )
 
 func main() {
