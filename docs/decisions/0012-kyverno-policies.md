@@ -33,7 +33,7 @@ Image signature verification comes in its own PR, after CI signs images with cos
 
 ## Moving to Enforce
 
-All policies start in Audit (`validationActions: [Audit]`). A policy moves to Enforce, in its own PR, once `kyverno_validating_policy_results_total{result="fail"}` for it stays at zero on a full cluster. The app namespaces come first, with exceptions written down for any third-party chart that can't comply. That PR also decides whether the policy keeps `failurePolicy: Ignore` or moves to `Fail` with a second Kyverno replica.
+All policies start in Audit (`validationActions: [Audit]`). A policy moves to Enforce, in its own PR, once `kyverno_validating_policy_results_total{result="fail"}` for it stays at zero on a full cluster. The metric has no dry-run label, so server-side dry runs (`kubectl --dry-run=server`, the kind used to test a policy) count too. They also emit PolicyViolation events, so neither tells them apart from real workloads. Run test dry runs in a scratch namespace and leave it out of the query, or check that the flagged resource exists. The app namespaces come first, with exceptions written down for any third-party chart that can't comply. That PR also decides whether the policy keeps `failurePolicy: Ignore` or moves to `Fail` with a second Kyverno replica.
 
 ## Tests
 
