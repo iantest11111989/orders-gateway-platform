@@ -1,0 +1,29 @@
+name: policies
+
+# Runs the Kyverno policy tests (policies/tests/) with the Kyverno CLI that
+# matches the in-cluster Kyverno (gitops/apps/templates/kyverno.yaml).
+on:
+  pull_request:
+    paths: ["policies/**", ".github/workflows/policies.yml"]
+  push:
+    branches: [main]
+    paths: ["policies/**", ".github/workflows/policies.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: kyverno test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Pinned by tag and digest; a regex manager in renovate.json5 keeps it current.
+      - name: kyverno test policies/tests
+        run: |
+          docker run --rm -v "$PWD/policies:/p:ro" -w /p \
+            ghcr.io/kyverno/kyverno-cli:v1.20.0@sha256:bd2b8b7c9d550ecf04e0bacaf351adce2f82ce67fd3f291075edcee7f8ab4ab4 \
+            test tests

@@ -1,0 +1,190 @@
+# Test resources for policies/tests/kyverno-test.yaml.
+# good-pod meets every policy; each bad-* pod breaks one thing.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: good-pod
+  namespace: orders-dev
+  labels: {app: orders-gateway, env: dev, team: orders}
+spec:
+  securityContext: {runAsNonRoot: true}
+  containers:
+    - name: app
+      image: ghcr.io/iantest11111989/orders-gateway:v1@sha256:0000000000000000000000000000000000000000000000000000000000000000
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {memory: 32Mi}
+      securityContext:
+        readOnlyRootFilesystem: true
+        allowPrivilegeEscalation: false
+        capabilities: {drop: [ALL]}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-latest
+  namespace: orders-dev
+  labels: {app: x, env: dev, team: orders}
+spec:
+  securityContext: {runAsNonRoot: true}
+  containers:
+    - name: app
+      image: ghcr.io/iantest11111989/orders-gateway:latest
+      resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 32Mi}}
+      securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-untagged
+  namespace: orders-dev
+  labels: {app: x, env: dev, team: orders}
+spec:
+  securityContext: {runAsNonRoot: true}
+  containers:
+    - name: app
+      image: ghcr.io/iantest11111989/orders-gateway
+      resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 32Mi}}
+      securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+---
+# A registry with a port has a ":" before the last "/"; it's still untagged.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-untagged-port
+  namespace: orders-dev
+  labels: {app: x, env: dev, team: orders}
+spec:
+  securityContext: {runAsNonRoot: true}
+  containers:
+    - name: app
+      image: localhost:5000/orders-gateway
+      resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 32Mi}}
+      securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-registry
+  namespace: orders-dev
+  labels: {app: x, env: dev, team: orders}
+spec:
+  securityContext: {runAsNonRoot: true}
+  containers:
+    - name: app
+      image: evil.example.com/orders-gateway:v1
+      resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 32Mi}}
+      securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-bare-name
+  namespace: orders-dev
+  labels: {app: x, env: dev, team: orders}
+spec:
+  securityContext: {runAsNonRoot: true}
+  containers:
+    - name: app
+      image: alpine:3.22.2
+      resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 32Mi}}
+      securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-no-limits
+  namespace: orders-dev
+  labels: {app: x, env: dev, team: orders}
+spec:
+  securityContext: {runAsNonRoot: true}
+  containers:
+    - name: app
+      image: ghcr.io/iantest11111989/orders-gateway:v1
+      resources: {requests: {cpu: 10m, memory: 16Mi}}
+      securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-root
+  namespace: orders-dev
+  labels: {app: x, env: dev, team: orders}
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/iantest11111989/orders-gateway:v1
+      resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 32Mi}}
+      securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-writable
+  namespace: orders-dev
+  labels: {app: x, env: dev, team: orders}
+spec:
+  securityContext: {runAsNonRoot: true}
+  containers:
+    - name: app
+      image: ghcr.io/iantest11111989/orders-gateway:v1
+      resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 32Mi}}
+      securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-no-labels
+  namespace: orders-dev
+spec:
+  securityContext: {runAsNonRoot: true}
+  containers:
+    - name: app
+      image: ghcr.io/iantest11111989/orders-gateway:v1
+      resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 32Mi}}
+      securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+---
+# Outside orders-*: the label rules don't apply.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: platform-no-labels
+  namespace: monitoring
+spec:
+  securityContext: {runAsNonRoot: true}
+  containers:
+    - name: app
+      image: quay.io/prometheus/prometheus:v3.16.0
+      resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 32Mi}}
+      securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: good-deploy
+  namespace: orders-dev
+spec:
+  selector: {matchLabels: {app: d}}
+  template:
+    metadata: {labels: {app: d}}
+    spec:
+      containers:
+        - name: app
+          image: ghcr.io/iantest11111989/orders-gateway:v1
+          livenessProbe: {httpGet: {path: /healthz, port: 8080}}
+          readinessProbe: {httpGet: {path: /readyz, port: 8080}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-no-probes
+  namespace: orders-dev
+spec:
+  selector: {matchLabels: {app: d}}
+  template:
+    metadata: {labels: {app: d}}
+    spec:
+      containers:
+        - name: app
+          image: ghcr.io/iantest11111989/orders-gateway:v1
+          readinessProbe: {httpGet: {path: /readyz, port: 8080}}

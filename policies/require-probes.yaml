@@ -1,0 +1,32 @@
+# Long-running containers need liveness and readiness probes, so Kubernetes
+# restarts a hung process and sends traffic only to ready pods. Checked on
+# Deployments, StatefulSets and DaemonSets (not bare Pods or Jobs, which run
+# to completion); init containers are exempt.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: require-probes
+  annotations:
+    policies.kyverno.io/title: Require liveness and readiness probes
+    policies.kyverno.io/description: >-
+      Containers in Deployments, StatefulSets and DaemonSets must define
+      livenessProbe and readinessProbe.
+spec:
+  validationActions: [Audit]
+  # While policies only audit, a Kyverno outage must not block deploys.
+  failurePolicy: Ignore
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [apps]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [deployments, statefulsets, daemonsets]
+  validations:
+    - expression: >-
+        object.spec.template.spec.containers.all(c, has(c.livenessProbe) && has(c.readinessProbe))
+      messageExpression: >-
+        'Containers need a livenessProbe and a readinessProbe: ' +
+        object.spec.template.spec.containers.filter(c, !(has(c.livenessProbe) && has(c.readinessProbe))).map(c, c.name).join(', ')

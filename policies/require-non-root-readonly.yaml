@@ -1,0 +1,60 @@
+# Containers run as a non-root user with a read-only root filesystem, no
+# privilege escalation and no Linux capabilities. Pod Security Admission
+# "restricted" already enforces most of this in the app namespaces; this
+# policy adds the read-only root filesystem and covers every namespace.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: require-non-root-readonly
+  annotations:
+    policies.kyverno.io/title: Require non-root, read-only containers
+    policies.kyverno.io/description: >-
+      runAsNonRoot true (on the pod or every container), and on every
+      container readOnlyRootFilesystem true, allowPrivilegeEscalation false
+      and capabilities.drop [ALL].
+spec:
+  validationActions: [Audit]
+  # While policies only audit, a Kyverno outage must not block pod creation.
+  failurePolicy: Ignore
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: containers
+      expression: >-
+        object.spec.containers
+        + (has(object.spec.initContainers) ? object.spec.initContainers : [])
+    - name: podNonRoot
+      expression: >-
+        has(object.spec.securityContext) && has(object.spec.securityContext.runAsNonRoot) &&
+        object.spec.securityContext.runAsNonRoot
+  validations:
+    # A container may override the pod's runAsNonRoot, so check both levels.
+    - expression: >-
+        variables.containers.all(c,
+          has(c.securityContext) && has(c.securityContext.runAsNonRoot)
+            ? c.securityContext.runAsNonRoot
+            : variables.podNonRoot)
+      messageExpression: >-
+        'Containers must run as non-root (runAsNonRoot: true): ' +
+        variables.containers.filter(c, !(has(c.securityContext) && has(c.securityContext.runAsNonRoot)
+            ? c.securityContext.runAsNonRoot : variables.podNonRoot)).map(c, c.name).join(', ')
+    - expression: >-
+        variables.containers.all(c, has(c.securityContext) &&
+          has(c.securityContext.readOnlyRootFilesystem) && c.securityContext.readOnlyRootFilesystem &&
+          has(c.securityContext.allowPrivilegeEscalation) && !c.securityContext.allowPrivilegeEscalation &&
+          has(c.securityContext.capabilities) && has(c.securityContext.capabilities.drop) &&
+          'ALL' in c.securityContext.capabilities.drop)
+      messageExpression: >-
+        'Containers need readOnlyRootFilesystem: true, allowPrivilegeEscalation: false and capabilities.drop: [ALL]: ' +
+        variables.containers.filter(c, !(has(c.securityContext) &&
+          has(c.securityContext.readOnlyRootFilesystem) && c.securityContext.readOnlyRootFilesystem &&
+          has(c.securityContext.allowPrivilegeEscalation) && !c.securityContext.allowPrivilegeEscalation &&
+          has(c.securityContext.capabilities) && has(c.securityContext.capabilities.drop) &&
+          'ALL' in c.securityContext.capabilities.drop)).map(c, c.name).join(', ')

@@ -1,0 +1,78 @@
+# Workloads carry app, env and team labels, so logs, metrics and cost can be
+# grouped by them. In the orders-* namespaces Kyverno first adds safe
+# defaults to pods that lack them (MutatingPolicy below):
+#   app:  copied from app.kubernetes.io/name, when that is set
+#   env:  the namespace suffix (orders-dev -> dev)
+#   team: "orders"
+# then checks the result (ValidatingPolicy, Audit). It mutates Pods only,
+# never Deployments, so Argo CD sees no drift.
+apiVersion: policies.kyverno.io/v1
+kind: MutatingPolicy
+metadata:
+  name: default-labels
+  annotations:
+    policies.kyverno.io/title: Default app, env and team labels
+    policies.kyverno.io/description: >-
+      Adds app, env and team labels to pods in the orders-* namespaces when
+      they're missing. Existing labels are never changed.
+spec:
+  # A Kyverno outage must not block pod creation; pods then just miss defaults.
+  failurePolicy: Ignore
+  evaluation:
+    mutateExisting:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE]
+        resources: [pods]
+  matchConditions:
+    - name: orders-namespaces
+      expression: request.namespace.startsWith('orders-')
+  variables:
+    - name: labels
+      expression: 'has(object.metadata.labels) ? object.metadata.labels : {}'
+    - name: name
+      expression: >-
+        'app.kubernetes.io/name' in variables.labels ? variables.labels['app.kubernetes.io/name'] : ''
+  mutations:
+    - patchType: JSONPatch
+      jsonPatch:
+        expression: >-
+          (has(object.metadata.labels) ? [] : [JSONPatch{op: 'add', path: '/metadata/labels', value: {}}])
+          + ('team' in variables.labels ? [] : [JSONPatch{op: 'add', path: '/metadata/labels/team', value: 'orders'}])
+          + ('env' in variables.labels ? [] : [JSONPatch{op: 'add', path: '/metadata/labels/env', value: request.namespace.substring(7)}])
+          + ('app' in variables.labels || variables.name == '' ? [] : [JSONPatch{op: 'add', path: '/metadata/labels/app', value: variables.name}])
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: require-standard-labels
+  annotations:
+    policies.kyverno.io/title: Require app, env and team labels
+    policies.kyverno.io/description: >-
+      Pods in the orders-* namespaces must carry app, env and team labels
+      (after default-labels has added what it can).
+spec:
+  validationActions: [Audit]
+  # While policies only audit, a Kyverno outage must not block pod creation.
+  failurePolicy: Ignore
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  matchConditions:
+    - name: orders-namespaces
+      expression: request.namespace.startsWith('orders-')
+  validations:
+    - expression: >-
+        has(object.metadata.labels) && ['app', 'env', 'team'].all(l, l in object.metadata.labels && object.metadata.labels[l] != '')
+      messageExpression: >-
+        'Pods in orders-* namespaces need app, env and team labels; missing: ' +
+        ['app', 'env', 'team'].filter(l, !(has(object.metadata.labels) && l in object.metadata.labels && object.metadata.labels[l] != '')).join(', ')

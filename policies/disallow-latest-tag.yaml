@@ -1,0 +1,40 @@
+# Every image needs an explicit tag or digest, and never ":latest", so what
+# runs is what was reviewed. Audit for now (decision 0012).
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: disallow-latest-tag
+  annotations:
+    policies.kyverno.io/title: Disallow latest and untagged images
+    policies.kyverno.io/description: >-
+      Containers must name an image tag or digest, and the tag must not be
+      "latest". Untagged and ":latest" images change under you.
+spec:
+  validationActions: [Audit]
+  # While policies only audit, a Kyverno outage must not block pod creation.
+  failurePolicy: Ignore
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: images
+      expression: >-
+        object.spec.containers.map(c, c.image)
+        + (has(object.spec.initContainers) ? object.spec.initContainers.map(c, c.image) : [])
+        + (has(object.spec.ephemeralContainers) ? object.spec.ephemeralContainers.map(c, c.image) : [])
+  validations:
+    # A tag is a ":" after the last "/" (a registry port comes before it).
+    - expression: >-
+        variables.images.all(i, i.contains('@') || i.split('/')[i.split('/').size() - 1].contains(':'))
+      messageExpression: >-
+        'Images need a tag or digest: ' + variables.images.filter(i, !(i.contains('@') || i.split('/')[i.split('/').size() - 1].contains(':'))).join(', ')
+    - expression: >-
+        variables.images.all(i, !i.split('@')[0].endsWith(':latest'))
+      messageExpression: >-
+        'Images must not use the latest tag: ' + variables.images.filter(i, i.split('@')[0].endsWith(':latest')).join(', ')

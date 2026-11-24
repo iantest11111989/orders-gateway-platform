@@ -1,0 +1,81 @@
+# `kyverno test policies/tests` (CI: .github/workflows/policies.yml).
+# Every policy is checked against compliant resources and ones that break it.
+# Audit policies still report "fail" here.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: platform-policies
+policies:
+  - ../disallow-latest-tag.yaml
+  - ../require-resources.yaml
+  - ../require-probes.yaml
+  - ../require-non-root-readonly.yaml
+  - ../restrict-image-registries.yaml
+  - ../standard-labels.yaml
+resources:
+  - resources.yaml
+  - mutate-resource.yaml
+results:
+  - policy: disallow-latest-tag
+    resources: [good-pod, bad-registry, bad-root]
+    kind: Pod
+    result: pass
+  - policy: disallow-latest-tag
+    resources: [bad-untagged, bad-untagged-port, bad-latest]
+    kind: Pod
+    result: fail
+
+  - policy: require-resources
+    resources: [good-pod, bad-latest]
+    kind: Pod
+    result: pass
+  - policy: require-resources
+    resources: [bad-no-limits]
+    kind: Pod
+    result: fail
+
+  - policy: require-probes
+    resources: [good-deploy]
+    kind: Deployment
+    result: pass
+  - policy: require-probes
+    resources: [bad-no-probes]
+    kind: Deployment
+    result: fail
+
+  - policy: require-non-root-readonly
+    resources: [good-pod, bad-latest]
+    kind: Pod
+    result: pass
+  - policy: require-non-root-readonly
+    resources: [bad-root, bad-writable]
+    kind: Pod
+    result: fail
+
+  - policy: restrict-image-registries
+    resources: [good-pod, platform-no-labels]
+    kind: Pod
+    result: pass
+  - policy: restrict-image-registries
+    resources: [bad-registry, bad-bare-name, bad-untagged-port]
+    kind: Pod
+    result: fail
+
+  - policy: require-standard-labels
+    resources: [good-pod]
+    kind: Pod
+    result: pass
+  - policy: require-standard-labels
+    resources: [bad-no-labels]
+    kind: Pod
+    result: fail
+  - policy: require-standard-labels
+    resources: [platform-no-labels]
+    kind: Pod
+    result: skip
+
+  - policy: default-labels
+    resources: [unlabelled]
+    kind: Pod
+    patchedResources: mutate-patched.yaml
+    result: pass

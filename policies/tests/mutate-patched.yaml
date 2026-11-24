@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unlabelled
+  namespace: orders-staging
+  labels:
+    app.kubernetes.io/name: orders-gateway
+    app: orders-gateway
+    env: staging
+    team: orders
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/iantest11111989/orders-gateway:v1
