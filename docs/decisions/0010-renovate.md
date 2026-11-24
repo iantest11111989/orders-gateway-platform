@@ -17,7 +17,9 @@ The brief (section 10) asks Renovate to keep every pin current (Go modules, base
   - Helm charts in `gitops/apps/templates/` (Helm templates, so the built-in `argocd` manager can't read them): `repoURL` + `chart` + `targetRevision`, from HTTPS chart repos and from `docker.io/envoyproxy` (OCI). OCI charts don't get a digest added, because Argo CD's `targetRevision` takes a plain version.
   - `toolbox/versions.env`, through the `# renovate:` comment above each pin.
   - The kind node image in `cluster/kind.yaml` (tag + digest).
-- **Groups:** kube-prometheus-stack with prometheus-operator-crds (same operator version); Envoy Gateway's CRD and controller charts; the Argo CD chart with the `argocd` CLI; Loki with Alloy; the kind node image with kind (never auto-merged, since a node image must match a kind release); GitHub Actions.
+  - The Renovate image in `.github/workflows/renovate-config.yml` (tag + digest).
+- **A CI check for the config:** the other workflows are path-filtered and none covers `renovate.json5`, so `renovate-config.yml` runs `renovate-config-validator --strict` on any change to it.
+- **Groups:** kube-prometheus-stack with prometheus-operator-crds (same operator version); Envoy Gateway's CRD and controller charts; the Argo CD chart with the `argocd` CLI (never auto-merged: Argo CD manages itself, so a bad update could break it with no automatic way back); Loki with Alloy; the kind node image with kind (never auto-merged, since a node image must match a kind release); GitHub Actions.
 - **Not Renovate's job:** the orders-gateway image tag in `charts/` and `environments/`. CI bumps it on merge and promotion PRs move it (decision 0009).
 
 ## Consequences

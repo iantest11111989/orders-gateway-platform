@@ -55,6 +55,16 @@
       ],
     },
     {
+      // The Renovate image the renovate-config workflow runs.
+      customType: 'regex',
+      description: 'Renovate image in the config-validation workflow',
+      managerFilePatterns: ['/^\\.github/workflows/renovate-config\\.yml$/'],
+      matchStrings: [
+        '(?<depName>renovate/renovate):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]+)',
+      ],
+      datasourceTemplate: 'docker',
+    },
+    {
       // kind node image, pinned by tag and digest in cluster/kind.yaml.
       customType: 'regex',
       description: 'kind node image',
@@ -107,10 +117,13 @@
       groupName: 'envoy-gateway',
       matchDepNames: ['gateway-helm', 'gateway-crds-helm'],
     },
-    // Argo CD: chart and CLI together.
+    // Argo CD: chart and CLI together. Never auto-merged: Argo CD manages
+    // itself, so a bad update could break it with no automatic way back.
     {
       groupName: 'argo-cd',
       matchPackageNames: ['argo-cd', 'argoproj/argo-cd'],
+      automerge: false,
+      labels: ['dependencies', 'needs-owner-approval'],
     },
     {
       groupName: 'grafana charts',
