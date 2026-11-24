@@ -46,3 +46,12 @@ echo "  Login: admin / prom-operator (DEMO ONLY, until the Sealed Secrets PR)"
 step "Prometheus and Alertmanager (no login; bound to 127.0.0.1 only)"
 echo "  https://prometheus.localtest.me"
 echo "  https://alertmanager.localtest.me"
+
+step "Argo Rollouts dashboard (read-only, no login)"
+echo "  https://rollouts.localtest.me"
+echo "  Promote or abort from ./platform shell: kubectl argo rollouts promote|abort orders-gateway -n orders-prod"
+
+step "orders-gateway"
+echo "  https://orders.dev.localtest.me      dev"
+echo "  https://orders.staging.localtest.me  staging"
+echo "  https://orders.localtest.me          prod (canary via Argo Rollouts)"

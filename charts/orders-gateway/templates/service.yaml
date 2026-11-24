@@ -11,3 +11,26 @@ spec:
     - name: http
       port: 80
       targetPort: http
+{{- if .Values.rollout.enabled }}
+{{- range $role := list "stable" "canary" }}
+---
+# {{ $role }} pods only: Argo Rollouts adds rollouts-pod-template-hash to
+# this selector during a canary.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "orders-gateway.name" $ }}-{{ $role }}
+  labels:
+    {{- include "orders-gateway.labels" $ | nindent 4 }}
+    # Keeps the ServiceMonitor off this Service: the pods behind it are
+    # already scraped through the main Service.
+    orders-gateway.platform/role: {{ $role }}
+spec:
+  selector:
+    {{- include "orders-gateway.selectorLabels" $ | nindent 4 }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+{{- end }}
+{{- end }}

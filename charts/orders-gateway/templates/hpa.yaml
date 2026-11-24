@@ -6,9 +6,15 @@ metadata:
   labels:
     {{- include "orders-gateway.labels" . | nindent 4 }}
 spec:
+  # With a Rollout, the Rollout owns the pods, so it is what scales.
   scaleTargetRef:
+    {{- if .Values.rollout.enabled }}
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    {{- else }}
     apiVersion: apps/v1
     kind: Deployment
+    {{- end }}
     name: {{ include "orders-gateway.name" . }}
   minReplicas: {{ .Values.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.autoscaling.maxReplicas }}

@@ -1,7 +1,7 @@
 # Defaults for every environment. environments/<env>/values.yaml overrides
 # them; Argo CD passes both (gitops/apps/templates/orders-<env>.yaml).
 
-# Environment name: the `env` label on pods (Loki, Grafana) and APP_ENV.
+# Environment name: the `env` label on pods (Loki, Grafana).
 env: dev
 
 image:
@@ -63,6 +63,31 @@ networkPolicy:
   enabled: true
   gatewayNamespace: envoy-gateway-system
   monitoringNamespace: monitoring
+
+# Canary releases with Argo Rollouts (prod). The Deployment stays the source
+# of truth; a Rollout points at it (workloadRef), scales it to zero and runs
+# the pods itself, shifting traffic through the HTTPRoute's backend weights.
+# At each step an AnalysisTemplate checks the canary pods against the SLO.
+rollout:
+  enabled: false
+  steps:
+    - setWeight: 10
+    - analysis: {}
+    - setWeight: 25
+    - analysis: {}
+    - setWeight: 50
+    - analysis: {}
+  analysis:
+    prometheusAddress: http://kube-prometheus-stack-prometheus.monitoring.svc:9090
+    # Wait for the canary to fill the queries' 1-minute rate window first,
+    # so the first measurement has real samples.
+    initialDelay: 60s
+    interval: 30s
+    count: 4          # 4 measurements (2 minutes) per analysis step
+    failureLimit: 1   # a second failed measurement aborts and rolls back
+    inconclusiveLimit: 1  # a second no-data measurement pauses for a human
+    maxErrorRatio: 0.005       # SLO: 99.5% non-5xx
+    maxP99LatencySeconds: 0.3  # SLO: under 300 ms
 
 # The app's drain (5 s) + shutdown limit (20 s) fits inside this.
 terminationGracePeriodSeconds: 30

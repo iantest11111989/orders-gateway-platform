@@ -1,5 +1,6 @@
-# prod: promoted from staging by a pull request the owner approves. The
-# canary (Argo Rollouts) comes in its own PR.
+# prod: promoted from staging by a pull request the owner approves. Every
+# image change rolls out as a canary (Argo Rollouts): 10% -> 25% -> 50% ->
+# 100% of traffic, with an SLO analysis after each step.
 env: prod
 
 image:
@@ -24,3 +25,6 @@ topologySpread:
 resources:
   requests: {cpu: 50m, memory: 32Mi}
   limits: {memory: 64Mi}
+
+rollout:
+  enabled: true

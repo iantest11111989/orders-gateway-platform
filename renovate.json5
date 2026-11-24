@@ -125,6 +125,11 @@
       automerge: false,
       labels: ['dependencies', 'needs-owner-approval'],
     },
+    // Argo Rollouts: chart and kubectl plugin together.
+    {
+      groupName: 'argo-rollouts',
+      matchPackageNames: ['argo-rollouts', 'argoproj/argo-rollouts'],
+    },
     {
       groupName: 'grafana charts',
       matchPackageNames: ['loki', 'alloy'],

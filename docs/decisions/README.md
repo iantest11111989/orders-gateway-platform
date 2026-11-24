@@ -23,3 +23,4 @@ Records are not edited after they are accepted. If a decision changes, add a new
 | [0008](0008-gateway-and-tls.md) | HTTPS entry point: Envoy Gateway, cert-manager and a demo CA | Accepted |
 | [0009](0009-chart-and-environments.md) | orders-gateway Helm chart and the dev/staging/prod environments | Accepted |
 | [0010](0010-renovate.md) | Renovate keeps every pin current | Accepted |
+| [0011](0011-canary-rollouts.md) | Prod canary with Argo Rollouts, Gateway API weights and SLO analysis | Accepted |

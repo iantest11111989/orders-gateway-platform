@@ -1,0 +1,87 @@
+# Argo Rollouts Helm values (chart argo/argo-rollouts).
+# Application: gitops/apps/templates/argo-rollouts.yaml.
+
+controller:
+  # One replica for the 6 CPU / 12 GB budget (default 2, with leader election).
+  replicas: 1
+  resources:
+    requests: {cpu: 25m, memory: 64Mi}
+    limits: {memory: 256Mi}
+  logging:
+    format: json
+
+  # The Gateway API traffic router plugin moves canary traffic by changing
+  # HTTPRoute backend weights. The controller loads plugins from a URL; the
+  # plugin ships one binary per CPU architecture, so an init container picks
+  # the right one (arm64 on Apple silicon, amd64 in CI), checks its sha256 and
+  # hands it over in a shared volume. Version: v0.17.0 (2026-09-01).
+  trafficRouterPlugins:
+    - name: argoproj-labs/gatewayAPI
+      location: file:///plugins/gatewayapi-plugin
+  initContainers:
+    - name: fetch-gatewayapi-plugin
+      # alpine:3.22.2 (multi-arch index digest): sh, wget with TLS, sha256sum.
+      image: alpine:3.22.2@sha256:4b7ce07002c69e8f3d704a9c5d6fd3053be500b7f1c69fc0d80990c2ad8dd412
+      command: [sh, -euc]
+      args:
+        - |
+          v=v0.17.0
+          case "$(uname -m)" in
+            x86_64)  arch=amd64; sum=1904ca787d33107c140521899d61fff030ee75d99908bd175fca5a4647759061 ;;
+            aarch64) arch=arm64; sum=5221279f7bf2c9b2c0ff6ed7ff12718ecce1d4892f1ff5e5224bb723cfd0fd92 ;;
+            *) echo "unsupported architecture $(uname -m)"; exit 1 ;;
+          esac
+          wget -q -O /plugins/gatewayapi-plugin \
+            "https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi/releases/download/$v/gatewayapi-plugin-linux-$arch"
+          echo "$sum  /plugins/gatewayapi-plugin" | sha256sum -c -
+          chmod 0755 /plugins/gatewayapi-plugin
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: {drop: [ALL]}
+        seccompProfile: {type: RuntimeDefault}
+      resources:
+        requests: {cpu: 10m, memory: 16Mi}
+        limits: {memory: 64Mi}
+      volumeMounts:
+        - name: gatewayapi-plugin
+          mountPath: /plugins
+  volumes:
+    - name: gatewayapi-plugin
+      emptyDir: {}
+  volumeMounts:
+    - name: gatewayapi-plugin
+      mountPath: /plugins
+      readOnly: true
+
+  # Scraped by Prometheus (rollout phase, analysis runs).
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+
+# RBAC only for the traffic provider we use.
+providerRBAC:
+  enabled: true
+  providers:
+    istio: false
+    smi: false
+    ambassador: false
+    awsLoadBalancerController: false
+    awsAppMesh: false
+    traefik: false
+    apisix: false
+    contour: false
+    glooPlatform: false
+    gatewayAPI: true
+
+dashboard:
+  enabled: true
+  # Read-only: the dashboard has no login, so it must not promote or abort.
+  # Use `kubectl argo rollouts` in ./platform shell for that.
+  readonly: true
+  resources:
+    requests: {cpu: 10m, memory: 32Mi}
+    limits: {memory: 128Mi}
