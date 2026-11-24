@@ -23,8 +23,15 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: orders-prod
-  # Argo Rollouts moves canary traffic by editing the HTTPRoute's backend
-  # weights; don't let self-heal reset them mid-canary.
+  # Argo Rollouts moves canary traffic by changing the HTTPRoute's backend
+  # weights; the diff ignores them, so self-heal doesn't undo a canary step.
+  # Deliberately without RespectIgnoreDifferences and without
+  # managedFieldsManagers (see scripts/check-route-upgrade.sh, which fails for
+  # both): spec.rules is an atomic list, so the plugin owns all of it after
+  # any canary, and either setting then keeps Git's route changes off the
+  # cluster (#14 on ogp). The cost: a sync mid-canary applies Git's weights
+  # (all traffic to stable) until Rollouts reconciles, which takes at most a
+  # minute (--rollout-resync=60, gitops/values/argo-rollouts.yaml).
   ignoreDifferences:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
@@ -46,4 +53,3 @@ spec:
         pod-security.kubernetes.io/audit: restricted
     syncOptions:
       - CreateNamespace=true
-      - RespectIgnoreDifferences=true

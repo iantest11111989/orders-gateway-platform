@@ -4,6 +4,13 @@
 controller:
   # One replica for the 6 CPU / 12 GB budget (default 2, with leader election).
   replicas: 1
+  # Reconcile every Rollout each minute (default 15 min). If an Argo CD sync
+  # resets the HTTPRoute weights mid-canary (orders-prod ignores them only in
+  # the diff), a paused canary gets its weights back within a minute instead
+  # of running at 100/0 while it reports 10%. Checked on ogp: a reconcile of
+  # a paused Rollout sets the weights again at once.
+  extraArgs:
+    - --rollout-resync=60
   resources:
     requests: {cpu: 25m, memory: 64Mi}
     limits: {memory: 256Mi}
@@ -20,8 +27,8 @@ controller:
       location: file:///plugins/gatewayapi-plugin
   initContainers:
     - name: fetch-gatewayapi-plugin
-      # alpine:3.22.2 (multi-arch index digest): sh, wget with TLS, sha256sum.
-      image: alpine:3.22.2@sha256:4b7ce07002c69e8f3d704a9c5d6fd3053be500b7f1c69fc0d80990c2ad8dd412
+      # docker.io/library/alpine:3.22.2 (multi-arch index digest): sh, wget with TLS, sha256sum.
+      image: docker.io/library/alpine:3.22.2@sha256:4b7ce07002c69e8f3d704a9c5d6fd3053be500b7f1c69fc0d80990c2ad8dd412
       command: [sh, -euc]
       args:
         - |
