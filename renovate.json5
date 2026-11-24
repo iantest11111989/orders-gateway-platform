@@ -1,0 +1,142 @@
+// Renovate keeps every pin in this repo current (brief section 10).
+// It runs as the Renovate GitHub App on a daily schedule. Patch updates
+// auto-merge after all checks pass; minor and major updates wait for the
+// owner. See docs/decisions/0010-renovate.md.
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+    // Keep actions pinned by SHA with a "# vX.Y.Z" comment.
+    'helpers:pinGitHubActionDigests',
+    // Keep base images pinned by digest.
+    'docker:pinDigests',
+  ],
+  timezone: 'America/New_York',
+  schedule: ['before 6am'],
+  prConcurrentLimit: 5,
+  dependencyDashboard: {enabled: true},
+  labels: ['dependencies'],
+  postUpdateOptions: ['gomodTidy'],
+
+  // Renovate merges only after it has seen every status check pass. GitHub's
+  // native auto-merge would merge at once, since main has no required checks.
+  platformAutomerge: false,
+
+  customManagers: [
+    {
+      // Helm charts in the Argo CD Applications (Helm templates, so the
+      // built-in argocd manager can't parse them): repoURL, chart, targetRevision.
+      customType: 'regex',
+      description: 'Helm charts from HTTPS repos in gitops/apps',
+      managerFilePatterns: ['/^gitops/apps/templates/.+\\.yaml$/'],
+      matchStrings: [
+        'repoURL:\\s*(?<registryUrl>https://\\S+?)/?\\s+chart:\\s*(?<depName>\\S+)\\s+targetRevision:\\s*(?<currentValue>[^\\s#]+)',
+      ],
+      datasourceTemplate: 'helm',
+    },
+    {
+      customType: 'regex',
+      // Only Envoy Gateway's charts come from an OCI registry.
+      description: 'Helm charts from docker.io/envoyproxy in gitops/apps',
+      managerFilePatterns: ['/^gitops/apps/templates/.+\\.yaml$/'],
+      matchStrings: [
+        'repoURL:\\s*docker\\.io/envoyproxy\\s+chart:\\s*(?<depName>\\S+)\\s+targetRevision:\\s*(?<currentValue>[^\\s#]+)',
+      ],
+      datasourceTemplate: 'docker',
+      packageNameTemplate: 'docker.io/envoyproxy/{{{depName}}}',
+    },
+    {
+      // toolbox/versions.env: "# renovate: datasource=... depName=..." above each pin.
+      customType: 'regex',
+      description: 'Toolbox tool versions',
+      managerFilePatterns: ['/^toolbox/versions\\.env$/'],
+      matchStrings: [
+        '# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\n[A-Z0-9_]+=(?<currentValue>\\S+)',
+      ],
+    },
+    {
+      // The Renovate image the renovate-config workflow runs.
+      customType: 'regex',
+      description: 'Renovate image in the config-validation workflow',
+      managerFilePatterns: ['/^\\.github/workflows/renovate-config\\.yml$/'],
+      matchStrings: [
+        '(?<depName>renovate/renovate):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]+)',
+      ],
+      datasourceTemplate: 'docker',
+    },
+    {
+      // kind node image, pinned by tag and digest in cluster/kind.yaml.
+      customType: 'regex',
+      description: 'kind node image',
+      managerFilePatterns: ['/^cluster/kind\\.yaml$/'],
+      matchStrings: [
+        'image:\\s*(?<depName>kindest/node):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]+)',
+      ],
+      datasourceTemplate: 'docker',
+    },
+  ],
+
+  packageRules: [
+    // Default: nothing auto-merges unless a rule below says so.
+    {
+      matchUpdateTypes: ['minor', 'major'],
+      automerge: false,
+      labels: ['dependencies', 'needs-owner-approval'],
+    },
+    {
+      matchUpdateTypes: ['patch', 'digest', 'pin', 'pinDigest'],
+      automerge: true,
+    },
+    // The app's own image tag is bumped by CI on merge and moved between
+    // environments by promotion PRs, never by Renovate.
+    {
+      matchPackageNames: ['ghcr.io/iantest11111989/**'],
+      enabled: false,
+    },
+    // Argo CD's targetRevision for an OCI chart takes a plain version, not
+    // "version@digest".
+    {
+      matchDepNames: ['gateway-helm', 'gateway-crds-helm'],
+      pinDigests: false,
+    },
+    // The kind node image must match a kind release, so its updates stay
+    // manual, grouped with kind itself.
+    {
+      groupName: 'kind',
+      matchPackageNames: ['kindest/node', 'kubernetes-sigs/kind'],
+      automerge: false,
+    },
+    // kube-prometheus-stack and prometheus-operator-crds must ship the same
+    // operator version.
+    {
+      groupName: 'prometheus-operator',
+      matchPackageNames: ['kube-prometheus-stack', 'prometheus-operator-crds'],
+    },
+    // Envoy Gateway's CRD chart and controller chart move together.
+    {
+      groupName: 'envoy-gateway',
+      matchDepNames: ['gateway-helm', 'gateway-crds-helm'],
+    },
+    // Argo CD: chart and CLI together. Never auto-merged: Argo CD manages
+    // itself, so a bad update could break it with no automatic way back.
+    {
+      groupName: 'argo-cd',
+      matchPackageNames: ['argo-cd', 'argoproj/argo-cd'],
+      automerge: false,
+      labels: ['dependencies', 'needs-owner-approval'],
+    },
+    {
+      groupName: 'grafana charts',
+      matchPackageNames: ['loki', 'alloy'],
+    },
+    {
+      groupName: 'github actions',
+      matchManagers: ['github-actions'],
+    },
+    // jq tags are "jq-1.8.2".
+    {
+      matchPackageNames: ['jqlang/jq'],
+      versioning: 'regex:^jq-(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)$',
+    },
+  ],
+}
