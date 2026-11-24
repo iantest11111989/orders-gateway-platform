@@ -9,7 +9,8 @@ on:
   # Re-publish the images from main by hand (Actions tab, "Run workflow").
   workflow_dispatch:
 
-# Least privilege: jobs read the repo; only `publish` may write packages.
+# Least privilege: jobs read the repo; only `publish` and `sign` may write
+# packages, and only `sign` may request an OIDC token.
 permissions:
   contents: read
 
@@ -60,20 +61,37 @@ jobs:
   # Pull requests build the image without pushing: only main publishes, so
   # every published image comes from reviewed code (and, with signing,
   # verifies against this workflow on refs/heads/main).
+  # It also rehearses the signing on main: the image goes to a throwaway
+  # registry on localhost (nothing public), and scripts/sign-images.sh signs
+  # and checks it exactly as the `sign` job does, so a broken signing step
+  # fails here instead of after main has published. The keyless signature
+  # names this PR's ref and lands in the public Rekor log, like main's do.
   image:
-    name: image builds (amd64 + arm64)
+    name: image builds (amd64 + arm64), signing rehearsal
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write # keyless signing of the localhost image
+    services:
+      registry:
+        image: docker.io/library/registry:3.1.2@sha256:82f6ff4a7f982960c8aa51617fea3aabc485df6e55cce80d22deb1de36f1bc3c
+        ports: ["5000:5000"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          driver-opts: network=host # so BuildKit can reach localhost:5000
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: app
           platforms: linux/amd64,linux/arm64
-          push: false
+          push: true
+          sbom: true
+          tags: localhost:5000/orders-gateway:pr
           build-args: |
             VERSION=ci
             COMMIT=${{ github.sha }}
@@ -88,13 +106,22 @@ jobs:
             VERSION=ci-bad
             COMMIT=${{ github.sha }}
             FEATURES=delivery-estimates
+      - uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
+      - name: Signing rehearsal (localhost registry)
+        working-directory: .
+        env:
+          IMAGE: localhost:5000/orders-gateway
+          # .../.github/workflows/app.yml@refs/pull/<n>/merge
+          IDENTITY: ${{ github.server_url }}/${{ github.workflow_ref }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: scripts/sign-images.sh "$DIGEST"
 
   # Publishes multi-arch images to GHCR from main, after the tests pass:
   #   sha-<12 chars>, main   this commit (what environments/dev deploys)
   #   v1, v2, v2-bad         the demo images (brief, section 5), rebuilt from
   #                          the same commit so they stay in step with the code
   # No :latest (policy rejects it). Each push exposes its digest as a job
-  # output so signing and SBOM attestation can be added by digest.
+  # output; `sign` signs those digests.
   publish:
     name: publish images (amd64 + arm64)
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
@@ -128,6 +155,9 @@ jobs:
           context: app
           platforms: linux/amd64,linux/arm64
           push: true
+          # BuildKit SBOM for each platform, stored in the image index (and so
+          # covered by the cosign signature on the index digest).
+          sbom: true
           tags: |
             ${{ env.IMAGE }}:sha-${{ steps.short.outputs.sha }}
             ${{ env.IMAGE }}:main
@@ -142,6 +172,7 @@ jobs:
           context: app
           platforms: linux/amd64,linux/arm64
           push: true
+          sbom: true
           tags: ${{ env.IMAGE }}:v1
           labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           build-args: |
@@ -153,6 +184,7 @@ jobs:
           context: app
           platforms: linux/amd64,linux/arm64
           push: true
+          sbom: true
           tags: ${{ env.IMAGE }}:v2
           labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           build-args: |
@@ -166,6 +198,7 @@ jobs:
           target: bad
           platforms: linux/amd64,linux/arm64
           push: true
+          sbom: true
           tags: ${{ env.IMAGE }}:v2-bad
           labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           build-args: |
@@ -188,3 +221,38 @@ jobs:
             echo "| \`v2\` | \`$D_V2\` |"
             echo "| \`v2-bad\` | \`$D_V2_BAD\` |"
           } >>"$GITHUB_STEP_SUMMARY"
+
+  # Keyless cosign signatures (Sigstore, GitHub OIDC), by digest: the demo
+  # tags are re-pushed from every main commit, so a signature on a tag would
+  # go stale. Each signature records this workflow and ref, which is what a
+  # verifying admission policy checks. The SBOMs are inside the signed index.
+  sign:
+    name: sign images (cosign keyless)
+    needs: publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write # the signature is pushed next to the image
+      id-token: write # the OIDC token Fulcio issues the signing certificate for
+    steps:
+      - uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Sign, then verify signature and SBOMs
+        working-directory: .
+        env:
+          # e.g. https://github.com/<owner>/<repo>/.github/workflows/app.yml@refs/heads/main
+          IDENTITY: ${{ github.server_url }}/${{ github.workflow_ref }}
+          D_MAIN: ${{ needs.publish.outputs.digest-main }}
+          D_V1: ${{ needs.publish.outputs.digest-v1 }}
+          D_V2: ${{ needs.publish.outputs.digest-v2 }}
+          D_V2_BAD: ${{ needs.publish.outputs.digest-v2-bad }}
+        run: |
+          scripts/sign-images.sh "$D_MAIN" "$D_V1" "$D_V2" "$D_V2_BAD" |
+            tee -a "$GITHUB_STEP_SUMMARY"
