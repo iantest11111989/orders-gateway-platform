@@ -65,6 +65,8 @@ jobs:
       - run: ./platform kubectl get nodes -L topology.kubernetes.io/zone
       - run: ./platform kubectl -n argocd get applications
       - run: ./platform shell scripts/check-https.sh
+      # A fresh up only creates the prod route; this also checks an upgrade.
+      - run: ./platform shell scripts/check-route-upgrade.sh
       # On failure, show why: pods that aren't ready, their descriptions
       # (image pulls, probes, OOM) and recent events. Best effort: the cluster
       # may not exist if `up` failed early.

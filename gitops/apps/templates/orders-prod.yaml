@@ -24,12 +24,17 @@ spec:
     server: https://kubernetes.default.svc
     namespace: orders-prod
   # Argo Rollouts moves canary traffic by editing the HTTPRoute's backend
-  # weights; don't let self-heal reset them mid-canary.
+  # weights; don't let self-heal reset them mid-canary. Ignore only the fields
+  # the Gateway API plugin has written (its field manager is "gatewayAPI",
+  # seen on ogp). A jq path on the weights instead kept an existing route at
+  # its old backends on upgrade (#14 on ogp; scripts/check-route-upgrade.sh
+  # reproduces it). A manual sync mid-canary still resets the weights with
+  # either setting; Rollouts sets them again on its next step.
   ignoreDifferences:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
-      jqPathExpressions:
-        - .spec.rules[].backendRefs[].weight
+      managedFieldsManagers:
+        - gatewayAPI
   syncPolicy:
     automated:
       prune: true
