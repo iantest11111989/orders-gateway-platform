@@ -12,6 +12,10 @@ spec:
   selector:
     matchLabels:
       {{- include "orders-gateway.selectorLabels" . | nindent 6 }}
+    # Only the main Service. The -stable/-canary Services select the same
+    # pods, and scraping through them too would count every request 3 times.
+    matchExpressions:
+      - {key: orders-gateway.platform/role, operator: DoesNotExist}
   # Canary analysis tells canary pods from stable ones by this label.
   podTargetLabels: [rollouts-pod-template-hash]
   endpoints:
