@@ -23,6 +23,13 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: orders-prod
+  # Argo Rollouts moves canary traffic by editing the HTTPRoute's backend
+  # weights; don't let self-heal reset them mid-canary.
+  ignoreDifferences:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      jqPathExpressions:
+        - .spec.rules[].backendRefs[].weight
   syncPolicy:
     automated:
       prune: true
@@ -39,3 +46,4 @@ spec:
         pod-security.kubernetes.io/audit: restricted
     syncOptions:
       - CreateNamespace=true
+      - RespectIgnoreDifferences=true

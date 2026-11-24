@@ -22,6 +22,7 @@ argocd.localtest.me/ 200
 grafana.localtest.me/ 302
 prometheus.localtest.me/ 302
 alertmanager.localtest.me/ 200
+rollouts.localtest.me/rollouts/ 200
 orders.dev.localtest.me/healthz 200
 orders.staging.localtest.me/healthz 200
 orders.localtest.me/healthz 200

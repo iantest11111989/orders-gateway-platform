@@ -12,6 +12,8 @@ spec:
   selector:
     matchLabels:
       {{- include "orders-gateway.selectorLabels" . | nindent 6 }}
+  # Canary analysis tells canary pods from stable ones by this label.
+  podTargetLabels: [rollouts-pod-template-hash]
   endpoints:
     - port: http
       path: /metrics
