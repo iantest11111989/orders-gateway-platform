@@ -1,0 +1,41 @@
+# Kyverno chart values (gitops/apps/templates/kyverno.yaml). Admission
+# controller only: it validates and mutates at admission time, which is all
+# the policies in policies/ need. Decision 0012.
+
+# Background scans, cleanup policies and policy reports are off to save
+# memory. Audit results still show up as metrics
+# (kyverno_policy_results_total) and Kubernetes events.
+backgroundController:
+  enabled: false
+cleanupController:
+  enabled: false
+reportsController:
+  enabled: false
+features:
+  admissionReports:
+    enabled: false
+  aggregateReports:
+    enabled: false
+  policyReports:
+    enabled: false
+  validatingAdmissionPolicyReports:
+    enabled: false
+
+admissionController:
+  replicas: 1
+  container:
+    resources:
+      requests: {cpu: 50m, memory: 128Mi}
+      limits: {memory: 384Mi}
+  serviceMonitor:
+    enabled: true
+
+config:
+  webhooks:
+    # Kyverno never sees kube-system (the chart's default) or its own
+    # namespace (excludeKyvernoNamespace).
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values: [kube-system]

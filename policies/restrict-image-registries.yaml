@@ -1,0 +1,43 @@
+# Images may come only from this repo's GHCR namespace and the upstream
+# registries the platform's pinned charts use. The list comes from every
+# image running on a full cluster (decision 0012).
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: restrict-image-registries
+  annotations:
+    policies.kyverno.io/title: Restrict image registries
+    policies.kyverno.io/description: >-
+      Images must be fully qualified and come from ghcr.io/iantest11111989,
+      quay.io, registry.k8s.io, docker.io, ecr-public.aws.com or
+      reg.kyverno.io. A bare name like "alpine:3" fails: write
+      docker.io/library/alpine:3 so the registry is explicit.
+spec:
+  validationActions: [Audit]
+  # While policies only audit, a Kyverno outage must not block pod creation.
+  failurePolicy: Ignore
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: images
+      expression: >-
+        object.spec.containers.map(c, c.image)
+        + (has(object.spec.initContainers) ? object.spec.initContainers.map(c, c.image) : [])
+        + (has(object.spec.ephemeralContainers) ? object.spec.ephemeralContainers.map(c, c.image) : [])
+    - name: allowed
+      expression: >-
+        ['ghcr.io/iantest11111989/', 'quay.io/', 'registry.k8s.io/', 'docker.io/',
+         'ecr-public.aws.com/', 'reg.kyverno.io/']
+  validations:
+    - expression: >-
+        variables.images.all(i, variables.allowed.exists(p, i.startsWith(p)))
+      messageExpression: >-
+        'Images must come from an approved registry: ' +
+        variables.images.filter(i, !variables.allowed.exists(p, i.startsWith(p))).join(', ')

@@ -65,6 +65,16 @@
       datasourceTemplate: 'docker',
     },
     {
+      // The Kyverno CLI the policies workflow runs `kyverno test` with.
+      customType: 'regex',
+      description: 'Kyverno CLI image in the policies workflow',
+      managerFilePatterns: ['/^\\.github/workflows/policies\\.yml$/'],
+      matchStrings: [
+        '(?<depName>ghcr\\.io/kyverno/kyverno-cli):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]+)',
+      ],
+      datasourceTemplate: 'docker',
+    },
+    {
       // kind node image, pinned by tag and digest in cluster/kind.yaml.
       customType: 'regex',
       description: 'kind node image',
@@ -137,6 +147,12 @@
     {
       groupName: 'github actions',
       matchManagers: ['github-actions'],
+    },
+    // Kyverno: the chart and the CLI that tests the policies in CI move
+    // together, so `kyverno test` runs the same engine as the cluster.
+    {
+      groupName: 'kyverno',
+      matchDepNames: ['kyverno', 'ghcr.io/kyverno/kyverno-cli'],
     },
     // Renovate itself releases almost daily. Its image only runs the config
     // validator, so check it monthly instead of opening a PR every day.

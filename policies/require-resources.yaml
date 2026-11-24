@@ -1,0 +1,40 @@
+# Every container declares CPU and memory requests and a memory limit, so the
+# scheduler can place it and one leak can't take a node down. CPU limits are
+# not required: they throttle without protecting anything (decision 0012).
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: require-resources
+  annotations:
+    policies.kyverno.io/title: Require resource requests and a memory limit
+    policies.kyverno.io/description: >-
+      Containers and init containers must set requests.cpu, requests.memory
+      and limits.memory.
+spec:
+  validationActions: [Audit]
+  # While policies only audit, a Kyverno outage must not block pod creation.
+  failurePolicy: Ignore
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: containers
+      expression: >-
+        object.spec.containers
+        + (has(object.spec.initContainers) ? object.spec.initContainers : [])
+  validations:
+    - expression: >-
+        variables.containers.all(c, has(c.resources) &&
+          has(c.resources.requests) && 'cpu' in c.resources.requests && 'memory' in c.resources.requests &&
+          has(c.resources.limits) && 'memory' in c.resources.limits)
+      messageExpression: >-
+        'Containers need requests.cpu, requests.memory and limits.memory: ' +
+        variables.containers.filter(c, !(has(c.resources) &&
+          has(c.resources.requests) && 'cpu' in c.resources.requests && 'memory' in c.resources.requests &&
+          has(c.resources.limits) && 'memory' in c.resources.limits)).map(c, c.name).join(', ')
