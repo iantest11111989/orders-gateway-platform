@@ -2,10 +2,14 @@
 # Upgrade check for the prod HTTPRoute. A fresh `./platform up` creates the
 # route with its stable/canary backends at once, so it never exercises an
 # upgrade. This puts the route back the way it was before the canary (one
-# backend, the main Service, as last applied by Argo CD), asks Argo CD to sync
-# orders-prod, and requires the stable/canary backends to come back with the
-# app Synced. (The ignoreDifferences on orders-prod must not hold back Git's
-# changes to the route; see gitops/apps/templates/orders-prod.yaml.)
+# backend, the main Service, as last applied by Argo CD), then writes its
+# weight as the Argo Rollouts Gateway API plugin does (field manager
+# "gatewayAPI"; spec.rules is an atomic list, so that write owns all of it, as
+# after any real canary). Then it asks Argo CD to sync orders-prod and requires
+# the stable/canary backends to come back with the app Synced.
+# It fails if orders-prod's ignoreDifferences holds back Git's route changes:
+# with RespectIgnoreDifferences (the #14 state on ogp) or with
+# managedFieldsManagers: [gatewayAPI] (checked on ogp, scratch Applications).
 # Runs in the toolbox (./platform shell scripts/check-route-upgrade.sh); CI
 # runs it after ./platform up.
 # shellcheck source=scripts/lib.sh
@@ -36,8 +40,10 @@ jq -n --arg ns "$ns" --arg route "$route" --arg host "$hostname" \
     rules: [{matches: [{path: {type: "PathPrefix", value: "/"}}],
       backendRefs: [{name: $route, port: 80, weight: 1}]}]
   }}' | kubectl apply -f - >/dev/null # apply, so last-applied is the old spec too
+kubectl -n "$ns" patch httproute "$route" --type json --field-manager=gatewayAPI \
+  -p '[{"op":"replace","path":"/spec/rules/0/backendRefs/0/weight","value":100}]' >/dev/null
 [ "$(backends)" = "$route " ] || die "could not reset the route (backends: $(backends))"
-ok "route backends: $(backends)"
+ok "route backends: $(backends) (weight last written as gatewayAPI)"
 
 step "Argo CD sync of $app"
 kubectl -n argocd patch application "$app" --type merge \
