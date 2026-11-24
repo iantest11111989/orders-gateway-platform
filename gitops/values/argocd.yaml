@@ -91,8 +91,11 @@ configs:
 
 controller:
   resources:
+    # The first sync of every app fills the cluster cache at once: peak use is
+    # well above the ~275Mi steady state. With 512Mi it was OOMKilled on ogp,
+    # and on CI it restarted 4 times in 10 min, losing sync progress each time.
     requests: {cpu: 100m, memory: 256Mi}
-    limits: {memory: 512Mi}
+    limits: {memory: 1Gi}
   metrics:
     enabled: true
     # Scraped by Prometheus (CRDs from prometheus-operator-crds, wave -10).
