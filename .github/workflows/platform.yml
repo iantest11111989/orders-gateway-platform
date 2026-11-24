@@ -73,8 +73,10 @@ jobs:
         run: |
           ./platform kubectl get pods -A -o wide || true
           ./platform kubectl get events -A --sort-by=.lastTimestamp || true
+          # Not ready, or restarted: a pod that crashed and came back is
+          # Ready again by the time this runs, but its last run explains it.
           ./platform kubectl get pods -A --no-headers 2>/dev/null \
-            | awk '{ split($3, r, "/") } r[1] != r[2] && $4 != "Completed"' \
+            | awk '{ split($3, r, "/") } (r[1] != r[2] || $5 + 0 > 0) && $4 != "Completed"' \
             | while read -r ns pod _; do
                 echo "::group::describe $ns/$pod"
                 ./platform kubectl -n "$ns" describe pod "$pod" || true
