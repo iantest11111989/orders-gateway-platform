@@ -138,6 +138,12 @@
       groupName: 'github actions',
       matchManagers: ['github-actions'],
     },
+    // Renovate itself releases almost daily. Its image only runs the config
+    // validator, so check it monthly instead of opening a PR every day.
+    {
+      matchDepNames: ['renovate/renovate'],
+      schedule: ['* 0-5 1 * *'],
+    },
     // jq tags are "jq-1.8.2".
     {
       matchPackageNames: ['jqlang/jq'],
