@@ -2,15 +2,16 @@ name: app
 
 on:
   pull_request:
-    paths: ["app/**", ".github/workflows/app.yml"]
+    paths: ["app/**", ".github/workflows/app.yml", "scripts/sign-images.sh"]
   push:
     branches: [main]
-    paths: ["app/**", ".github/workflows/app.yml"]
+    paths: ["app/**", ".github/workflows/app.yml", "scripts/sign-images.sh"]
   # Re-publish the images from main by hand (Actions tab, "Run workflow").
   workflow_dispatch:
 
 # Least privilege: jobs read the repo; only `publish` and `sign` may write
-# packages, and only `sign` may request an OIDC token.
+# packages, and only `sign` and the PR `image` job (signing rehearsal) may
+# request an OIDC token.
 permissions:
   contents: read
 
@@ -108,6 +109,8 @@ jobs:
             FEATURES=delivery-estimates
       - uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
       - name: Signing rehearsal (localhost registry)
+        # Fork PRs get no OIDC token, so they skip the rehearsal.
+        if: github.event.pull_request.head.repo.full_name == github.repository
         working-directory: .
         env:
           IMAGE: localhost:5000/orders-gateway
