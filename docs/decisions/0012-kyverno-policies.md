@@ -10,7 +10,7 @@ Image signature verification comes in its own PR, after CI signs images with cos
 
 ## Choices
 
-- **Kyverno 1.20 (chart 3.10.0), admission controller only.** The background, cleanup and reports controllers are off, and so are admission and policy reports, since nothing would aggregate them. Audit results still show up as the admission controller's `kyverno_policy_results_total` metric (scraped through its ServiceMonitor) and as Kubernetes events.
+- **Kyverno 1.20 (chart 3.10.0), admission controller only.** The background, cleanup and reports controllers are off, and so are admission and policy reports, since nothing would aggregate them. Audit results still show up as the admission controller's `kyverno_validating_policy_results_total` metric (scraped through its ServiceMonitor) and as Kubernetes events.
 - **CEL policies (`policies.kyverno.io/v1` `ValidatingPolicy` and `MutatingPolicy`).** Kyverno 1.20 no longer runs the older `kyverno.io/v1` `ClusterPolicy` type (it rejects new ones), so these are the only kind it will execute.
 - **Two Applications:** `kyverno` (chart, wave 10, with the controllers) and `kyverno-policies` (`policies/`, wave 30, after observability and before the apps at wave 40). `ServerSideApply` for the chart, because Kyverno's CRDs are too large for client-side apply.
 - **`failurePolicy: Ignore` on every policy while they audit.** With one Kyverno replica, `Fail` would block every pod creation in the cluster (Argo CD's included) whenever Kyverno restarts. The switch to Enforce revisits this per policy.
@@ -33,7 +33,7 @@ Image signature verification comes in its own PR, after CI signs images with cos
 
 ## Moving to Enforce
 
-All policies start in Audit (`validationActions: [Audit]`). A policy moves to Enforce, in its own PR, once `kyverno_policy_results_total{policy_result="fail"}` for it stays at zero on a full cluster. The app namespaces come first, with exceptions written down for any third-party chart that can't comply. That PR also decides whether the policy keeps `failurePolicy: Ignore` or moves to `Fail` with a second Kyverno replica.
+All policies start in Audit (`validationActions: [Audit]`). A policy moves to Enforce, in its own PR, once `kyverno_validating_policy_results_total{result="fail"}` for it stays at zero on a full cluster. The metric has no dry-run label, so server-side dry runs (`kubectl --dry-run=server`, the kind used to test a policy) count too. They also emit PolicyViolation events, so neither tells them apart from real workloads. Run test dry runs in a scratch namespace and leave it out of the query, or check that the flagged resource exists. The app namespaces come first, with exceptions written down for any third-party chart that can't comply. That PR also decides whether the policy keeps `failurePolicy: Ignore` or moves to `Fail` with a second Kyverno replica.
 
 ## Tests
 

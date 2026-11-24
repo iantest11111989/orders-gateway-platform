@@ -15,8 +15,14 @@ CI runs the same command (`.github/workflows/policies.yml`).
 Failed checks don't block anything yet; they're counted in Prometheus:
 
 ```promql
-sum by (policy_name, resource_namespace) (kyverno_policy_results_total{policy_result="fail"})
+sum by (policy_name, resource_namespace) (kyverno_validating_policy_results_total{result="fail"})
 ```
+
+Each failure is also a `PolicyViolation` event on the resource
+(`kubectl get events -A --field-selector reason=PolicyViolation`). Only
+admission requests are checked (background scans are off), so a pod that
+already exists shows up only once it's created or updated again.
+(Metric name and labels checked on ogp with Kyverno 1.20.)
 
 ## Adding a policy
 
