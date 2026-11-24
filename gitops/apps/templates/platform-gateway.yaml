@@ -25,6 +25,11 @@ spec:
     automated:
       prune: true
       selfHeal: true
+    # Auto-sync does not retry a failed sync of the same revision on its own;
+    # this covers transient failures such as a CRD not yet Established.
+    retry:
+      limit: 5
+      backoff: {duration: 5s, factor: 2, maxDuration: 1m}
     syncOptions:
       # HTTPRoutes for Grafana/Prometheus (wave 20) may sync before their
       # backends exist; that's fine, the route resolves once they appear.
