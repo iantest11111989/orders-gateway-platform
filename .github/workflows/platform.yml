@@ -95,6 +95,8 @@ jobs:
           exit 1
       # A fresh up only creates the prod route; this also checks an upgrade.
       - run: ./platform shell scripts/check-route-upgrade.sh
+      # The Application health check the root's sync waves rely on (#31).
+      - run: ./platform shell scripts/test-argocd-health.sh
       # Measured CPU/memory against the 6 CPU / 12 GiB budget, plus OOM kills.
       - run: ./platform budget --watch 30
       # On failure, show why: pods that aren't ready, their descriptions
