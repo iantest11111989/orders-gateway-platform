@@ -2,10 +2,10 @@ name: alerts
 
 on:
   pull_request:
-    paths: ["alerts/**", "runbooks/**", "scripts/test-alerts.sh", ".github/workflows/alerts.yml"]
+    paths: ["alerts/**", "runbooks/**", "scripts/test-alerts.sh", "dashboards/**", "gitops/manifests/monitoring/dashboard-*.yaml", "scripts/dashboards.sh", ".github/workflows/alerts.yml"]
   push:
     branches: [main]
-    paths: ["alerts/**", "runbooks/**", "scripts/test-alerts.sh", ".github/workflows/alerts.yml"]
+    paths: ["alerts/**", "runbooks/**", "scripts/test-alerts.sh", "dashboards/**", "gitops/manifests/monitoring/dashboard-*.yaml", "scripts/dashboards.sh", ".github/workflows/alerts.yml"]
 
 permissions:
   contents: read
@@ -23,3 +23,12 @@ jobs:
         with:
           persist-credentials: false
       - run: scripts/test-alerts.sh
+
+  dashboards:
+    name: dashboards in sync, described, queries parse
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: scripts/dashboards.sh check
