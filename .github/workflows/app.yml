@@ -2,10 +2,10 @@ name: app
 
 on:
   pull_request:
-    paths: ["app/**", ".github/workflows/app.yml", "scripts/sign-images.sh"]
+    paths: ["app/**", ".github/workflows/app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh"]
   push:
     branches: [main]
-    paths: ["app/**", ".github/workflows/app.yml", "scripts/sign-images.sh"]
+    paths: ["app/**", ".github/workflows/app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh"]
   # Re-publish the images from main by hand (Actions tab, "Run workflow").
   workflow_dispatch:
 
@@ -23,6 +23,9 @@ concurrency:
 
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/orders-gateway
+  # Vulnerability scanner for scripts/scan-image.sh, pinned by tag and digest;
+  # a regex manager in renovate.json5 keeps it current.
+  TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
 
 defaults:
   run:
@@ -119,6 +122,13 @@ jobs:
           IDENTITY: ${{ github.server_url }}/${{ github.workflow_ref }}
           DIGEST: ${{ steps.build.outputs.digest }}
         run: scripts/sign-images.sh "$DIGEST"
+      # Fixable HIGH/CRITICAL vulnerabilities fail the PR (decision 0016).
+      - name: Vulnerability scan (Trivy)
+        working-directory: .
+        env:
+          TRIVY_INSECURE: "true" # the localhost registry is plain HTTP
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: scripts/scan-image.sh "localhost:5000/orders-gateway@$DIGEST"
 
   # Publishes multi-arch images to GHCR from main, after the tests pass:
   #   sha-<12 chars>, main   this commit (what environments/dev deploys)
@@ -261,17 +271,36 @@ jobs:
           scripts/sign-images.sh "$D_MAIN" "$D_V1" "$D_V2" "$D_V2_BAD" |
             tee -a "$GITHUB_STEP_SUMMARY"
 
+  # Scans the published image before dev gets it (decision 0016). The PR
+  # already scanned the same code; this catches vulnerabilities published
+  # since. The demo tags are built from the same code and dependencies, so
+  # the main image stands in for them.
+  scan:
+    name: scan image (Trivy)
+    needs: publish
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Fixable HIGH/CRITICAL vulnerabilities fail the job
+        working-directory: .
+        env:
+          DIGEST: ${{ needs.publish.outputs.digest-main }}
+        run: scripts/scan-image.sh "$IMAGE@$DIGEST"
+
   # Points dev at the image this commit just published and signed (brief,
   # section 10: "bump the image tag in environments/dev/values.yaml
-  # automatically; Argo deploys it to dev"). It runs only after `sign`, so dev
-  # never runs an unsigned digest. The commit goes straight to main as
+  # automatically; Argo deploys it to dev"). It runs only after `sign` and
+  # `scan`, so dev never runs an unsigned digest or one with a fixable
+  # HIGH/CRITICAL vulnerability. The commit goes straight to main as
   # github-actions[bot]; a push made with GITHUB_TOKEN starts no workflows, so
   # it can't loop. Runs on main are serialized by the workflow's concurrency
   # group, so the newest commit's image wins. Staging and prod move by
   # promotion PRs (job promote-prs, decision 0015).
   promote-dev:
     name: promote to dev
-    needs: [publish, sign]
+    needs: [publish, sign, scan]
     runs-on: ubuntu-24.04
     permissions:
       contents: write # the one-line commit to environments/dev/values.yaml

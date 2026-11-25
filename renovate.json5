@@ -75,6 +75,16 @@
       datasourceTemplate: 'docker',
     },
     {
+      // The Trivy image scripts/scan-image.sh runs (TRIVY_IMAGE in app.yml).
+      customType: 'regex',
+      description: 'Trivy image in the app workflow',
+      managerFilePatterns: ['/^\\.github/workflows/app\\.yml$/'],
+      matchStrings: [
+        '(?<depName>ghcr\\.io/aquasecurity/trivy):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]+)',
+      ],
+      datasourceTemplate: 'docker',
+    },
+    {
       // kind node image, pinned by tag and digest in cluster/kind.yaml.
       customType: 'regex',
       description: 'kind node image',
