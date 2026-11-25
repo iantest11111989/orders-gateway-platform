@@ -4,7 +4,7 @@ A local, reproducible **"cluster in a box"** that shows how a platform team woul
 
 The service is a small Go stand-in. The platform around it is the real point: GitOps with Argo CD, canary releases with Argo Rollouts, HTTPS through Envoy Gateway, metrics and logs with Prometheus, Grafana and Loki, and a security baseline that keeps itself patched.
 
-> **Status: work in progress.** This repo is being built in small, reviewed pull requests. Sections marked _(coming)_ are placeholders.
+> **Status:** the stack, all six demos, the `docs/learn/` track and the measured budget are done. Still in progress: automatic patch promotion (soak gates and a pause switch), and the remaining platform dashboards and alerts (Argo CD, Rollouts, certificates, Kyverno, Sealed Secrets, budget) with alert routing.
 
 ## Prerequisites
 
@@ -104,15 +104,98 @@ docs/learn/             hands-on exercises
 .github/workflows/      CI
 ```
 
+## Architecture
+
+```mermaid
+flowchart LR
+  dev([Developer]) -->|pull request| gh[GitHub repo]
+  gh -->|CI: test, build, Trivy scan,<br/>cosign sign, SBOM| ghcr[(GHCR images)]
+  gh -->|CI commits dev's new image;<br/>staging and prod by PR| gh
+  subgraph cluster [kind cluster: 1 control plane + 2 workers]
+    argocd[Argo CD<br/>app-of-apps] -->|syncs gitops/ in waves| apps
+    subgraph apps [orders-dev / orders-staging / orders-prod]
+      dep[orders-gateway<br/>Deployment] 
+      ro[orders-gateway<br/>Rollout, prod]
+    end
+    gw[Envoy Gateway<br/>HTTPS, demo CA] -->|HTTPRoute,<br/>canary weights| apps
+    kyv[Kyverno] -. admits pods .-> apps
+    prom[Prometheus] -->|scrapes| apps
+    ro -->|SLO analysis| prom
+    alloy[Alloy] -->|pod logs| loki[Loki]
+    prom --> graf[Grafana]
+    loki --> graf
+    prom --> am[Alertmanager]
+  end
+  gh -->|Git is the source| argocd
+  ghcr -->|images| apps
+  user([Browser / k6]) -->|https://*.localtest.me| gw
+```
+
+- **Git is the only way in.** CI promotes every signed image to dev by committing to `environments/dev/values.yaml`; staging and prod move by pull request ([0014](docs/decisions/0014-promotion.md), [0015](docs/decisions/0015-promotion-prs.md)). Argo CD syncs everything, itself included, in sync waves ([0005](docs/decisions/0005-gitops-layout.md)).
+- **Traffic** enters through one Envoy Gateway with a cert-manager certificate from a demo CA ([0008](docs/decisions/0008-gateway-and-tls.md)). In prod, Argo Rollouts moves the HTTPRoute's weights step by step and checks the SLO in Prometheus at each step ([0011](docs/decisions/0011-canary-rollouts.md)).
+- **Admission:** Kyverno refuses `:latest` and unsigned app images in the `orders-*` namespaces and audits the rest ([0012](docs/decisions/0012-kyverno-policies.md), [0022](docs/decisions/0022-enforce-in-orders.md)).
+
+## Resource budget (measured)
+
+The brief's budget is **6 CPU / 12 GiB** for everything. `./platform up` caps each kind node container at 2 CPU / 4 GiB (6 / 12 in total) and reserves the rest of the host so the scheduler can't overcommit. `./platform budget` measures real use from `docker stats` and fails on any out-of-memory kill. `--watch N` samples every 5 s and reports the peak.
+
+| Where | What ran | CPU (peak) | Memory (peak) | OOM kills |
+| --- | --- | --- | --- | --- |
+| Mac mini, Colima 6 CPU / 12 GiB (arm64) | idle | 0.63 | 7,105 MiB (57%) | none |
+| Mac mini, Colima | `demo canary` (k6, 10 req/s) | **3.75** | **7,731 MiB (62%)** | none |
+| Mac mini, Colima | `demo autoscale` (k6, 180 req/s; HPA 3 → 6) | **4.40** | 7,602 MiB (61%) | none |
+| Mac mini, Colima | `demo rolling-update` | 3.00 | 7,440 MiB (60%) | none |
+| GitHub runner, x86-64 Ubuntu, Docker only (nightly) | `demo canary` | 3.59 | **8,049 MiB (65%)** | none |
+| GitHub runner, arm64 Ubuntu, Docker only (nightly) | `demo canary` | 2.13 | 7,251 MiB (59%) | none |
+
+Measured on 2026-11-25. Mac rows at commit `6c51240`; nightly rows from [run 45577072639](https://github.com/iantest11111989/orders-gateway-platform/actions/runs/45577072639). The heaviest moment is the autoscale demo's 180 req/s from k6, which runs inside the budget too; memory never went above two thirds.
+
+**Time to a healthy stack** (`./platform up`, every pod image pulled fresh): 383 s on the x86-64 runner and 390 s on the arm64 runner (same nightly run); **316 s** on the Mac mini under Colima (6 CPU / 12 GiB, after `./platform down`), followed by `./platform verify` passing every check.
+
+## Why these choices
+
+Each choice has a decision record in [`docs/decisions/`](docs/decisions/README.md). The short version:
+
+| Choice | Why | Instead of |
+| --- | --- | --- |
+| **kind**, 1 control plane + 2 workers, in a toolbox container | Only Docker needed; two workers in two zones make PodDisruptionBudgets and topology spread real ([0004](docs/decisions/0004-toolbox-and-cluster.md)) | k3d or minikube: similar, but kind is what upstream Kubernetes tests with |
+| **Argo CD, app-of-apps, managing itself** | Everything, including Argo CD, comes from Git; sync waves give a deterministic bootstrap ([0005](docs/decisions/0005-gitops-layout.md)) | Flux: equally good; Argo CD's UI makes the demos easier to follow |
+| **Argo Rollouts with `workloadRef`** | The chart keeps one Deployment; prod adds a canary with SLO analysis without forking the chart ([0011](docs/decisions/0011-canary-rollouts.md)) | Flagger: also supports Gateway API; Rollouts fits Argo CD (health checks, UI) and its own dashboard |
+| **Gateway API + Envoy Gateway** | The standard successor to Ingress; Rollouts can shift weights on an HTTPRoute directly ([0008](docs/decisions/0008-gateway-and-tls.md)) | ingress-nginx: canary weights only through annotations, and the Ingress API is frozen in favour of Gateway API |
+| **kube-prometheus-stack, Loki single binary, Alloy** | The common open-source stack, trimmed to fit 12 GB ([0007](docs/decisions/0007-observability-stack.md)) | Elastic or a hosted SaaS: too heavy, or not local |
+| **Multi-window burn-rate alerts** | Page fast on real problems, stop quickly after a fix ([0006](docs/decisions/0006-slo-rules.md)) | Threshold alerts on error rate: page on blips |
+| **Kyverno, CEL policies, Audit first** | Policies as YAML next to the manifests, tested with `kyverno test`; enforce one at a time once clean ([0012](docs/decisions/0012-kyverno-policies.md)) | OPA Gatekeeper: Rego is another language to learn |
+| **Sealed Secrets** | Encrypted secrets can live in Git; works offline ([0018](docs/decisions/0018-sealed-secrets.md)) | External Secrets: needs a real secret manager |
+| **cosign keyless, Trivy, Renovate** | Signed images with SBOMs and no keys to manage; scanning in CI and in the cluster; every pin kept current ([0013](docs/decisions/0013-image-signing.md), [0016](docs/decisions/0016-trivy-image-scan.md), [0021](docs/decisions/0021-trivy-operator.md), [0010](docs/decisions/0010-renovate.md)) | |
+| **Demos in a copy of prod** | The real environments only ever change through Git ([0020](docs/decisions/0020-demos-in-a-copy-of-prod.md)) | Demos that patch prod directly |
+
 ## Production differences
 
 - **Metrics retention.** Prometheus here keeps 24 hours of data, enough for the burn-rate alerts (at most 6 h), so the error-budget panel covers only that window. Production would keep 30+ days, for example in long-term storage, so the true 30-day error budget can be computed.
 - **TLS and DNS.** Certificates here come from a demo CA created inside each cluster, and `*.localtest.me` resolves to 127.0.0.1. Production would use a public CA (Let's Encrypt via ACME DNS-01) or the company PKI, with real DNS records.
 - **Ingress.** Here Envoy listens on NodePorts mapped to 127.0.0.1:80/443, with one proxy replica. Production would use a cloud load balancer, two or more proxy replicas spread across zones, and SSO in front of Prometheus and Alertmanager, which have no login of their own.
+- **Secrets.** The Sealed Secrets private key is a **DEMO ONLY** key committed to Git, so any clone can decrypt the sealed secrets ([decision 0018](docs/decisions/0018-sealed-secrets.md)). Production would generate the key in the cluster (or keep it in a cloud KMS / External Secrets with a secret manager), back it up outside Git, and rotate it.
+- **Alert routing.** Alerts here are only visible in Alertmanager's UI (`https://alertmanager.localtest.me`), with the always-firing `Watchdog` proving the pipeline works. Production would route by severity: pages (fast burn) to an on-call tool such as PagerDuty or Opsgenie, tickets (slow burn) to a chat channel, and a dead-man's switch on `Watchdog`.
+- **Logins.** Argo CD and Grafana each have one local `admin` account (Argo CD's Dex is off to save memory). Production would use SSO (OIDC) with groups mapped to roles, and no shared admin password.
+- **Clusters.** dev, staging and prod are namespaces in one kind cluster here, to fit the budget. Production would run separate clusters (at least prod apart from the rest), each managed by Argo CD from the same Git repo, with prod promotions still by pull request.
+- **Availability.** One replica each for Argo CD, Kyverno, Prometheus, Loki and the Envoy proxy. Production would run highly available pairs or more (Kyverno with three replicas and `failurePolicy: Fail`, [decision 0022](docs/decisions/0022-enforce-in-orders.md)), with persistent storage for Grafana and Loki.
 
-## Further sections _(coming)_
+## Troubleshooting
 
-Architecture diagram, resource budget (measured), why these choices, troubleshooting.
+Start with `./platform doctor` (Docker, CPU, memory, disk, ports) and `./platform verify` (names what's unhealthy).
+
+| Symptom | Likely cause | What to do |
+| --- | --- | --- |
+| `doctor`: "Port 80/443 is already in use" | Another web server on the host | Stop it, or run on a machine without one |
+| `up` waits on an app, pods in `ImagePullBackOff` | A registry rate-limited or flaked (ECR Public, Docker Hub) | Wait and re-run `./platform up`; it's safe to re-run. Kubernetes keeps retrying the pull |
+| `up` fails: "nodes advertise more than their cap" | The cluster was created before node reservations existed | `./platform down && ./platform up` |
+| `budget` reports `OOMKilled` | A container hit its memory limit (init containers too) | `./platform kubectl -n <ns> describe pod <pod>`; limits are in `gitops/values/` |
+| Browser warns about the certificate | The demo CA isn't trusted | `./platform urls` shows how to trust it, or accept the warning |
+| A pod in `orders-*` is refused by `disallow-latest-tag` or `verify-image-signatures` | Working as intended: `:latest` and unsigned app images aren't allowed there | Use a tagged, signed image ([0022](docs/decisions/0022-enforce-in-orders.md)) |
+| An app in Argo CD is `OutOfSync` after a manual change | Self-heal puts it back from Git within seconds | Change Git, not the cluster |
+| A demo was interrupted | Its copy is left in `orders-demo` | `./platform demo clean` |
+| Under Colima, a path in `/tmp` isn't found | Colima mounts only your home folder | Keep the checkout (and any worktree) under `~` |
+| Slow or evicted pods | Docker has less than 6 CPU / 12 GB | Colima: `colima start --cpu 6 --memory 12`; check with `./platform budget` |
 
 ## License
 
