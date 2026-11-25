@@ -64,8 +64,8 @@ spec:
                         requests: {cpu: 10m, memory: 32Mi}
                         limits: {memory: 64Mi}
       envoyService:
-        # kind maps host 127.0.0.1:80/443 to these NodePorts on the control
-        # plane node (cluster/kind.yaml).
+        # kind maps host 127.0.0.1:80/443 (and 8080, 3000, 9090, 9093) to
+        # these NodePorts on the control plane node (cluster/kind.yaml).
         type: NodePort
         # Cluster, not the default Local: the proxy pod runs on a worker,
         # but traffic enters through the control plane node.
@@ -79,3 +79,11 @@ spec:
                   nodePort: 30080
                 - port: 443
                   nodePort: 30443
+                - port: 8080
+                  nodePort: 30808
+                - port: 3000
+                  nodePort: 30300
+                - port: 9090
+                  nodePort: 30909
+                - port: 9093
+                  nodePort: 30993

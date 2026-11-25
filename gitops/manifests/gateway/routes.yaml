@@ -82,3 +82,50 @@ spec:
     - backendRefs:
         - name: argo-rollouts-dashboard
           port: 3100
+---
+# Grafana, Prometheus and Alertmanager on the contract's host ports (plain
+# HTTP, no hostname; decision 0028). The HTTPS routes above stay.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: grafana-port
+  namespace: monitoring
+spec:
+  parentRefs:
+    - name: platform
+      namespace: envoy-gateway-system
+      sectionName: grafana
+  rules:
+    - backendRefs:
+        - name: kube-prometheus-stack-grafana
+          port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: prometheus-port
+  namespace: monitoring
+spec:
+  parentRefs:
+    - name: platform
+      namespace: envoy-gateway-system
+      sectionName: prometheus
+  rules:
+    - backendRefs:
+        - name: kube-prometheus-stack-prometheus
+          port: 9090
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: alertmanager-port
+  namespace: monitoring
+spec:
+  parentRefs:
+    - name: platform
+      namespace: envoy-gateway-system
+      sectionName: alertmanager
+  rules:
+    - backendRefs:
+        - name: kube-prometheus-stack-alertmanager
+          port: 9093

@@ -16,6 +16,13 @@ else
   rm -f "$ca_file.tmp"; ca_file=
 fi
 
+step "The contract's endpoints (plain HTTP on the host)"
+echo "  http://localhost:8080      the app in prod (/admin/* is refused)"
+echo "  http://localhost:3000      Grafana"
+echo "  http://localhost:9090      Prometheus"
+echo "  http://localhost:9093      Alertmanager"
+echo
+
 step "HTTPS (demo CA)"
 if [ -n "$ca_file" ]; then
   echo "  Every URL below is HTTPS with a certificate from this cluster's own demo CA."

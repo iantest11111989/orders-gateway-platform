@@ -24,3 +24,19 @@ env: {{ .Values.env }}
 {{ .Values.image.repository }}:{{ $tag }}
 {{- end -}}
 {{- end -}}
+
+{{- /* /admin/* (the app's runtime fault switch, POST /admin/fault, no auth)
+     must not be reachable from outside the cluster: every route into the app
+     answers it at the edge with a 403 (decision 0028). Listed after the
+     main rule on purpose: Gateway API picks the longest path match whatever
+     the order, and the canary demo reads rules[0]'s weights. */ -}}
+{{- define "orders-gateway.adminDeny" -}}
+- matches:
+    - path: {type: PathPrefix, value: /admin}
+  filters:
+    - type: ExtensionRef
+      extensionRef:
+        group: gateway.envoyproxy.io
+        kind: HTTPRouteFilter
+        name: {{ include "orders-gateway.name" . }}-admin-deny
+{{- end -}}

@@ -1,0 +1,22 @@
+# Path handling at the edge, pinned (decision 0028). /admin/* is refused by a
+# path match, and the app (Node) resolves dot segments itself, so Envoy must
+# hand routing the same path the app will see:
+# - dot segments (/x/../admin) are resolved before routing (Envoy Gateway's
+#   default; normalisation per RFC 3986),
+# - repeated slashes (//admin) are merged,
+# - escaped slashes (/admin%2Ffault) are refused with a 400 instead of
+#   being decoded behind the route match.
+# ./platform verify sends each of these with curl --path-as-is.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: platform-paths
+  namespace: envoy-gateway-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: platform
+  path:
+    disableMergeSlashes: false
+    escapedSlashesAction: RejectRequest

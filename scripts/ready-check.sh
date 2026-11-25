@@ -11,9 +11,10 @@ set -euo pipefail
 INSTALLED=/tmp/installed-once
 
 serving() {
-  # prod's readiness (503 while starting or draining), through the gateway.
-  curl -fsS -o /dev/null --max-time 5 -k --resolve orders.localtest.me:443:127.0.0.1 \
-    https://orders.localtest.me/readyz || { echo "prod isn't serving"; return 1; }
+  # prod's readiness (503 while starting or draining), at the contract's
+  # endpoint http://localhost:8080, through the Gateway.
+  curl -fsS -o /dev/null --max-time 5 http://localhost:8080/readyz ||
+    { echo "prod isn't serving at http://localhost:8080"; return 1; }
 }
 
 if [ -f "$INSTALLED" ]; then serving; exit; fi

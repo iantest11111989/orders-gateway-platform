@@ -41,3 +41,30 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    # The contract's plain-HTTP ports on the host (decision 0028): prod on
+    # 8080, and Grafana, Prometheus and Alertmanager on their usual ports.
+    # Each listener takes routes from one namespace only.
+    - name: app
+      protocol: HTTP
+      port: 8080
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels: {kubernetes.io/metadata.name: prod}
+    - name: grafana
+      protocol: HTTP
+      port: 3000
+      allowedRoutes: &monitoring
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels: {kubernetes.io/metadata.name: monitoring}
+    - name: prometheus
+      protocol: HTTP
+      port: 9090
+      allowedRoutes: *monitoring
+    - name: alertmanager
+      protocol: HTTP
+      port: 9093
+      allowedRoutes: *monitoring
