@@ -2,8 +2,8 @@
 env: staging
 
 image:
-  tag: sha-85cbba12fef7
-  digest: sha256:09c2177caeb2c7b701c1f091fd65600065c836d4b25b930bff82cb6ec62b3476
+  tag: sha-d5d3d8f966ab
+  digest: sha256:4d29d22e316ab10b7f8c99f7963f1115ce27726afc5f4286e17cde01c221d572
 
 replicas: 2
 
