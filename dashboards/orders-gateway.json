@@ -1097,7 +1097,7 @@
     {
       "type": "logs",
       "title": "orders-gateway logs (errors and warnings first)",
-      "description": "The app's JSON logs from Loki for this namespace, newest first, showing only level warn and error. Clear the filter in Explore to see every line. Order IDs, customer IDs and SKUs live here, not in metric labels.",
+      "description": "The app's JSON logs from Loki for this namespace, newest first, showing only level warn and error. Clear the filter in Explore to see every line. Per-request values like order IDs and request IDs live here, not in metric labels.",
       "id": 21,
       "datasource": {
         "type": "loki",

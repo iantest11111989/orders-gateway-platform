@@ -93,4 +93,4 @@ To keep yours, use **Export → Export as JSON** on your dashboard, save it as `
 - Your stat panel is green at 99.7% but the provided **Latency budget left** shows 40%. How can both be true? (Hint: different time windows.)
 - A teammate fixed a panel in the Grafana UI yesterday and today it's back to the old version. What happened, and what should they do instead?
 
-Next: 3. Loki _(coming)_.
+Next: [3. Loki](03-loki.md).
