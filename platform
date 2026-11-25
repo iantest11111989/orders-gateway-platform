@@ -24,10 +24,15 @@
 #
 # Environment:
 #   TOOLBOX_IMAGE   use this toolbox image instead of the pinned one
-#   REPO_URL        Git repo Argo CD syncs from (default: this repo on GitHub)
-#   REVISION        branch, tag or commit SHA Argo CD syncs (default: main)
-#   GITHUB_TOKEN    only for `demo gitops-revert`, which pushes a demo branch
-#                   to the repo Argo CD syncs from (e.g. GITHUB_TOKEN=$(gh auth token))
+#   REPO_URL        Git repo Argo CD syncs from. Default: none, which means
+#                   the in-stack Git server holding this checkout (decision
+#                   0029). Set it (e.g. this repo on GitHub) for GitHub mode:
+#                   promotion PRs and the patch promoter; ship and rollback
+#                   then refuse, since Argo CD follows GitHub
+#   REVISION        GitHub mode only: branch, tag or commit SHA to sync
+#                   (default: main)
+#   GITHUB_TOKEN    only for `demo gitops-revert` (GitHub mode), which pushes
+#                   a demo branch to REPO_URL (e.g. GITHUB_TOKEN=$(gh auth token))
 set -eu
 
 cd "$(dirname "$0")"
@@ -37,7 +42,7 @@ TOOLBOX_REPO=ghcr.io/iantest11111989/orders-gateway-platform-toolbox
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
