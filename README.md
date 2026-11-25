@@ -22,6 +22,13 @@ The whole stack is designed to fit in **6 CPUs and 12 GB RAM**.
 ```sh
 git clone https://github.com/iantest11111989/orders-gateway-platform.git
 cd orders-gateway-platform
+docker compose up -d --wait   # the whole platform; returns when it's ready (decision 0026)
+kubectl --kubeconfig out/kubeconfig.yaml get nodes
+```
+
+`./platform` does the same and everything after it:
+
+```sh
 ./platform doctor   # check Docker, CPU, memory, disk and ports
 ./platform up       # create the cluster (safe to re-run)
 ./platform verify   # check apps, scrape targets, logs, HTTPS and policies

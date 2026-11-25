@@ -21,3 +21,6 @@ coverage.*
 
 # CI's image cache (scripts/images.sh)
 /.cache/
+
+# docker compose writes the kubeconfig for the host here
+/out/

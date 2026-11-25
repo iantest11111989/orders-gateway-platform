@@ -2,10 +2,10 @@ name: platform
 
 on:
   pull_request:
-    paths: ["platform", "scripts/**", "toolbox/**", "cluster/**", "gitops/**", "charts/**", "environments/**", "alerts/**", ".github/workflows/**", ".shellcheckrc"]
+    paths: ["platform", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "gitops/**", "charts/**", "environments/**", "alerts/**", ".github/workflows/**", ".shellcheckrc"]
   push:
     branches: [main]
-    paths: ["platform", "scripts/**", "toolbox/**", "cluster/**", "gitops/**", "charts/**", "environments/**", "alerts/**", ".github/workflows/**", ".shellcheckrc"]
+    paths: ["platform", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "gitops/**", "charts/**", "environments/**", "alerts/**", ".github/workflows/**", ".shellcheckrc"]
   # The promotion PRs (app.yml, job promote-prs) are opened with GITHUB_TOKEN,
   # which starts no pull_request workflows; that job dispatches this one on
   # the PR's branch instead, and the results show on the PR's head commit.
@@ -31,6 +31,8 @@ jobs:
           docker run --rm -v "$PWD":/mnt -w /mnt \
             koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d \
             -x platform scripts/*.sh toolbox/install-tools.sh
+      - name: docker-compose.yml uses the current toolbox image
+        run: sh scripts/check-compose-toolbox.sh
       - name: actionlint
         run: |
           docker run --rm -v "$PWD":/repo -w /repo \
@@ -150,9 +152,26 @@ jobs:
           path: .cache/images
           key: images-v2-${{ runner.arch }}-${{ github.run_id }}
           restore-keys: images-v2-${{ runner.arch }}-
-      - run: ./platform up
+      # The reviewer's entry point (the brief's fixed contract): Compose's
+      # `ready` service bootstraps everything and is healthy only when every
+      # Argo CD Application is Synced and Healthy and prod serves.
+      - name: docker compose up -d --wait
+        run: docker compose up -d --wait --wait-timeout 1200
         env:
           PRELOAD_IMAGES: .cache/images
+      - name: Compose logs (on failure)
+        if: failure()
+        run: docker compose logs --tail=200 ready || true
+      # ./out/kubeconfig.yaml must work from the host, with the host's kubectl.
+      - name: kubeconfig from the host
+        run: kubectl --kubeconfig out/kubeconfig.yaml get nodes
+      # Restarts: stopping and starting Compose must come back healthy with the
+      # cluster (and its data) untouched.
+      - name: docker compose stop, then up again
+        run: |
+          docker compose stop
+          docker compose up -d --wait --wait-timeout 600
+          kubectl --kubeconfig out/kubeconfig.yaml get nodes
       # A cold start is mostly image pulls (nothing is cached on a runner),
       # so list the slowest: a slow `up` can be explained from this log.
       - name: Slowest image pulls
@@ -244,4 +263,6 @@ jobs:
                 echo "::endgroup::"
               done
       - if: always()
-        run: ./platform down
+        run: |
+          docker compose down || true
+          ./platform down
