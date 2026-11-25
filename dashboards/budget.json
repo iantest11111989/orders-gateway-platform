@@ -286,7 +286,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "count(kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\"}) or vector(0)",
+          "expr": "count({__name__=~\"kube_pod_(init_)?container_status_last_terminated_reason\", reason=\"OOMKilled\"}) or vector(0)",
           "instant": false
         }
       ]
@@ -538,7 +538,7 @@
       "id": 10,
       "type": "timeseries",
       "title": "CPU by namespace",
-      "description": "CPU of every pod, summed per namespace, stacked, in cores. During a demo, orders-demo and the k6 load it gets show up here.",
+      "description": "CPU of every pod, summed per namespace, stacked, in cores. During a demo, orders-demo's pods and Envoy (which carries the k6 traffic) show up here. k6 itself runs in the toolbox container on the Docker host, outside the kind nodes, so it isn't in this panel or in the budget.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
