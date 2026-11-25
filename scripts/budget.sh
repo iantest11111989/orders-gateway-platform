@@ -8,6 +8,10 @@
 #   4. No container was OOM-killed: a cap that's too small shows up there.
 # With --watch SECONDS it samples every 5 s for that long and reports the
 # peak, e.g. while a demo runs in another terminal. Runs in the toolbox.
+# Memory is docker stats' usage, which leaves out the reclaimable file cache.
+# The cgroup's memory.peak does not: on a fresh CI cluster image pulls fill
+# every node's cache to its cap (99-100%) with nothing under pressure, so the
+# OOM check below is the pressure signal, not memory.peak.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
@@ -77,17 +81,6 @@ if [ "$watch" -gt 0 ]; then
   done
   ok "$(printf 'peak over %d samples: %.2f of %d CPU, %d of %d MiB (%d%%)' "$samples" "$peak_cpu" "$BUDGET_CPU" "$peak_mem" "$BUDGET_MEM_MI" $((peak_mem * 100 / BUDGET_MEM_MI)))"
 fi
-
-step "Peak memory per node since it started (cgroup v2 memory.peak)"
-for n in "${nodes[@]}"; do
-  peak=$(docker exec "$n" cat /sys/fs/cgroup/memory.peak 2>/dev/null || true)
-  cap=$(docker exec "$n" cat /sys/fs/cgroup/memory.max 2>/dev/null || true)
-  if [ -n "${peak:-}" ] && [[ ${cap:-} =~ ^[0-9]+$ ]]; then
-    ok "$(printf '%-20s %6d of %d MiB (%d%%)' "$n" $((peak / 1048576)) $((cap / 1048576)) $((peak * 100 / cap)))"
-  else
-    warn "$n: no memory.peak (needs cgroup v2 and kernel >= 5.19)"
-  fi
-done
 
 step "By namespace (kubectl top, metrics-server)"
 if top=$(kubectl top pods -A --no-headers 2>/dev/null) && [ -n "$top" ]; then
