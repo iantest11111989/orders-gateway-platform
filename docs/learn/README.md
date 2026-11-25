@@ -2,6 +2,7 @@
 
 Hands-on, roughly 15-minute exercises for Prometheus, Grafana, Loki, SLOs and Kubernetes operations, run against the live cluster.
 
+0. [The work test, element by element](00-the-work-test.md): start here. A tour of the assignment, top to bottom, on your own stack, pointing into 1–5 where they fit.
 1. [Prometheus: your first queries](01-prometheus.md)
 2. [Grafana: build a panel, then compare it to the dashboard](02-grafana.md)
 3. [Loki: filter logs, parse JSON, turn logs into a metric](03-loki.md)

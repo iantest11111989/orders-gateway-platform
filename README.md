@@ -192,7 +192,7 @@ Work from the symptom inwards. Each step names where to look.
 
 Fixes go through Git. A `kubectl edit` in an app namespace is undone by Argo CD's self-heal within seconds, by design.
 
-The [`docs/learn/`](docs/learn/README.md) track teaches this hands-on: Prometheus, Grafana, Loki, SLOs, and Kubernetes operations, each about 15 minutes on the running stack.
+The [`docs/learn/`](docs/learn/README.md) track teaches this hands-on, starting with [a tour of the assignment, element by element](docs/learn/00-the-work-test.md): Prometheus, Grafana, Loki, SLOs, and Kubernetes operations, each about 15 minutes on the running stack.
 
 ### Troubleshooting the platform itself
 
