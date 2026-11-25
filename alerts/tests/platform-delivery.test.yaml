@@ -1,0 +1,128 @@
+# promtool unit tests for alerts/platform-delivery.yaml.
+# Run: scripts/test-alerts.sh (CI runs it on every pull request).
+rule_files:
+  - ../../.build/alerts/platform-delivery.rules.yaml
+
+evaluation_interval: 1m
+
+tests:
+  - name: Argo CD app stays OutOfSync, another syncs within minutes
+    interval: 1m
+    input_series:
+      - series: 'argocd_app_info{name="orders-prod", sync_status="OutOfSync", health_status="Healthy"}'
+        values: '1x30'
+      - series: 'argocd_app_info{name="orders-dev", sync_status="OutOfSync", health_status="Healthy"}'
+        values: '1x3 _x27'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ArgoCDAppOutOfSync
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: ArgoCDAppOutOfSync
+        exp_alerts:
+          - exp_labels: {severity: ticket, name: orders-prod}
+            exp_annotations:
+              summary: "Argo CD application orders-prod has been OutOfSync for 15 minutes"
+              description: "The live state of orders-prod differs from Git and Argo CD hasn't been able to sync it. Changes merged for it aren't reaching the cluster."
+              runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/ArgoCDAppOutOfSync.md
+
+  - name: Argo CD app Degraded
+    interval: 1m
+    input_series:
+      - series: 'argocd_app_info{name="orders-staging", sync_status="Synced", health_status="Degraded"}'
+        values: '1x20'
+      - series: 'argocd_app_info{name="orders-dev", sync_status="Synced", health_status="Healthy"}'
+        values: '1x20'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: ArgoCDAppUnhealthy
+        exp_alerts:
+          - exp_labels: {severity: ticket, name: orders-staging, health_status: Degraded}
+            exp_annotations:
+              summary: "Argo CD application orders-staging is Degraded"
+              description: "orders-staging has been Degraded for 10 minutes."
+              runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/ArgoCDAppUnhealthy.md
+
+  - name: prod canary aborts; the canary-fail demo in orders-demo doesn't alert
+    interval: 1m
+    input_series:
+      - series: 'rollout_info{exported_namespace="orders-prod", name="orders-gateway", phase="Abort"}'
+        values: '1x5'
+      - series: 'rollout_info{exported_namespace="orders-demo", name="orders-gateway", phase="Abort"}'
+        values: '1x5'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: RolloutAborted
+        exp_alerts:
+          - exp_labels: {severity: ticket, exported_namespace: orders-prod, name: orders-gateway}
+            exp_annotations:
+              summary: "Rollout orders-prod/orders-gateway aborted its canary"
+              description: "The canary failed its analysis (or was aborted by hand) and all traffic is back on the stable version. The new version won't go further until fixed."
+              runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/RolloutAborted.md
+
+  - name: certificate not Ready
+    interval: 1m
+    input_series:
+      - series: 'certmanager_certificate_ready_status{exported_namespace="envoy-gateway-system", name="localtest-me", condition="False"}'
+        values: '1x15'
+      - series: 'certmanager_certificate_ready_status{exported_namespace="envoy-gateway-system", name="localtest-me", condition="True"}'
+        values: '0x15'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: CertificateNotReady
+        exp_alerts:
+          - exp_labels: {severity: ticket, exported_namespace: envoy-gateway-system, name: localtest-me}
+            exp_annotations:
+              summary: "Certificate envoy-gateway-system/localtest-me isn't Ready"
+              description: "cert-manager couldn't issue or renew this certificate for 10 minutes."
+              runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/CertificateNotReady.md
+
+  # Expiry 10 days after t=0 (time() is 0 at the start of a test): under 14
+  # days, so it fires after its 1 h "for". One with 60 days left stays quiet.
+  - name: certificate expiring soon
+    interval: 1m
+    input_series:
+      - series: 'certmanager_certificate_expiration_timestamp_seconds{exported_namespace="envoy-gateway-system", name="localtest-me"}'
+        values: '864000x120'
+      - series: 'certmanager_certificate_expiration_timestamp_seconds{exported_namespace="cert-manager", name="ogp-demo-ca"}'
+        values: '5184000x120'
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: CertificateExpiringSoon
+        exp_alerts:
+          - exp_labels: {severity: ticket, exported_namespace: envoy-gateway-system, name: localtest-me}
+            exp_annotations:
+              summary: "Certificate envoy-gateway-system/localtest-me expires in 9d 22h 30m 0s"
+              description: "It should have been renewed already; renewal is failing."
+              runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/CertificateExpiringSoon.md
+
+  # Three nodes at 3.8 GiB each = 11.4 GiB, 95% of 12 GiB. At 2.4 GiB each
+  # (60%, today's level) nothing fires.
+  - name: stack near its memory budget
+    interval: 1m
+    input_series:
+      - series: 'container_memory_working_set_bytes{id="/", node="ogp-control-plane"}'
+        values: '4080218931x15'
+      - series: 'container_memory_working_set_bytes{id="/", node="ogp-worker"}'
+        values: '4080218931x15'
+      - series: 'container_memory_working_set_bytes{id="/", node="ogp-worker2"}'
+        values: '4080218931x15'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: StackNearMemoryBudget
+        exp_alerts:
+          - exp_labels: {severity: ticket}
+            exp_annotations:
+              summary: "The stack uses 95% of its 12 GiB memory budget"
+              description: "Memory across the kind nodes has been above 90% of the budget for 10 minutes."
+              runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/StackNearMemoryBudget.md
+
+  - name: stack at today's level stays quiet
+    interval: 1m
+    input_series:
+      - series: 'container_memory_working_set_bytes{id="/", node="ogp-worker"}'
+        values: '2576980378x15'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: StackNearMemoryBudget
+        exp_alerts: []

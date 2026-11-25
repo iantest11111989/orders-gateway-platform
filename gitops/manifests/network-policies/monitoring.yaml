@@ -73,3 +73,22 @@ spec:
               kubernetes.io/metadata.name: argo-rollouts
       ports:
         - {port: 9090, protocol: TCP}
+---
+# The patch promoter reads the soak gates from Prometheus (decision 0024).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-promoter-to-prometheus
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: promoter
+      ports:
+        - {port: 9090, protocol: TCP}
