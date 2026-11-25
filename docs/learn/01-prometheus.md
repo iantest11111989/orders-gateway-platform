@@ -119,7 +119,7 @@ The app's metrics stay small because every label has a **fixed, short list of va
 
 - `route` is the route *template* (`/orders/{id}`), never the real path. If it were `/orders/7f3a…`, every order would make a new series, and Prometheus would run out of memory.
 - `orders_rejected_total` has a `reason` label from a fixed list in `app/metrics.go`, never the raw error text.
-- Customer IDs, order IDs and SKUs go in the **logs** (exercise 3, Loki), not in metric labels.
+- Per-request values like order IDs and request IDs go in the **logs** (exercise 3, Loki), not in metric labels. The app doesn't log customer IDs or SKUs at all.
 
 Rule of thumb: if a label's values can grow without limit (IDs, emails, URLs, timestamps), it doesn't belong on a metric.
 
