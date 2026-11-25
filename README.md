@@ -61,9 +61,17 @@ All hostnames use `*.localtest.me`, which resolves to `127.0.0.1`.
 - `https://orders.dev.localtest.me`, `https://orders.staging.localtest.me`, `https://orders.localtest.me`
 - `https://argocd.localtest.me`, `https://grafana.localtest.me`, `https://prometheus.localtest.me`, `https://alertmanager.localtest.me`, `https://rollouts.localtest.me`
 
-## Demos _(coming)_
+## Demos
 
-`./platform demo <name>`: `rolling-update`, `canary`, `canary-fail`, `autoscale`, `chaos`, `policy`, `gitops-revert`.
+`./platform demo <name>` narrates each step in the terminal and says where to watch it. The canary demos run in `orders-demo`, a copy of prod made from the live `orders-prod` Application, so real prod only ever changes through Git ([decision 0020](docs/decisions/0020-demos-in-a-copy-of-prod.md)). k6 sends ~10 requests/s through the gateway while they run.
+
+| Demo | What happens | Time |
+| --- | --- | --- |
+| `canary` | v1 → v2: Rollouts moves traffic 10% → 25% → 50% → 100% and the SLO analysis passes at each step | ~8 min |
+| `canary-fail` | v2 → v2-bad: the first analysis fails the SLO, Rollouts aborts and sends all traffic back to v2 | ~3 min |
+| `clean` | deletes the demo copy (after an interrupted demo, or `--keep`) | |
+
+Add `--keep` to leave `orders-demo` running afterwards. Watch in the Rollouts dashboard (`https://rollouts.localtest.me/rollouts/orders-demo`), Argo CD, or Grafana. Run `./platform budget --watch 600` in a second terminal to see the peak. Still to come: `rolling-update`, `autoscale`, `chaos`, `policy`, `gitops-revert`.
 
 ## Repository layout
 
