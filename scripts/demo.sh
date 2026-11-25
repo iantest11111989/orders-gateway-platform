@@ -286,7 +286,8 @@ clean_branches() {
   # needs no repository.
   for b in $(git -C / ls-remote --heads "$repo" 'demo/gitops-revert-*' 2>/dev/null | awk '{sub("refs/heads/", "", $2); print $2}'); do
     if [ -n "${GITHUB_TOKEN:-}" ]; then
-      delete_branch "$repo" "$b" && ok "deleted the leftover demo branch $b"
+      if delete_branch "$repo" "$b"; then ok "${DRY_RUN:+would have }deleted the leftover demo branch $b"
+      else warn "couldn't delete the leftover demo branch $b (token without push access?)"; fi
     else
       warn "leftover demo branch $b: delete it with GITHUB_TOKEN=\$(gh auth token) ./platform demo clean, or git push origin --delete $b"
     fi
@@ -494,6 +495,7 @@ if [ -n "$keep" ]; then
 else
   delete_app
   if [ -n "${DEMO_BRANCH:-}" ]; then
-    delete_branch "$DEMO_REPO" "$DEMO_BRANCH" && ok "deleted the demo branch $DEMO_BRANCH"
+    if delete_branch "$DEMO_REPO" "$DEMO_BRANCH"; then ok "${DRY_RUN:+would have }deleted the demo branch $DEMO_BRANCH"
+    else warn "couldn't delete the demo branch $DEMO_BRANCH; delete it with: git push origin --delete $DEMO_BRANCH"; fi
   fi
 fi
