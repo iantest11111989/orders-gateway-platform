@@ -153,6 +153,8 @@ jobs:
       - run: ./platform up # idempotent
       - run: ./platform kubectl get nodes -L topology.kubernetes.io/zone
       - run: ./platform kubectl -n argocd get applications
+      # One ReplicaSet means the Envoy proxy didn't roll during bootstrap.
+      - run: ./platform kubectl -n envoy-gateway-system get replicasets -l app.kubernetes.io/component=proxy
       # Apps, scrape targets, logs, HTTPS and policies (includes check-https).
       # Right after `up` a target may not have been scraped yet: retry a bit.
       - name: ./platform verify

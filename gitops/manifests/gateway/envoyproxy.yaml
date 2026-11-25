@@ -4,6 +4,13 @@ kind: EnvoyProxy
 metadata:
   name: platform
   namespace: envoy-gateway-system
+  annotations:
+    # Applied before the GatewayClass and Gateway (wave 0) in this app.
+    # Applied together, Envoy Gateway could create the proxy Deployment before
+    # it saw this config, then roll it once when it did (two ReplicaSets,
+    # differing only in this file's shutdown-manager limit), leaving an old
+    # proxy pod draining for up to 360 s after every fresh `up`.
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   logging:
     level:
