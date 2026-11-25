@@ -3,6 +3,9 @@
 #
 #   rolling-update  v1 -> v2 in a copy of dev (3 replicas): pods replace one
 #                at a time and k6 sees no errors
+#   chaos        in a copy of prod: delete a pod, then drain a worker (for the
+#                demo's pods): the PodDisruptionBudget and the zone spread keep
+#                it serving
 #   gitops-revert  a bad config commit (30% of orders fail) on a demo branch
 #                that a copy of dev follows; Argo CD syncs it, then a
 #                `git revert` heals it. Needs GITHUB_TOKEN (push access to the
@@ -29,14 +32,17 @@ APP=orders-demo NS=orders-demo HOST=orders-demo.localtest.me
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 K6_LOG=/tmp/orders-demo-k6.log
 
-usage() { die "usage: ./platform demo <rolling-update|gitops-revert|canary|canary-fail|clean> [--keep]"; }
+usage() { die "usage: ./platform demo <rolling-update|chaos|gitops-revert|canary|canary-fail|clean> [--keep]"; }
 name=${1:-}; shift || true
 keep=; [ "${1:-}" = --keep ] && keep=1
 
-# Runs on any exit, also Ctrl-C: stop k6 and remove the gitops-revert clone.
-K6_PID='' GIT_WORK=''
+# Runs on any exit, also Ctrl-C: stop k6, uncordon a node the chaos demo
+# cordoned (so an interrupted demo never leaves a node unschedulable), and
+# remove the gitops-revert clone.
+K6_PID='' CORDONED='' GIT_WORK=''
 cleanup() {
   [ -z "$K6_PID" ] || kill "$K6_PID" 2>/dev/null || true
+  if [ -n "$CORDONED" ]; then kubectl uncordon "$CORDONED" >/dev/null 2>&1 || true; fi
   [ -z "$GIT_WORK" ] || rm -rf "$GIT_WORK"
 }
 trap cleanup EXIT
@@ -94,8 +100,10 @@ wait_healthy() { # wait_healthy <tag> <timeout s>
   while :; do
     s=$(kubectl -n argocd get applications.argoproj.io "$APP" -o jsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null || true)
     if kubectl -n "$NS" get rollout orders-gateway >/dev/null 2>&1; then
-      # prod copy: the Rollout is Healthy and has a stable ReplicaSet
+      # prod copy: the Rollout is Healthy with a stable ReplicaSet, and has
+      # scaled the Deployment it references (workloadRef) down to no pods
       ready=$(kubectl -n "$NS" get rollout orders-gateway -o jsonpath='{.status.phase}/{.status.stableRS}' 2>/dev/null | grep -E '^Healthy/.+' || true)
+      [ "$(kubectl -n "$NS" get deployment orders-gateway -o jsonpath='{.status.replicas}' 2>/dev/null)" -gt 0 ] 2>/dev/null && ready=''
     else
       # dev copy: every Deployment replica updated and available
       ready=$(kubectl -n "$NS" get deployment orders-gateway -o json 2>/dev/null |
@@ -200,6 +208,53 @@ narrate_rolling() { # narrate_rolling <generation before the change> <timeout s>
   done
 }
 
+# --- chaos helpers -----------------------------------------------------------
+
+demo_pods() { # name node phase ready, one line per demo pod
+  # With a Rollout, only its pods (they carry rollouts-pod-template-hash), not
+  # a pod of the referenced Deployment that is still scaling down.
+  local sel=app.kubernetes.io/name=orders-gateway
+  kubectl -n "$NS" get rollout orders-gateway >/dev/null 2>&1 && sel="$sel,rollouts-pod-template-hash"
+  kubectl -n "$NS" get pods -l "$sel" -o json |
+    jq -r '.items[] | select(.metadata.deletionTimestamp == null) |
+      "\(.metadata.name) \(.spec.nodeName // "-") \(.status.phase) \(([.status.conditions[]? | select(.type == "Ready") | .status][0]) // "False")"'
+}
+ready_count() { demo_pods | awk '$4 == "True"' | grep -c . || true; }
+show_pods() {
+  demo_pods | while read -r name node phase ready; do
+    zone=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}' 2>/dev/null || echo -)
+    printf '    %-40s %-14s %-7s %s ready=%s\n' "$name" "$node" "$zone" "$phase" "$ready" >&2
+  done
+}
+wait_ready() { # wait_ready <n> <timeout s>
+  local deadline=$(( $(date +%s) + $2 )) last='' n
+  while :; do
+    n=$(ready_count)
+    [ "$n" != "$last" ] && { printf '  %s  ready pods: %s\n' "$(date +%H:%M:%S)" "$n" >&2; last=$n; }
+    [ "$n" -ge "$1" ] && return 0
+    [ "$(date +%s)" -lt "$deadline" ] || die "only $n of $1 pods ready after ${2}s"
+    sleep 2
+  done
+}
+# What `kubectl drain` does per pod: an Eviction, which the API server refuses
+# (429) while it would break the PodDisruptionBudget. Retries until allowed.
+evict() { # evict <pod>
+  local out deadline=$(( $(date +%s) + 180 )) refused=''
+  while :; do
+    if out=$(jq -nc --arg p "$1" --arg ns "$NS" '{apiVersion: "policy/v1", kind: "Eviction", metadata: {name: $p, namespace: $ns}}' |
+        kubectl create --raw "/api/v1/namespaces/$NS/pods/$1/eviction" -f - 2>&1); then
+      ok "evicted $1"; return 0
+    fi
+    if grep -qi 'disruption budget' <<<"$out"; then
+      [ -n "$refused" ] || { warn "eviction of $1 refused: it would break the PodDisruptionBudget (maxUnavailable 1); waiting for a replacement to be ready"; refused=1; }
+    else
+      die "eviction of $1 failed: $out"
+    fi
+    [ "$(date +%s)" -lt "$deadline" ] || die "the PodDisruptionBudget still refuses evicting $1 after 180s"
+    sleep 3
+  done
+}
+
 # --- gitops-revert helpers ---------------------------------------------------
 
 # git with GITHUB_TOKEN sent as an HTTP header for this one command: it is
@@ -251,6 +306,72 @@ narrate_git() { # narrate_git <commit> <settle s> <timeout s>
 
 # --- demos -------------------------------------------------------------------
 
+demo_chaos() {
+  step "Demo: chaos in a copy of prod"
+  echo "  First a pod is deleted: the Rollout's ReplicaSet replaces it. Then a"
+  echo "  worker is drained (cordoned, and the demo's pods on it evicted the way"
+  echo "  kubectl drain does): the PodDisruptionBudget (maxUnavailable 1) lets"
+  echo "  only one go at a time, and the pods spread across zones keep serving."
+  echo "  Only the demo's pods are evicted; nothing else on the node moves."
+  ensure_app orders-prod v1
+  wait_healthy v1 600
+  start_load
+  where_to_watch
+  want=$(kubectl -n "$NS" get rollout orders-gateway -o jsonpath='{.spec.replicas}')
+  echo "  Pods (name, node, zone, phase):" >&2; show_pods
+
+  step "Deleting one pod"
+  victim=$(demo_pods | awk 'NR == 1 {print $1}')
+  kubectl -n "$NS" delete pod "$victim" --wait=false >/dev/null
+  ok "deleted $victim"
+  sleep 2
+  wait_ready "$want" 180
+  ok "back to $want ready pods"; show_pods
+
+  node=$(demo_pods | awk '{print $2}' | sort | uniq -c | sort -rn | awk 'NR == 1 {print $2}')
+  step "Draining $node for the demo's pods"
+  kubectl cordon "$node" >/dev/null; CORDONED=$node
+  ok "cordoned $node: no new pods land there, from any namespace, until it's uncordoned (about a minute)"
+  for p in $(demo_pods | awk -v n="$node" '$2 == n {print $1}'); do evict "$p"; done
+  wait_ready "$want" 300
+  left=$(demo_pods | awk -v n="$node" '$2 == n' | grep -c . || true)
+  [ "$left" -eq 0 ] || die "$left demo pod(s) still on the cordoned $node"
+  ok "all $want pods ready again, none on $node"; show_pods
+  kubectl uncordon "$node" >/dev/null; CORDONED=''
+  ok "uncordoned $node"
+
+  sleep 10
+  k6_summary
+  if awk -v p="${SLO_PCT:-0}" 'BEGIN { exit !(p >= 99.5) }'; then
+    ok "the service stayed up: ${SLO_PCT}% of requests met the SLO (>= 99.5%)"
+  else
+    die "requests failed during the chaos: only ${SLO_PCT:-?}% met the SLO (want >= 99.5%)"
+  fi
+}
+
+demo_rolling_update() {
+  step "Demo: rolling update v1 -> v2 in a copy of dev"
+  echo "  The Deployment replaces its 3 pods one at a time (maxSurge 1,"
+  echo "  maxUnavailable 0): a new pod must pass its readiness probe before an old"
+  echo "  one drains (5 s) and stops. k6 keeps sending traffic. Takes about 1 minute."
+  ensure_app orders-dev v1 replicas=3
+  wait_healthy v1 600
+  start_load
+  where_to_watch
+  step "Rolling out v2"
+  gen0=$(kubectl -n "$NS" get deployment orders-gateway -o jsonpath='{.metadata.generation}')
+  set_image v2
+  result=$(narrate_rolling "$gen0" 300)
+  sleep 15 # let k6 run against the new pods for a moment before stopping it
+  k6_summary
+  [ "$result" = finished ] || die "the rolling update didn't finish (result: $result)"
+  if awk -v p="${SLO_PCT:-0}" 'BEGIN { exit !(p >= 99.5) }'; then
+    ok "every pod replaced with v2; ${SLO_PCT}% of requests met the SLO (>= 99.5%)"
+  else
+    die "requests failed during the rolling update: only ${SLO_PCT:-?}% met the SLO (want >= 99.5%)"
+  fi
+}
+
 demo_gitops_revert() {
   step "Demo: GitOps revert, in a copy of dev that follows a demo branch"
   echo "  A bad config commit (FAULT_ERROR_RATE 0.3: 30% of orders return 500)"
@@ -301,30 +422,6 @@ demo_gitops_revert() {
   ok "bad commit: ${bad} of orders failed; after the revert: ${good}. Git was the only thing changed."
 }
 
-
-demo_rolling_update() {
-  step "Demo: rolling update v1 -> v2 in a copy of dev"
-  echo "  The Deployment replaces its 3 pods one at a time (maxSurge 1,"
-  echo "  maxUnavailable 0): a new pod must pass its readiness probe before an old"
-  echo "  one drains (5 s) and stops. k6 keeps sending traffic. Takes about 1 minute."
-  ensure_app orders-dev v1 replicas=3
-  wait_healthy v1 600
-  start_load
-  where_to_watch
-  step "Rolling out v2"
-  gen0=$(kubectl -n "$NS" get deployment orders-gateway -o jsonpath='{.metadata.generation}')
-  set_image v2
-  result=$(narrate_rolling "$gen0" 300)
-  sleep 15 # let k6 run against the new pods for a moment before stopping it
-  k6_summary
-  [ "$result" = finished ] || die "the rolling update didn't finish (result: $result)"
-  if awk -v p="${SLO_PCT:-0}" 'BEGIN { exit !(p >= 99.5) }'; then
-    ok "every pod replaced with v2; ${SLO_PCT}% of requests met the SLO (>= 99.5%)"
-  else
-    die "requests failed during the rolling update: only ${SLO_PCT:-?}% met the SLO (want >= 99.5%)"
-  fi
-}
-
 demo_canary() {
   step "Demo: canary v1 -> v2 in a copy of prod"
   echo "  Rollouts moves traffic 10% -> 25% -> 50% -> 100% through the HTTPRoute,"
@@ -368,6 +465,7 @@ demo_canary_fail() {
 
 case "$name" in
   rolling-update) demo_rolling_update ;;
+  chaos) demo_chaos ;;
   gitops-revert) demo_gitops_revert ;;
   canary) demo_canary ;;
   canary-fail) demo_canary_fail ;;
