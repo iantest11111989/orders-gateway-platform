@@ -1,0 +1,12 @@
+# A child that has synced before (history) and is Healthy, but has drifted
+# from Git (OutOfSync). Routine drift must not block the root's sync waves,
+# so its own health counts: Healthy.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: {name: drifted, namespace: argocd}
+status:
+  health: {status: Healthy}
+  sync: {status: OutOfSync}
+  history:
+    - id: 0
+      revision: 0123456789abcdef0123456789abcdef01234567

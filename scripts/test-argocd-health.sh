@@ -24,5 +24,6 @@ app-new-child.yaml Progressing
 app-synced-no-history.yaml Healthy
 app-synced.yaml Healthy
 app-degraded.yaml Degraded
+app-drifted.yaml Healthy
 CASES
 [ "$failed" -eq 0 ] || die "Application health customization doesn't behave as the sync waves need"
