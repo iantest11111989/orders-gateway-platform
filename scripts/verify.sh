@@ -6,7 +6,7 @@
 #   3. Loki has logs from every namespace that runs pods
 #   4. HTTPS answers on every hostname (scripts/check-https.sh)
 #   5. Kyverno rejects a bad manifest at admission (a server-side dry run of
-#      a :latest pod in orders-dev must be denied by disallow-latest-tag)
+#      a :latest pod in dev must be denied by disallow-latest-tag)
 # Prometheus, Loki and Kyverno are reached through the API server's service
 # proxy, so nothing needs a port-forward. Runs in the toolbox.
 # shellcheck source=scripts/lib.sh
@@ -89,7 +89,7 @@ else
 fi
 
 step "Kyverno rejects a bad manifest at admission"
-# Server-side dry run: nothing is created. orders-dev enforces Pod Security
+# Server-side dry run: nothing is created. dev enforces Pod Security
 # "restricted", which runs before Kyverno's webhook and stops at the first
 # rejection, so the pod meets it (and the Audit policies): the :latest tag
 # is the only thing wrong with it.
@@ -100,15 +100,15 @@ latest_pod='{
     "containers": [{"name": "verify-latest-tag", "image": "docker.io/library/busybox:latest",
       "securityContext": {"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true, "capabilities": {"drop": ["ALL"]}},
       "resources": {"requests": {"cpu": "10m", "memory": "16Mi"}, "limits": {"memory": "32Mi"}}}]}}'
-if out=$(kubectl -n orders-dev run verify-latest-tag --image=docker.io/library/busybox:latest \
+if out=$(kubectl -n dev run verify-latest-tag --image=docker.io/library/busybox:latest \
     --restart=Never --dry-run=server -o name --overrides="$latest_pod" 2>&1); then
-  miss "Kyverno let a :latest pod into orders-dev (is it running? disallow-latest-tag is Deny there)"
+  miss "Kyverno let a :latest pod into dev (is it running? disallow-latest-tag is Deny there)"
 elif grep -q 'disallow-latest-tag' <<<"$out"; then
-  pass "a :latest pod in orders-dev was rejected by disallow-latest-tag"
+  pass "a :latest pod in dev was rejected by disallow-latest-tag"
 elif grep -q 'PodSecurity' <<<"$out"; then
   miss "Pod Security rejected the test pod before Kyverno saw it (fix its securityContext): $out"
 else
-  miss "a :latest pod in orders-dev failed for another reason: $out"
+  miss "a :latest pod in dev failed for another reason: $out"
 fi
 
 echo

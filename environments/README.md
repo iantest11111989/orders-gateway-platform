@@ -4,7 +4,7 @@ One `values.yaml` per environment. Each overrides `charts/orders-gateway/values.
 
 | | dev | staging | prod |
 | --- | --- | --- | --- |
-| Namespace | `orders-dev` | `orders-staging` | `orders-prod` |
+| Namespace | `dev` | `staging` | `prod` |
 | Replicas | 1 | 2 | 3, HPA up to 6 on CPU |
 | PDB and topology spread | no | yes | yes |
 | URL | https://orders.dev.localtest.me | https://orders.staging.localtest.me | https://orders.localtest.me |

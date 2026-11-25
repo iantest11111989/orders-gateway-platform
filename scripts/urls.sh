@@ -51,7 +51,7 @@ echo "  https://alertmanager.localtest.me"
 
 step "Argo Rollouts dashboard (read-only, no login)"
 echo "  https://rollouts.localtest.me"
-echo "  Promote or abort from ./platform shell: kubectl argo rollouts promote|abort orders-gateway -n orders-prod"
+echo "  Canaries run in the demo copy of prod: ./platform demo canary"
 
 step "orders-gateway"
 echo "  https://orders.dev.localtest.me      dev"
