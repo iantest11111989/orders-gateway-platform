@@ -1,5 +1,6 @@
 # Every image needs an explicit tag or digest, and never ":latest", so what
-# runs is what was reviewed. Audit for now (decision 0012).
+# runs is what was reviewed. Enforced in the orders-* namespaces (decision
+# 0022); disallow-latest-tag-platform audits the rest of the cluster.
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -10,8 +11,9 @@ metadata:
       Containers must name an image tag or digest, and the tag must not be
       "latest". Untagged and ":latest" images change under you.
 spec:
-  validationActions: [Audit]
-  # While policies only audit, a Kyverno outage must not block pod creation.
+  validationActions: [Deny]
+  # One Kyverno replica: Fail would block every orders pod whenever it
+  # restarts. Ignore lets pods through while Kyverno is down (decision 0022).
   failurePolicy: Ignore
   evaluation:
     background:
@@ -22,6 +24,9 @@ spec:
         apiVersions: [v1]
         operations: [CREATE, UPDATE]
         resources: [pods]
+  matchConditions:
+    - name: orders-namespaces
+      expression: request.namespace.startsWith('orders-')
   variables:
     - name: images
       expression: >-

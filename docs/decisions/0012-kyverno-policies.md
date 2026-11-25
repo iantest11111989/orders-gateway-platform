@@ -1,6 +1,6 @@
 # 0012: Kyverno admission policies, in Audit first
 
-**Status:** Accepted, 2026-11-24
+**Status:** Accepted, 2026-11-24. `disallow-latest-tag` (in `orders-*`) and `verify-image-signatures` moved to Enforce in [0022](0022-enforce-in-orders.md).
 
 ## Context
 
