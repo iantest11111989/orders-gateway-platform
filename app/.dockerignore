@@ -1,5 +1,4 @@
-*
-!go.mod
-!go.sum
-!*.go
-*_test.go
+node_modules
+server.test.js
+k6/
+README.md

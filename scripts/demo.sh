@@ -6,7 +6,7 @@
 #   chaos        in a copy of prod: delete a pod, then drain a worker (for the
 #                demo's pods): the PodDisruptionBudget and the zone spread keep
 #                it serving
-#   gitops-revert  a bad config commit (30% of orders fail) on a demo branch
+#   gitops-revert  a bad config commit (30% of requests fail) on a demo branch
 #                that a copy of dev follows; Argo CD syncs it, then a
 #                `git revert` heals it. Needs GITHUB_TOKEN (push access to the
 #                repo Argo CD syncs from, e.g. your fork)
@@ -16,9 +16,9 @@
 #   policy       Kyverno refuses, in namespace demo, an orders-gateway image that
 #                main's app workflow didn't sign (the old staging/prod image)
 #                and a :latest image; a signed image is admitted (dry run)
-#   autoscale    in a copy of prod whose pods request 10m CPU (prod: 50m): a
-#                fixed k6 rate (AUTOSCALE_RATE, default 180/s) pushes CPU past
-#                the HPA's 70% target, it scales the Rollout from 3 to 6 pods,
+#   autoscale    in a copy of prod: a fixed k6 rate (AUTOSCALE_RATE, default
+#                20/s, 60% of it GET /work burning 10-50 ms of CPU each) pushes
+#                CPU past the HPA's 70% target, it scales from 3 to 6 pods,
 #                then back to 3 once k6 stops
 #   clean        delete the demo copy
 #
@@ -305,10 +305,10 @@ clean_branches() {
   done
 }
 
-# 5xx share of POST /orders in the demo copy over the last minute, from
-# Prometheus (the same metric the SLO and the canary analysis use).
+# 5xx share of the app's requests (/work and /echo) in the demo copy over the
+# last minute, from Prometheus (the same metric the availability SLO uses).
 error_ratio() {
-  local q='sum(rate(http_requests_total{namespace="demo",route="/orders",code=~"5.."}[1m])) / sum(rate(http_requests_total{namespace="demo",route="/orders"}[1m]))'
+  local q='sum(rate(http_requests_total{namespace="demo",route=~"/work|/echo",status=~"5.."}[1m])) / sum(rate(http_requests_total{namespace="demo",route=~"/work|/echo"}[1m]))'
   kubectl get --raw "/api/v1/namespaces/monitoring/services/kube-prometheus-stack-prometheus:9090/proxy/api/v1/query?query=$(jq -rn --arg q "$q" '$q|@uri')" 2>/dev/null |
     jq -r '.data.result[0].value[1] // "0" | tonumber * 100 | floor | tostring + "%"' 2>/dev/null || echo "?"
 }
@@ -324,7 +324,7 @@ narrate_git() { # narrate_git <commit> <settle s> <timeout s>
       synced_at=$(date +%s)
       printf '  %s  Argo CD synced %s and the pods rolled out\n' "$(date +%H:%M:%S)" "${want:0:7}" >&2
     fi
-    printf '  %s  synced %s   5xx share of POST /orders (1 min): %s\n' "$(date +%H:%M:%S)" "${rev:0:7}" "$(error_ratio)" >&2
+    printf '  %s  synced %s   5xx share of /work and /echo (1 min): %s\n' "$(date +%H:%M:%S)" "${rev:0:7}" "$(error_ratio)" >&2
     if [ -n "$synced_at" ] && [ $(( $(date +%s) - synced_at )) -ge "$settle" ]; then return 0; fi
     [ "$(date +%s)" -lt "$deadline" ] || die "Argo CD didn't sync ${want:0:7} within ${3}s (it shows ${rev:0:7})"
     sleep 10
@@ -401,7 +401,7 @@ demo_rolling_update() {
 
 demo_gitops_revert() {
   step "Demo: GitOps revert, in a copy of dev that follows a demo branch"
-  echo "  A bad config commit (FAULT_ERROR_RATE 0.3: 30% of orders return 500)"
+  echo "  A bad config commit (FAULT_ERROR_RATE 0.3: 30% of /work and /echo return 500)"
   echo "  lands on a demo branch; Argo CD syncs it and the errors show up. Then"
   echo "  \`git revert\` and Argo CD heals it. Nothing is changed by hand in the"
   echo "  cluster. Takes about 5 minutes."
@@ -430,7 +430,7 @@ demo_gitops_revert() {
   step "Committing a bad config change to $branch"
   yq -i '.config.faultErrorRate = 0.3' "$work/environments/dev/values.yaml"
   git -C "$work" -c user.name="orders-gateway demo" -c user.email="demo@localhost" \
-    commit -q -am "demo: FAULT_ERROR_RATE 0.3 in dev (30% of orders fail)"
+    commit -q -am "demo: FAULT_ERROR_RATE 0.3 in dev (30% of requests fail)"
   gitauth -C "$work" push -q origin "$branch"
   ok "pushed $(git -C "$work" log -1 --format='%h %s')"
   narrate_git "$(git -C "$work" rev-parse HEAD)" 60 400
@@ -446,7 +446,7 @@ demo_gitops_revert() {
 
   [ "${bad%\%}" -ge 10 ] 2>/dev/null || die "the bad commit didn't show up as errors (5xx share $bad)"
   [ "${good%\%}" -le 1 ] 2>/dev/null || die "errors didn't stop after the revert (5xx share $good)"
-  ok "bad commit: ${bad} of orders failed; after the revert: ${good}. Git was the only thing changed."
+  ok "bad commit: ${bad} of requests failed; after the revert: ${good}. Git was the only thing changed."
 }
 
 demo_canary() {
@@ -516,17 +516,18 @@ narrate_hpa() { # narrate_hpa <test: ge N | le N> <timeout s>
 }
 
 demo_autoscale() {
-  local rate=${AUTOSCALE_RATE:-180} min max
+  local rate=${AUTOSCALE_RATE:-20} min max
   step "Demo: autoscale in a copy of prod"
   echo "  k6 sends a fixed $rate requests/s (constant arrival rate, so the load"
-  echo "  is capped and doesn't grow with the cluster). The copy's pods request"
-  echo "  10m CPU instead of prod's 50m, so a laptop-sized load is enough. The HPA"
-  echo "  aims for 70% of the request: when the average goes over, it adds pods up"
-  echo "  to 6. When k6 stops, CPU drops and after the HPA's 5-minute scale-down"
-  echo "  window it goes back to 3. Takes about 8 minutes."
-  # Always a fresh copy: a reused one may still have prod's 50m request.
+  echo "  is capped and doesn't grow with the cluster). 60% of it is GET /work,"
+  echo "  which burns 10-50 ms of CPU on the app's single event loop: about 0.36"
+  echo "  cores across 3 pods, each requesting 100m. The HPA aims for 70% of the"
+  echo "  request: when the average goes over, it adds pods up to 6. When k6 stops,"
+  echo "  CPU drops and after the HPA's 5-minute scale-down window it goes back to"
+  echo "  3. Takes about 8 minutes."
+  # Always a fresh copy, from prod's current values.
   delete_app
-  create_app prod v1 resources.requests.cpu=10m
+  create_app prod v1
   wait_healthy v1 600
   min=$(kubectl -n "$NS" get hpa app -o jsonpath='{.spec.minReplicas}')
   max=$(kubectl -n "$NS" get hpa app -o jsonpath='{.spec.maxReplicas}')

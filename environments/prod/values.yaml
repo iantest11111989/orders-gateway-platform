@@ -26,9 +26,6 @@ podDisruptionBudget:
 topologySpread:
   enabled: true
 
-resources:
-  requests: {cpu: 50m, memory: 32Mi}
-  limits: {memory: 64Mi}
 
 # A plain Deployment named app, as the contract requires: a Rollout would
 # own the pods and leave the Deployment at 0 replicas. The canary demos

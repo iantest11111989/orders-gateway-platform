@@ -12,5 +12,3 @@ replicas: 1
 route:
   hostname: orders.dev.localtest.me
 
-config:
-  logLevel: debug

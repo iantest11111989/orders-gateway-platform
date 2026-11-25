@@ -5,12 +5,12 @@ metadata:
   labels:
     {{- include "orders-gateway.labels" . | nindent 4 }}
 data:
-  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
-  PAYMENTS_LATENCY_MS: {{ .Values.config.paymentsLatencyMs | quote }}
-  PAYMENTS_ERROR_RATE: {{ .Values.config.paymentsErrorRate | quote }}
   {{- with .Values.config.faultErrorRate }}
   FAULT_ERROR_RATE: {{ . | quote }}
   {{- end }}
   {{- with .Values.config.faultLatencyMs }}
   FAULT_LATENCY_MS: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.config.startupDelayMs }}
+  STARTUP_DELAY_MS: {{ . | quote }}
   {{- end }}

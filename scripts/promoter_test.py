@@ -30,12 +30,12 @@ def fake_github(kind="patch", runs=None, subject=f"staging: orders-gateway {TAG}
     return gh
 
 
-def fake_prometheus(minutes=60, orders=1800, avail=0.0, latency=0.001, fired=(), firing=()):
+def fake_prometheus(minutes=60, served=1800, avail=0.0, latency=0.001, fired=(), firing=()):
     def prom(q):
         if q.startswith("count_over_time"):
             return [({}, minutes)] if minutes is not None else []
         if q.startswith("sum(increase"):
-            return [({}, orders)]
+            return [({}, served)]
         if "availability" in q:
             return [({}, avail)] if avail is not None else []
         if "latency" in q:
@@ -72,6 +72,19 @@ class Gates(unittest.TestCase):
         self.assertEqual(tag, TAG)
         self.assertEqual(failing(gates), [])
         self.assertEqual(len(gates), 11)
+
+    def test_queries_use_the_apps_metrics(self):
+        # app/server.js exports app_info{version} and http_requests_total{route,method,status};
+        # the soak counts only the SLIs' routes (decision 0027) in the previous environment.
+        seen, kube_paths = [], []
+        prom = fake_prometheus()
+        evaluate(prom=lambda q: seen.append(q) or prom(q),
+                 kube=lambda p: kube_paths.append(p) or fake_kube()(p))
+        joined = "\n".join(seen)
+        self.assertIn('app_info{namespace="dev",version="%s"}' % TAG, joined)
+        self.assertIn('http_requests_total{namespace="dev",route=~"/work|/echo"}', joined)
+        self.assertNotIn("app_build_info", joined)
+        self.assertIn("/api/v1/namespaces/dev/pods?labelSelector=app.kubernetes.io%2Fname%3Dapp", kube_paths)
 
     def test_paused(self):
         _, gates = evaluate(paused=True)
@@ -122,8 +135,8 @@ class Gates(unittest.TestCase):
         self.assertEqual(failing(gates), [])
 
     def test_no_traffic(self):
-        _, gates = evaluate(prom=fake_prometheus(orders=12))
-        self.assertEqual(failing(gates), ["dev served at least 300 orders"])
+        _, gates = evaluate(prom=fake_prometheus(served=12))
+        self.assertEqual(failing(gates), ["dev served at least 300 requests"])
 
     def test_slo(self):
         _, gates = evaluate(prom=fake_prometheus(avail=0.02))
