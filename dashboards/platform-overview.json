@@ -695,7 +695,7 @@
     {
       "type": "table",
       "title": "Versions and pods",
-      "description": "Which version each environment runs and how many pods run it. During a rolling update you'll see two versions for a minute.",
+      "description": "Which version each environment runs and how many pods run it. During a rolling update you'll see two versions for a minute. Only Ready pods count: a pod draining after SIGTERM still exports app_info until it exits, and would otherwise be counted twice during a rollout.",
       "id": 10,
       "datasource": {
         "type": "prometheus",
@@ -714,7 +714,7 @@
             "uid": "prometheus"
           },
           "refId": "A",
-          "expr": "count by (namespace, version) (app_info{namespace=~\"dev|staging|prod\"})",
+          "expr": "count by (namespace, version) (app_info{namespace=~\"dev|staging|prod\"} * on (namespace, pod) group_left () (kube_pod_status_ready{condition=\"true\"} == 1))",
           "instant": true,
           "format": "table"
         }
