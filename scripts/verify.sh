@@ -28,10 +28,26 @@ else while read -r n s h; do miss "$n: ${s:-Unknown}, ${h:-Unknown}"; done <<<"$
 step "Prometheus: every scrape target up"
 if res=$(proxy monitoring kube-prometheus-stack-prometheus:9090 '/api/v1/query?query=up' 2>/dev/null); then
   total=$(jq '.data.result | length' <<<"$res")
-  down=$(jq -r '.data.result[] | select(.value[1] == "0") | "\(.metric.job) \(.metric.namespace // "-")/\(.metric.pod // .metric.instance)"' <<<"$res")
-  if [ "$total" -gt 0 ] && [ -z "$down" ]; then pass "$total targets up"
-  elif [ "$total" -eq 0 ]; then miss "Prometheus has no targets yet"
-  else while read -r t; do miss "target down: $t"; done <<<"$down"; fi
+  down=$(jq -r '.data.result[] | select(.value[1] == "0") | "\(.metric.job) \(.metric.namespace // "-") \(.metric.pod // "-") \(.metric.instance)"' <<<"$res")
+  real=0 ignored=0
+  while read -r job ns pod instance; do
+    [ -n "$job" ] || continue
+    # A pod that is gone or terminating (an old replica still draining, e.g.
+    # the Envoy proxy after its bootstrap rollout: 360 s grace period) isn't a
+    # problem with the running stack: note it, don't fail on it.
+    if [ "$pod" != "-" ]; then
+      if ! since=$(kubectl -n "$ns" get pod "$pod" -o jsonpath='{.metadata.deletionTimestamp}' 2>/dev/null); then
+        warn "target down: $job $ns/$pod: the pod is gone (ignored)"; ignored=$((ignored + 1)); continue
+      elif [ -n "$since" ]; then
+        warn "target down: $job $ns/$pod: the pod is terminating since $since (ignored)"; ignored=$((ignored + 1)); continue
+      fi
+    fi
+    if [ "$pod" = "-" ]; then miss "target down: $job $instance"; else miss "target down: $job $ns/$pod"; fi
+    real=1
+  done <<<"$down"
+  if [ "$total" -eq 0 ]; then miss "Prometheus has no targets yet"
+  elif [ "$real" -eq 0 ] && [ "$ignored" -gt 0 ]; then pass "$((total - ignored)) targets up ($ignored down on pods that are going away)"
+  elif [ "$real" -eq 0 ]; then pass "$total targets up"; fi
 else
   miss "Prometheus not reachable (monitoring/kube-prometheus-stack-prometheus)"
 fi
