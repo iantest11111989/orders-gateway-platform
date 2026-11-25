@@ -69,7 +69,7 @@ All hostnames use `*.localtest.me`, which resolves to `127.0.0.1`.
 
 ## Demos
 
-`./platform demo <name>` narrates each step in the terminal and says where to watch it. The demos run in `orders-demo`, a copy of the live `orders-prod` (canary demos) or `orders-dev` (rolling update) Application, so the real environments only ever change through Git ([decision 0020](docs/decisions/0020-demos-in-a-copy-of-prod.md)). k6 sends ~10 requests/s through the gateway while they run.
+`./platform demo <name>` narrates each step in the terminal and says where to watch it. The demos run in `orders-demo`, a copy of the live `orders-prod` (canary, chaos and autoscale) or `orders-dev` (rolling update) Application, so the real environments only ever change through Git ([decision 0020](docs/decisions/0020-demos-in-a-copy-of-prod.md)). k6 sends ~10 requests/s through the gateway while they run (`autoscale` sends more).
 
 | Demo | What happens | Time |
 | --- | --- | --- |
@@ -78,9 +78,10 @@ All hostnames use `*.localtest.me`, which resolves to `127.0.0.1`.
 | `gitops-revert` | a bad config commit (`FAULT_ERROR_RATE` 0.3) on a temporary `demo/gitops-revert-*` branch that a copy of dev follows: Argo CD syncs it and ~30% of orders fail; `git revert` heals it. Needs `GITHUB_TOKEN` with push access to the repo the cluster syncs from (your fork, `REPO_URL`); the branch is deleted afterwards | ~5 min |
 | `canary` | v1 → v2: Rollouts moves traffic 10% → 25% → 50% → 100% and the SLO analysis passes at each step | ~8 min |
 | `canary-fail` | v2 → v2-bad: the first analysis fails the SLO, Rollouts aborts and sends all traffic back to v2 | ~3 min |
+| `autoscale` | in a copy of prod whose pods request 10m CPU (prod: 50m, so a laptop-sized load is enough): k6 sends a fixed rate (`AUTOSCALE_RATE`, default 180 requests/s), CPU goes past the HPA's 70% target and it scales the Rollout from 3 to 6 pods; when k6 stops it scales back to 3 after the HPA's 5-minute scale-down window. Fails if it doesn't scale up, or isn't back at 3 within 10 minutes | ~8 min |
 | `clean` | deletes the demo copy (after an interrupted demo, or `--keep`) | |
 
-Add `--keep` to leave `orders-demo` running afterwards. Watch in the Rollouts dashboard (`https://rollouts.localtest.me/rollouts/orders-demo`), Argo CD, or Grafana. Run `./platform budget --watch 600` in a second terminal to see the peak. Still to come: `autoscale`, `policy`.
+Add `--keep` to leave `orders-demo` running afterwards. Watch in the Rollouts dashboard (`https://rollouts.localtest.me/rollouts/orders-demo`), Argo CD, or Grafana. Run `./platform budget --watch 600` in a second terminal to see the peak. Still to come: `policy`.
 
 ## Repository layout
 

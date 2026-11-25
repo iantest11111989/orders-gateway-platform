@@ -13,6 +13,10 @@
 #   canary       v1 -> v2 through the prod canary: 10% -> 25% -> 50% -> 100%,
 #                with the SLO analysis passing at every step
 #   canary-fail  v2 -> v2-bad: the analysis fails and Rollouts rolls back
+#   autoscale    in a copy of prod whose pods request 10m CPU (prod: 50m): a
+#                fixed k6 rate (AUTOSCALE_RATE, default 180/s) pushes CPU past
+#                the HPA's 70% target, it scales the Rollout from 3 to 6 pods,
+#                then back to 3 once k6 stops
 #   clean        delete the demo copy
 #
 # The demos run in orders-demo, a copy of the live orders-prod (canary demos)
@@ -32,7 +36,7 @@ APP=orders-demo NS=orders-demo HOST=orders-demo.localtest.me
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 K6_LOG=/tmp/orders-demo-k6.log
 
-usage() { die "usage: ./platform demo <rolling-update|chaos|gitops-revert|canary|canary-fail|clean> [--keep]"; }
+usage() { die "usage: ./platform demo <rolling-update|chaos|gitops-revert|canary|canary-fail|autoscale|clean> [--keep]"; }
 name=${1:-}; shift || true
 keep=; [ "${1:-}" = --keep ] && keep=1
 
@@ -128,11 +132,12 @@ delete_app() {
 
 # --- load and narration ------------------------------------------------------
 
-start_load() {
-  step "Starting k6: ~10 requests/s to https://$HOST (log: $K6_LOG)"
+start_load() { # start_load [requests/s, default 10]
+  local rate=${1:-10}
+  step "Starting k6: ~$rate requests/s to https://$HOST (log: $K6_LOG)"
   # The demo CA isn't in k6's trust store; this is the demo's own hostname.
   k6 run --quiet --insecure-skip-tls-verify --summary-mode=compact \
-    -e BASE_URL="https://$HOST" -e RATE=10 -e DURATION=30m "$ROOT/app/k6/load.js" >"$K6_LOG" 2>&1 &
+    -e BASE_URL="https://$HOST" -e RATE="$rate" -e DURATION=30m "$ROOT/app/k6/load.js" >"$K6_LOG" 2>&1 &
   K6_PID=$!
   sleep 15
   kill -0 "$K6_PID" 2>/dev/null || { cat "$K6_LOG"; die "k6 stopped (see above)"; }
@@ -479,12 +484,78 @@ demo_canary_fail() {
   esac
 }
 
+# --- autoscale helpers -------------------------------------------------------
+
+hpa_line() {
+  kubectl -n "$NS" get hpa orders-gateway -o json 2>/dev/null | jq -r '
+    "replicas \(.status.currentReplicas // "?") -> \(.status.desiredReplicas // "?") (min \(.spec.minReplicas), max \(.spec.maxReplicas))  CPU \(([.status.currentMetrics[]? | select(.type == "Resource") | .resource.current.averageUtilization][0]) // "?")% of requests (target \(.spec.metrics[0].resource.target.averageUtilization)%)"'
+}
+hpa_replicas() { kubectl -n "$NS" get hpa orders-gateway -o jsonpath='{.status.currentReplicas}' 2>/dev/null || echo 0; }
+
+# Prints the HPA whenever it changes until <test> on the current replica
+# count passes or the timeout runs out. Sets HPA_RESULT to "reached" or
+# "timeout" and keeps the highest replica count seen in PEAK (globals, so
+# call it directly, not in $(...)).
+narrate_hpa() { # narrate_hpa <test: ge N | le N> <timeout s>
+  local op=$1 want=$2 deadline=$(( $(date +%s) + $3 )) last='' line n
+  while :; do
+    line=$(hpa_line); n=$(hpa_replicas); n=${n:-0}
+    [ "$n" -gt "${PEAK:-0}" ] && PEAK=$n
+    if [ "$line" != "$last" ]; then printf '  %s  %s\n' "$(date +%H:%M:%S)" "$line" >&2; last=$line; fi
+    if [ "$op" = ge ] && [ "$n" -ge "$want" ]; then HPA_RESULT=reached; return 0; fi
+    if [ "$op" = le ] && [ "$n" -le "$want" ] && [ "$(ready_count)" -le "$want" ]; then HPA_RESULT=reached; return 0; fi
+    [ "$(date +%s)" -lt "$deadline" ] || { HPA_RESULT=timeout; return 0; }
+    sleep 5
+  done
+}
+
+demo_autoscale() {
+  local rate=${AUTOSCALE_RATE:-180} min max
+  step "Demo: autoscale in a copy of prod"
+  echo "  k6 sends a fixed $rate requests/s (constant arrival rate, so the load"
+  echo "  is capped and doesn't grow with the cluster). The copy's pods request"
+  echo "  10m CPU instead of prod's 50m, so a laptop-sized load is enough. The HPA"
+  echo "  aims for 70% of the request: when the average goes over, it adds pods up"
+  echo "  to 6. When k6 stops, CPU drops and after the HPA's 5-minute scale-down"
+  echo "  window it goes back to 3. Takes about 8 minutes."
+  # Always a fresh copy: a reused one may still have prod's 50m request.
+  delete_app
+  create_app orders-prod v1 resources.requests.cpu=10m
+  wait_healthy v1 600
+  min=$(kubectl -n "$NS" get hpa orders-gateway -o jsonpath='{.spec.minReplicas}')
+  max=$(kubectl -n "$NS" get hpa orders-gateway -o jsonpath='{.spec.maxReplicas}')
+  ok "HPA $NS/orders-gateway scales the Rollout between $min and $max pods on CPU"
+  start_load "$rate"
+  where_to_watch
+  echo "    HPA                 ./platform shell -c 'kubectl -n $NS get hpa -w'"
+
+  step "Scaling up under load"
+  PEAK=0
+  narrate_hpa ge "$max" 420
+  echo "  Pods (name, node, zone, phase):" >&2; show_pods
+  k6_summary
+  [ "$PEAK" -gt "$min" ] || die "the HPA didn't scale up (still $PEAK pods); try a higher AUTOSCALE_RATE"
+  if [ "$HPA_RESULT" = reached ]; then ok "scaled $min -> $PEAK pods under load"
+  else ok "scaled $min -> $PEAK pods (not all the way to $max at $rate requests/s; AUTOSCALE_RATE raises it)"; fi
+
+  step "Load stopped: waiting for the scale-down (the HPA waits 5 minutes before removing pods)"
+  narrate_hpa le "$min" 600
+  [ "$HPA_RESULT" = reached ] || die "the HPA didn't scale back to $min pods within 10 minutes (now $(hpa_replicas))"
+  ok "back to $min pods: $min -> $PEAK -> $min, driven only by CPU"
+  if awk -v p="${SLO_PCT:-0}" 'BEGIN { exit !(p >= 99.5) }'; then
+    ok "${SLO_PCT}% of requests met the SLO (>= 99.5%) while it scaled"
+  else
+    warn "only ${SLO_PCT:-?}% of requests met the SLO under this load (want >= 99.5%)"
+  fi
+}
+
 case "$name" in
   rolling-update) demo_rolling_update ;;
   chaos) demo_chaos ;;
   gitops-revert) demo_gitops_revert ;;
   canary) demo_canary ;;
   canary-fail) demo_canary_fail ;;
+  autoscale) demo_autoscale ;;
   clean) delete_app; clean_branches; exit 0 ;;
   *) usage ;;
 esac
