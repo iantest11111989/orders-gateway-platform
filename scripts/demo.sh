@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
 # ./platform demo <name> [--keep]: narrated demos (brief, section 11).
 #
+#   rolling-update  v1 -> v2 in a copy of dev (3 replicas): pods replace one
+#                at a time and k6 sees no errors
 #   canary       v1 -> v2 through the prod canary: 10% -> 25% -> 50% -> 100%,
 #                with the SLO analysis passing at every step
 #   canary-fail  v2 -> v2-bad: the analysis fails and Rollouts rolls back
 #   clean        delete the demo copy
 #
-# The demos run in orders-demo, a copy of prod made from the live orders-prod
-# Argo CD Application: same chart, same environments/prod/values.yaml, same
-# ignoreDifferences and sync options. Only the name, namespace, hostname
-# (orders-demo.localtest.me) and the image under test differ. Real prod only
-# ever changes through Git, and reviewers can't push to this repo (decision
-# 0020). k6 sends ~10 requests/s through the gateway the whole time, so the
-# analysis has traffic to judge. --keep leaves the copy running afterwards.
+# The demos run in orders-demo, a copy of the live orders-prod (canary demos)
+# or orders-dev (rolling-update) Argo CD Application: same chart, same values
+# file, same ignoreDifferences and sync options. Only the name, namespace,
+# hostname (orders-demo.localtest.me), the image under test and, for
+# rolling-update, the replica count (3, so there's something to roll)
+# differ. The real environments only ever change through Git, and reviewers
+# can't push to this repo (decision 0020). k6 sends ~10 requests/s through
+# the gateway the whole time, so the analysis has traffic to judge. --keep
+# leaves the copy running afterwards.
 # Runs in the toolbox.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -21,7 +25,7 @@ APP=orders-demo NS=orders-demo HOST=orders-demo.localtest.me
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 K6_LOG=/tmp/orders-demo-k6.log
 
-usage() { die "usage: ./platform demo <canary|canary-fail|clean> [--keep]"; }
+usage() { die "usage: ./platform demo <rolling-update|canary|canary-fail|clean> [--keep]"; }
 name=${1:-}; shift || true
 keep=; [ "${1:-}" = --keep ] && keep=1
 
@@ -29,23 +33,34 @@ keep=; [ "${1:-}" = --keep ] && keep=1
 
 app_exists() { kubectl -n argocd get applications.argoproj.io "$APP" >/dev/null 2>&1; }
 
-create_app() { # create_app <image tag>
-  step "Creating $APP: a copy of the orders-prod Application, image $1"
-  kubectl -n argocd get applications.argoproj.io orders-prod -o json | jq --arg app "$APP" --arg ns "$NS" \
-    --arg host "$HOST" --arg tag "$1" '
+app_source() { kubectl -n argocd get applications.argoproj.io "$APP" -o jsonpath='{.metadata.labels.demo-source}' 2>/dev/null; }
+
+create_app() { # create_app <source app> <image tag> [helm-param=value ...]
+  local src=$1 tag=$2; shift 2
+  step "Creating $APP: a copy of the $src Application, image $tag"
+  kubectl -n argocd get applications.argoproj.io "$src" -o json | jq --arg app "$APP" --arg ns "$NS" \
+    --arg host "$HOST" --arg tag "$tag" --arg src "$src" --args '
     {apiVersion, kind,
      metadata: {name: $app, namespace: "argocd",
-                labels: {"app.kubernetes.io/part-of": "orders-gateway-platform", "demo": "true"},
+                labels: {"app.kubernetes.io/part-of": "orders-gateway-platform", "demo": "true", "demo-source": $src},
                 # deleting the Application deletes what it created
                 finalizers: ["resources-finalizer.argocd.argoproj.io"]},
      spec: (.spec
        | .destination.namespace = $ns
-       | .source.helm.parameters = [
+       | .source.helm.parameters = ([
            {name: "route.hostname", value: $host},
            {name: "image.tag", value: $tag},
-           {name: "image.digest", value: ""}])}' |
+           {name: "image.digest", value: ""}]
+           + ($ARGS.positional | map(split("=") | {name: .[0], value: (.[1:] | join("="))}))))}' "$@" |
     kubectl apply -f - >/dev/null
   ok "Argo CD Application argocd/$APP (namespace $NS, https://$HOST)"
+}
+
+# ensure_app <source app> <tag> [params...]: reuse the copy if it already
+# comes from <source> and runs <tag>, otherwise make a fresh one.
+ensure_app() {
+  if app_exists && [ "$(app_source)" = "$1" ] && [ "$(current_tag)" = "$2" ]; then ok "$APP already a copy of $1 on $2"
+  else delete_app; create_app "$@"; fi
 }
 
 set_image() { # set_image <tag>
@@ -54,31 +69,40 @@ set_image() { # set_image <tag>
     jq --arg tag "$1" '.spec.source.helm.parameters |= map(if .name == "image.tag" then .value = $tag else . end)
                        | {spec: {source: {helm: {parameters: .spec.source.helm.parameters}}}}' |
     kubectl -n argocd patch applications.argoproj.io "$APP" --type merge --patch-file /dev/stdin >/dev/null
-  ok "Git-equivalent change: $APP now wants orders-gateway:$1 (Argo CD syncs it, Rollouts starts a canary)"
+  local how="the Deployment rolls its pods"
+  kubectl -n "$NS" get rollout orders-gateway >/dev/null 2>&1 && how="Rollouts starts a canary"
+  ok "Git-equivalent change: $APP now wants orders-gateway:$1 (Argo CD syncs it, $how)"
 }
 
 current_tag() { kubectl -n argocd get applications.argoproj.io "$APP" -o json 2>/dev/null | jq -r '.spec.source.helm.parameters[]? | select(.name == "image.tag") | .value'; }
 
 wait_healthy() { # wait_healthy <tag> <timeout s>
-  local deadline=$(( $(date +%s) + $2 )) s phase img
+  local deadline=$(( $(date +%s) + $2 )) s ready
   while :; do
     s=$(kubectl -n argocd get applications.argoproj.io "$APP" -o jsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null || true)
-    phase=$(kubectl -n "$NS" get rollout orders-gateway -o jsonpath='{.status.phase}' 2>/dev/null || true)
-    img=$(kubectl -n "$NS" get rollout orders-gateway -o jsonpath='{.status.stableRS}' 2>/dev/null || true)
-    if [ "$s" = Synced/Healthy ] && [ "$phase" = Healthy ] && [ -n "$img" ]; then
+    if kubectl -n "$NS" get rollout orders-gateway >/dev/null 2>&1; then
+      # prod copy: the Rollout is Healthy and has a stable ReplicaSet
+      ready=$(kubectl -n "$NS" get rollout orders-gateway -o jsonpath='{.status.phase}/{.status.stableRS}' 2>/dev/null | grep -E '^Healthy/.+' || true)
+    else
+      # dev copy: every Deployment replica updated and available
+      ready=$(kubectl -n "$NS" get deployment orders-gateway -o json 2>/dev/null |
+        jq -r 'select(.status.observedGeneration >= .metadata.generation and (.status.updatedReplicas // 0) == .spec.replicas and (.status.availableReplicas // 0) == .spec.replicas and ((.status.replicas // 0) == .spec.replicas)) | "ok"' || true)
+    fi
+    if [ "$s" = Synced/Healthy ] && [ -n "$ready" ]; then
       ok "$APP Synced and Healthy, every pod on $1"; return 0
     fi
-    [ "$(date +%s)" -lt "$deadline" ] || die "$APP not Healthy after ${2}s (app $s, rollout ${phase:-none})"
+    [ "$(date +%s)" -lt "$deadline" ] || die "$APP not Healthy after ${2}s (app ${s:-?})"
     sleep 5
   done
 }
 
 delete_app() {
   app_exists || { ok "no $APP to delete"; return 0; }
+  local src; src=$(app_source)
   step "Deleting $APP (the Application and everything it created)"
   kubectl -n argocd delete applications.argoproj.io "$APP" --wait=true --timeout=180s >/dev/null
   kubectl delete namespace "$NS" --ignore-not-found --wait=false >/dev/null
-  ok "deleted; real prod (orders-prod) was never touched"
+  ok "deleted; the real ${src:-environment} was never touched"
 }
 
 # --- load and narration ------------------------------------------------------
@@ -97,10 +121,15 @@ start_load() {
 
 where_to_watch() {
   echo "  Watch it live:"
-  echo "    Rollouts dashboard  https://rollouts.localtest.me/rollouts/$NS"
+  kubectl -n "$NS" get rollout orders-gateway >/dev/null 2>&1 &&
+    echo "    Rollouts dashboard  https://rollouts.localtest.me/rollouts/$NS"
   echo "    Argo CD             https://argocd.localtest.me/applications/argocd/$APP"
   echo "    Grafana             https://grafana.localtest.me (orders-gateway dashboard, namespace $NS)"
-  echo "    Terminal            ./platform shell -c 'kubectl argo rollouts get rollout orders-gateway -n $NS --watch'"
+  if kubectl -n "$NS" get rollout orders-gateway >/dev/null 2>&1; then
+    echo "    Terminal            ./platform shell -c 'kubectl argo rollouts get rollout orders-gateway -n $NS --watch'"
+  else
+    echo "    Terminal            ./platform shell -c 'kubectl -n $NS get pods -w'"
+  fi
 }
 
 # Prints one line whenever the step, weights, analysis or phase change, until
@@ -139,17 +168,57 @@ k6_summary() {
   # e.g. "orders_slo_good......: 99.91% 4021 out of 4025"
   slo=$(grep -m1 -E 'orders_slo_good\.+:' "$K6_LOG" | sed -E 's/^[^:]*:[[:space:]]*//' || true)
   ok "k6 sent traffic the whole time; requests meeting the SLO: ${slo:-see $K6_LOG}"
+  SLO_PCT=$(sed -E 's/%.*//' <<<"${slo:-}")
+}
+
+# One line per change in the Deployment's rollout: new ReplicaSet ready, old
+# ReplicaSet still serving, until every replica runs the new version.
+narrate_rolling() { # narrate_rolling <generation before the change> <timeout s>
+  local gen0=$1 deadline=$(( $(date +%s) + $2 )) last='' line st
+  while :; do
+    st=$(kubectl -n "$NS" get deployment orders-gateway -o json 2>/dev/null)
+    line=$(jq -r '"updated \(.status.updatedReplicas // 0)/\(.spec.replicas)  ready \(.status.readyReplicas // 0)  total pods \(.status.replicas // 0)  unavailable \(.status.unavailableReplicas // 0)"' <<<"$st")
+    if [ "$line" != "$last" ]; then printf '  %s  %s\n' "$(date +%H:%M:%S)" "$line" >&2; last=$line; fi
+    # Finished only once a newer generation (the image change) has rolled out.
+    if jq -e --argjson g0 "$gen0" 'select(.metadata.generation > $g0 and .status.observedGeneration >= .metadata.generation and (.status.updatedReplicas // 0) == .spec.replicas and (.status.availableReplicas // 0) == .spec.replicas and (.status.replicas // 0) == .spec.replicas)' <<<"$st" >/dev/null; then
+      echo finished; return 0
+    fi
+    [ "$(date +%s)" -lt "$deadline" ] || { echo timeout; return 0; }
+    sleep 2
+  done
 }
 
 # --- demos -------------------------------------------------------------------
+
+demo_rolling_update() {
+  step "Demo: rolling update v1 -> v2 in a copy of dev"
+  echo "  The Deployment replaces its 3 pods one at a time (maxSurge 1,"
+  echo "  maxUnavailable 0): a new pod must pass its readiness probe before an old"
+  echo "  one drains (5 s) and stops. k6 keeps sending traffic. Takes about 1 minute."
+  ensure_app orders-dev v1 replicas=3
+  wait_healthy v1 600
+  start_load
+  where_to_watch
+  step "Rolling out v2"
+  gen0=$(kubectl -n "$NS" get deployment orders-gateway -o jsonpath='{.metadata.generation}')
+  set_image v2
+  result=$(narrate_rolling "$gen0" 300)
+  sleep 15 # let k6 run against the new pods for a moment before stopping it
+  k6_summary
+  [ "$result" = finished ] || die "the rolling update didn't finish (result: $result)"
+  if awk -v p="${SLO_PCT:-0}" 'BEGIN { exit !(p >= 99.5) }'; then
+    ok "every pod replaced with v2; ${SLO_PCT}% of requests met the SLO (>= 99.5%)"
+  else
+    die "requests failed during the rolling update: only ${SLO_PCT:-?}% met the SLO (want >= 99.5%)"
+  fi
+}
 
 demo_canary() {
   step "Demo: canary v1 -> v2 in a copy of prod"
   echo "  Rollouts moves traffic 10% -> 25% -> 50% -> 100% through the HTTPRoute,"
   echo "  and after each step asks Prometheus whether the canary meets the SLO"
   echo "  (5xx ratio <= 0.5%, p99 < 300 ms). Takes about 10 minutes."
-  if app_exists && [ "$(current_tag)" = v1 ]; then ok "$APP already on v1"
-  else delete_app; create_app v1; fi
+  ensure_app orders-prod v1
   wait_healthy v1 600
   start_load
   where_to_watch
@@ -167,8 +236,7 @@ demo_canary_fail() {
   step "Demo: canary-fail v2 -> v2-bad in a copy of prod"
   echo "  v2-bad injects errors and latency. The first analysis fails the SLO,"
   echo "  Rollouts aborts, and all traffic goes back to v2. Takes about 3 minutes."
-  if app_exists && [ "$(current_tag)" = v2 ]; then ok "$APP already on v2"
-  else delete_app; create_app v2; fi
+  ensure_app orders-prod v2
   wait_healthy v2 600
   start_load
   where_to_watch
@@ -187,6 +255,7 @@ demo_canary_fail() {
 }
 
 case "$name" in
+  rolling-update) demo_rolling_update ;;
   canary) demo_canary ;;
   canary-fail) demo_canary_fail ;;
   clean) delete_app; exit 0 ;;

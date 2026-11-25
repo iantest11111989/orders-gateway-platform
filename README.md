@@ -63,15 +63,16 @@ All hostnames use `*.localtest.me`, which resolves to `127.0.0.1`.
 
 ## Demos
 
-`./platform demo <name>` narrates each step in the terminal and says where to watch it. The canary demos run in `orders-demo`, a copy of prod made from the live `orders-prod` Application, so real prod only ever changes through Git ([decision 0020](docs/decisions/0020-demos-in-a-copy-of-prod.md)). k6 sends ~10 requests/s through the gateway while they run.
+`./platform demo <name>` narrates each step in the terminal and says where to watch it. The demos run in `orders-demo`, a copy of the live `orders-prod` (canary demos) or `orders-dev` (rolling update) Application, so the real environments only ever change through Git ([decision 0020](docs/decisions/0020-demos-in-a-copy-of-prod.md)). k6 sends ~10 requests/s through the gateway while they run.
 
 | Demo | What happens | Time |
 | --- | --- | --- |
+| `rolling-update` | v1 → v2 in a 3-replica copy of dev: pods replace one at a time (`maxSurge: 1`, `maxUnavailable: 0`), and the demo fails if fewer than 99.5% of k6's requests meet the SLO | ~2 min |
 | `canary` | v1 → v2: Rollouts moves traffic 10% → 25% → 50% → 100% and the SLO analysis passes at each step | ~8 min |
 | `canary-fail` | v2 → v2-bad: the first analysis fails the SLO, Rollouts aborts and sends all traffic back to v2 | ~3 min |
 | `clean` | deletes the demo copy (after an interrupted demo, or `--keep`) | |
 
-Add `--keep` to leave `orders-demo` running afterwards. Watch in the Rollouts dashboard (`https://rollouts.localtest.me/rollouts/orders-demo`), Argo CD, or Grafana. Run `./platform budget --watch 600` in a second terminal to see the peak. Still to come: `rolling-update`, `autoscale`, `chaos`, `policy`, `gitops-revert`.
+Add `--keep` to leave `orders-demo` running afterwards. Watch in the Rollouts dashboard (`https://rollouts.localtest.me/rollouts/orders-demo`), Argo CD, or Grafana. Run `./platform budget --watch 600` in a second terminal to see the peak. Still to come: `autoscale`, `chaos`, `policy`, `gitops-revert`.
 
 ## Repository layout
 
