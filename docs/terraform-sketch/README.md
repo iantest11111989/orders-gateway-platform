@@ -1,0 +1,32 @@
+# Terraform sketch: the platform on EKS
+
+**A sketch, never applied or validated.** It answers the assignment's stretch item: what changes between the local kind cluster and a real cloud deployment. It shows the shape and the choices, not a tested module.
+
+What Terraform does here, and what it deliberately doesn't:
+
+| Terraform owns | Argo CD keeps owning (unchanged from `gitops/`) |
+| --- | --- |
+| VPC across 3 zones, private subnets, NAT | Every platform component: Prometheus, Loki, Kyverno, cert-manager, Envoy Gateway, ... |
+| EKS: private API endpoint, SSO access entries, add-ons (VPC CNI with network policy, EBS CSI) | The app in dev, staging and prod, from `environments/*/values.yaml` |
+| Two node groups: `platform` (tainted) and `apps` | Promotion by Git change, self-heal and prune |
+| IAM roles for service accounts: cert-manager (DNS-01), ExternalDNS, the AWS Load Balancer Controller, External Secrets | |
+| An ECR pull-through cache of GHCR | |
+| Argo CD and the root Application, the only two things installed by hand today (`./platform up`) | |
+
+The line between them matters: Terraform changes slowly and needs a plan reviewed; Argo CD reconciles every minute. Putting the app's Helm releases in Terraform would give two owners for the same objects.
+
+How it maps to the local stack:
+
+| Local (kind, `docker compose up`) | EKS (this sketch) |
+| --- | --- |
+| kind: 1 control plane + 2 workers, two fake zones | EKS's managed control plane, nodes in 3 real zones |
+| One cluster, three namespaces | prod in its own cluster (`env = "prod"`), dev and staging sharing one |
+| Envoy on NodePorts mapped to `127.0.0.1` | Envoy Gateway behind an NLB from the AWS Load Balancer Controller, 2+ proxy replicas |
+| Demo CA, `*.localtest.me` | Let's Encrypt via DNS-01 (cert-manager with its IAM role), ExternalDNS writing Route 53 |
+| Sealed Secrets with a demo key in Git | External Secrets reading AWS Secrets Manager (`ogp/<env>/*`) |
+| `local-path` storage | EBS volumes (gp3) for Prometheus, Loki and Grafana |
+| In-stack Git server (soft-serve) | GitHub, with the patch promoter and PR approvals for prod |
+| `kind load` for `./platform ship` | Only CI-built, signed images from GHCR (through ECR); `localhost/` is not admitted |
+| `admin` / `admin12345` | SSO for Argo CD, Grafana and the cluster (access entries) |
+
+Not here, and needed before this is real: remote state bootstrap (the S3 bucket itself), Karpenter or the cluster autoscaler, a GitHub App for the promoter instead of a token, Prometheus long-term storage (Thanos or Amazon Managed Prometheus), and a `terraform plan` in CI with the plan posted on the PR.
