@@ -12,9 +12,11 @@ policies:
   - ../require-non-root-readonly.yaml
   - ../restrict-image-registries.yaml
   - ../standard-labels.yaml
+  - ../verify-image-signatures.yaml
 resources:
   - resources.yaml
   - mutate-resource.yaml
+  - signature-resources.yaml
 results:
   - policy: disallow-latest-tag
     resources: [good-pod, bad-registry, bad-root]
@@ -79,3 +81,15 @@ results:
     kind: Pod
     patchedResources: mutate-patched.yaml
     result: pass
+
+  # Needs network: it fetches real signatures from GHCR and Sigstore's trust
+  # root. signed-app is a digest that main's `sign` job signed (#19);
+  # unsigned-app is the digest published before signing existed.
+  - policy: verify-image-signatures
+    resources: [signed-app, other-image]
+    kind: Pod
+    result: pass
+  - policy: verify-image-signatures
+    resources: [unsigned-app]
+    kind: Pod
+    result: fail
