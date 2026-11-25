@@ -33,3 +33,4 @@ Records are not edited after they are accepted. If a decision changes, add a new
 | [0018](0018-sealed-secrets.md) | Sealed Secrets with a committed demo key; no plain Secrets in Git | Accepted |
 | [0019](0019-rescan-running-images.md) | Daily rescan of the images the environments run | Accepted |
 | [0020](0020-demos-in-a-copy-of-prod.md) | The canary demos run in a copy of prod | Accepted |
+| [0021](0021-trivy-operator.md) | Trivy Operator in the cluster, trimmed to fit the budget | Accepted |
