@@ -205,6 +205,28 @@ jobs:
           exit 1
       # The Application health check the root's sync waves rely on (#31).
       - run: ./platform shell scripts/test-argocd-health.sh
+      # The README's "ship a new version" and "roll back", while traffic flows
+      # (decision 0030): a request loop against prod at :8080 for the whole
+      # time; any non-200 fails the step.
+      - name: ship and roll back while traffic flows
+        run: |
+          # A known baseline first: environments/prod may pin an older image.
+          ./platform ship ci-ship-0
+          before=ci-ship-0
+          : >"$RUNNER_TEMP/codes"
+          (while [ ! -f "$RUNNER_TEMP/stop" ]; do
+             curl -s -o /dev/null -w '%{http_code}\n' --max-time 5 'http://localhost:8080/work?ms=5' >>"$RUNNER_TEMP/codes"
+             sleep 0.1
+           done) &
+          ./platform ship ci-ship-1
+          test "$(curl -s http://localhost:8080/version | jq -r '.version // empty')" = ci-ship-1
+          ./platform rollback
+          test "$(curl -s http://localhost:8080/version | jq -r '.version // empty')" = "$before"
+          touch "$RUNNER_TEMP/stop"; wait
+          total=$(grep -c . "$RUNNER_TEMP/codes"); bad=$(grep -vc '^200$' "$RUNNER_TEMP/codes" || true)
+          echo "requests during ship + rollback: $total, not 200: $bad"
+          sort "$RUNNER_TEMP/codes" | uniq -c
+          [ "$bad" -eq 0 ]
       # Measured CPU/memory against the 6 CPU / 12 GiB budget, plus OOM kills.
       - run: ./platform budget --watch 30
       # Refresh the image cache from main when the set of images changed (a

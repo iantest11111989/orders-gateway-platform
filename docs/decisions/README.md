@@ -42,3 +42,4 @@ Records are not edited after they are accepted. If a decision changes, add a new
 | [0027](0027-slis-for-the-node-app.md) | SLIs for the Node app (latency on /echo and /version, not /work), and bounded route cardinality | Accepted |
 | [0028](0028-contract-ports-on-the-gateway.md) | The contract's ports go through the existing Envoy Gateway | Accepted |
 | [0029](0029-in-stack-git-server.md) | Argo CD syncs from an in-stack Git server holding this checkout | Accepted |
+| [0030](0030-ship-and-rollback.md) | Ship and roll back by Git change, with a local image | Accepted |
