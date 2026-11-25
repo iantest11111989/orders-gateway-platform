@@ -67,6 +67,14 @@ if [ "$over" -ne 0 ]; then
   die "nodes advertise more than their cap, so pods could be OOM-killed. This cluster was created before reservations were added; recreate it: ./platform down && ./platform up"
 fi
 
+# CI only (PRELOAD_IMAGES, set by .github/workflows/platform.yml): import the
+# cached images before Argo CD starts pulling, so a cold start doesn't hinge
+# on every registry answering. Best effort; scripts/images.sh explains.
+if [ -n "${PRELOAD_IMAGES:-}" ]; then
+  step "Loading the image cache ($PRELOAD_IMAGES)"
+  bash "$(dirname "$0")/images.sh" load "$PRELOAD_IMAGES" || warn "image cache not loaded; images will be pulled"
+fi
+
 step "Waiting for system pods"
 kubectl -n kube-system wait --for=condition=Ready pods --all --timeout=180s >/dev/null
 ok "kube-system healthy"
