@@ -1,16 +1,13 @@
 # dev: deployed automatically from main. Overrides charts/orders-gateway/values.yaml.
 env: dev
-
 image:
   # Set by CI (job promote-dev in .github/workflows/app.yml, decision 0014) after every
   # merge to main that publishes and signs a new image. Do not edit by hand.
   tag: sha-d5d3d8f966ab
   digest: sha256:4d29d22e316ab10b7f8c99f7963f1115ce27726afc5f4286e17cde01c221d572
-
 replicas: 1
-
 route:
   hostname: orders.dev.localtest.me
-
 config:
   logLevel: debug
+  faultErrorRate: 0.3
