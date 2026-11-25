@@ -14,6 +14,9 @@
 #                         the demo copy of prod)
 #   ./platform shell [script]  open a shell (or run a script) in the toolbox
 #   ./platform kubectl …  run kubectl in the toolbox
+#   ./platform ship [--env ENV] [TAG]  build app/, load it into kind, roll it
+#                         out by Git change (default prod; decision 0030)
+#   ./platform rollback [--env ENV]  back to the image before the last change
 #   ./platform promoter-token save|load|forget  keep the patch promoter's
 #                         GitHub token in the macOS Keychain: save copies it
 #                         from the cluster, load puts it back (up does this
@@ -34,7 +37,7 @@ TOOLBOX_REPO=ghcr.io/iantest11111989/orders-gateway-platform-toolbox
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -151,8 +154,9 @@ case "$cmd" in
     check_docker
     TOOLBOX_EXEC='' run_toolbox bash scripts/up.sh "$@"
     promoter_token_load ;;
-  doctor|down|urls|verify|budget|demo)
+  doctor|down|urls|verify|budget|demo|ship|rollback)
     check_docker
+    case "$cmd" in ship|rollback) set -- "$cmd" "$@"; cmd=ship ;; esac
     run_toolbox bash "scripts/$cmd.sh" "$@" ;;
   promoter-token)
     check_docker

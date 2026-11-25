@@ -113,6 +113,22 @@ docs/learn/             hands-on exercises
 .github/workflows/      CI
 ```
 
+## Ship a new version, roll it back
+
+From the repo root, with the platform up (decision [0030](docs/decisions/0030-ship-and-rollback.md)):
+
+```sh
+# Optional, in a second terminal: traffic on prod while you do it
+while true; do curl -s -o /dev/null -w '%{http_code} ' 'http://localhost:8080/work?ms=20'; sleep 0.2; done
+
+./platform ship            # build app/, load it into kind, roll prod out to it
+./platform rollback        # back to the image prod ran before
+```
+
+`ship` builds `app/` as `localhost/orders-gateway:local-<timestamp>` (or `./platform ship <tag>`), loads it into every kind node, sets it in `environments/prod/values.yaml`, and pushes your checkout to the in-stack Git server. Argo CD then rolls prod over one pod at a time, never below full capacity. `rollback` puts back the image prod ran before the current one first appeared (so a second `rollback` goes further back rather than undoing the first) and ships it the same way. Both wait for the rollout and print the pods by version, `http://localhost:8080/version`, and the 5-minute availability SLO. Watch it in Grafana's **orders-gateway** dashboard (**Pods by version**, and the version-change annotation). `--env dev|staging` targets another environment.
+
+These are Git changes on purpose: `kubectl set image` or `kubectl rollout undo` would be reverted by Argo CD within seconds. The edit to `environments/prod/values.yaml` stays in your checkout to commit or revert.
+
 ## Architecture
 
 ```mermaid
