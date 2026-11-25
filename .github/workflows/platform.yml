@@ -139,7 +139,20 @@ jobs:
         with:
           persist-credentials: false
       - run: ./platform doctor # runners have 4 CPUs: a warning, not a failure
+      # The images a recent run on main used, so a cold start doesn't hinge on
+      # every registry answering (ECR Public 429s, ErrImagePull; see
+      # scripts/images.sh). The key never matches exactly: restore-keys picks
+      # the newest cache for this runner's architecture.
+      - name: Restore the image cache
+        id: images
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/images
+          key: images-v1-${{ runner.arch }}-${{ github.run_id }}
+          restore-keys: images-v1-${{ runner.arch }}-
       - run: ./platform up
+        env:
+          PRELOAD_IMAGES: .cache/images
       # A cold start is mostly image pulls (nothing is cached on a runner),
       # so list the slowest: a slow `up` can be explained from this log.
       - name: Slowest image pulls
@@ -183,6 +196,33 @@ jobs:
       - run: ./platform shell scripts/test-argocd-health.sh
       # Measured CPU/memory against the 6 CPU / 12 GiB budget, plus OOM kills.
       - run: ./platform budget --watch 30
+      # Refresh the image cache from main when the set of images changed (a
+      # chart or image bump). Only main and manual runs save: PR caches are
+      # scoped to their branch and would only crowd out main's (10 GB cap).
+      - name: Image cache up to date?
+        id: imagelist
+        if: github.event_name != 'pull_request'
+        run: |
+          # The same list scripts/images.sh save writes (tagged images, kind's
+          # own left out), so the key changes exactly when the cache would.
+          ./platform shell scripts/images.sh list >"$RUNNER_TEMP/images.txt"
+          key="images-v1-${RUNNER_ARCH}-$(sha256sum "$RUNNER_TEMP/images.txt" | cut -c1-16)"
+          echo "key=$key" >>"$GITHUB_OUTPUT"
+          if [ "$key" = "${{ steps.images.outputs.cache-matched-key }}" ]; then
+            echo "the restored cache ($key) already has these images"
+          else
+            echo "save=1" >>"$GITHUB_OUTPUT"
+            echo "image set changed: restored '${{ steps.images.outputs.cache-matched-key }}', now $key"
+          fi
+      - name: Build the image cache
+        if: steps.imagelist.outputs.save == '1'
+        run: ./platform shell scripts/images.sh save .cache/images
+      - name: Save the image cache
+        if: steps.imagelist.outputs.save == '1'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/images
+          key: ${{ steps.imagelist.outputs.key }}
       # On failure, show why: pods that aren't ready, their descriptions
       # (image pulls, probes, OOM) and recent events. Best effort: the cluster
       # may not exist if `up` failed early.
