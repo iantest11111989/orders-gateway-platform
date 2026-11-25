@@ -24,11 +24,15 @@ git clone https://github.com/iantest11111989/orders-gateway-platform.git
 cd orders-gateway-platform
 ./platform doctor   # check Docker, CPU, memory, disk and ports
 ./platform up       # create the cluster (safe to re-run)
+./platform verify   # check apps, scrape targets, logs, HTTPS and policies
+./platform urls     # every URL and login
+./platform budget   # measured CPU and memory against the 6 CPU / 12 GiB budget
+./platform demo canary   # and the other demos below
 ./platform shell    # a shell with kubectl, helm, argocd, k6, ... pointed at the cluster
 ./platform down     # delete it all (safe to re-run)
 ```
 
-Today `up` creates the kind cluster (1 control plane + 2 workers), installs Argo CD and hands it the root Application, then waits until every Application is Synced and Healthy. That takes about 80 seconds from a clean machine with images cached. From then on Argo CD manages everything, including itself, from Git. `./platform urls` prints the Argo CD login. `./platform verify` then checks the running stack: every Application Synced and Healthy, every Prometheus target up, logs in Loki from every namespace, HTTPS on every hostname, and Kyverno flagging a bad manifest. `./platform budget` measures what the cluster uses against the 6 CPU / 12 GiB budget (`--watch 120` reports the peak while something runs). `demo` arrives in the next pull requests.
+`up` creates the kind cluster (1 control plane + 2 workers), installs Argo CD and hands it the root Application, then waits until every Application is Synced and Healthy. From then on Argo CD manages everything, including itself, from Git, in sync waves (CRDs, then controllers, then observability, policies and the gateway, then the apps). From a clean machine that takes about 6–7 minutes, most of it pulling images (358–427 s in the nightly end-to-end run on fresh GitHub runners). `./platform verify` then checks the running stack: every Application Synced and Healthy, every Prometheus target up, logs in Loki from every namespace, HTTPS on every hostname, and Kyverno flagging a bad manifest. `./platform budget` measures what the cluster uses against the 6 CPU / 12 GiB budget (`--watch 120` reports the peak while something runs).
 
 To run from your fork or a branch: `REPO_URL=https://github.com/<you>/orders-gateway-platform.git REVISION=my-branch ./platform up`.
 
@@ -36,7 +40,7 @@ To run from your fork or a branch: `REPO_URL=https://github.com/<you>/orders-gat
 
 > **Security note:** the toolbox mounts the Docker socket so kind can create its node containers. That gives it root-equivalent access to your Docker host, which is normal for kind but worth knowing. Run it on a machine you control. With Colima, keep the checkout inside your home folder.
 
-## What's inside _(coming)_
+## What's inside
 
 | Area | Choice |
 | --- | --- |
@@ -54,12 +58,14 @@ To run from your fork or a branch: `REPO_URL=https://github.com/<you>/orders-gat
 | CI and updates | GitHub Actions, Renovate |
 | Environments | dev, staging, prod namespaces |
 
-## URLs _(coming)_
+## URLs
 
 All hostnames use `*.localtest.me`, which resolves to `127.0.0.1`.
 
 - `https://orders.dev.localtest.me`, `https://orders.staging.localtest.me`, `https://orders.localtest.me`
 - `https://argocd.localtest.me`, `https://grafana.localtest.me`, `https://prometheus.localtest.me`, `https://alertmanager.localtest.me`, `https://rollouts.localtest.me`
+
+`./platform urls` prints them with the logins (Argo CD's admin password, and Grafana's, which comes from a SealedSecret) and how to trust the demo CA.
 
 ## Demos
 
