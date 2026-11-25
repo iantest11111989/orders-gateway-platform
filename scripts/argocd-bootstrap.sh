@@ -47,15 +47,16 @@ drift_report() {
   kubectl -n argocd get applications.argoproj.io "$1" -o jsonpath='{range .status.resources[?(@.status=="OutOfSync")]}    {.group}/{.kind} {.namespace}/{.name}{"\n"}{end}' 2>/dev/null || true
 }
 while :; do
-  # name sync health, one line per Application
+  # name sync health operation-phase, one line per Application
   status=$(kubectl -n argocd get applications.argoproj.io \
-    -o jsonpath='{range .items[*]}{.metadata.name} {.status.sync.status} {.status.health.status}{"\n"}{end}' 2>/dev/null || true)
+    -o jsonpath='{range .items[*]}{.metadata.name} {.status.sync.status} {.status.health.status} {.status.operationState.phase}{"\n"}{end}' 2>/dev/null || true)
   now=$(( $(date +%s) - start ))
-  while read -r name sync health; do
+  while read -r name sync health phase; do
     [ -n "$name" ] || continue
     [ -n "${seen_at[$name]:-}" ] || seen_at[$name]=$now
     if [ "$sync" = Synced ] && [ "$health" = Healthy ] && [ -z "${healthy_at[$name]:-}" ]; then healthy_at[$name]=$now; fi
-    if [ "$health" = Healthy ] && [ "$sync" != Synced ]; then
+    # Skip apps still in a sync (root works through its waves this way).
+    if [ "$health" = Healthy ] && [ "$sync" != Synced ] && [ "${phase:-}" != Running ]; then
       [ -n "${drift_since[$name]:-}" ] || drift_since[$name]=$now
       if [ -z "${drift_logged[$name]:-}" ] && [ $(( now - drift_since[$name] )) -ge 30 ]; then
         drift_logged[$name]=1
@@ -72,7 +73,7 @@ while :; do
     break
   fi
   if [ "$(date +%s)" -ge "$deadline" ]; then
-    while read -r name sync health; do
+    while read -r name sync health _; do
       if [ "$sync" = Synced ] && [ "$health" = Healthy ]; then ok "$name: Synced, Healthy $(timing "$name")"; else fail "$name: ${sync:-Unknown}, ${health:-Unknown} $(timing "$name")"; fi
     done <<<"$status"
     die "not every Application became Synced and Healthy in ${APPS_TIMEOUT}s. Inspect with: ./platform kubectl -n argocd get applications"
