@@ -95,7 +95,7 @@ The app has a bucket at exactly 0.3 s because the latency SLO is "under 300 ms".
    sum(rate(http_request_duration_seconds_count{namespace="orders-dev", route="/orders", method="POST"}[5m]))
    ```
 
-The SLO rules in [`alerts/orders-gateway-slo.yaml`](../../alerts/orders-gateway-slo.yaml) are built from exactly these queries, saved as recording rules. Try `slo:orders_availability_errors:ratio_rate5m`. dev shows `0`. staging and prod show `NaN` if they've had no order traffic in the last 5 minutes, because that's 0 divided by 0.
+The SLO rules in [`alerts/orders-gateway-slo.yaml`](../../alerts/orders-gateway-slo.yaml) are built from these queries, saved as recording rules, with three refinements: they leave out `499` (the client gave up), they use `or 0 * ...` so a namespace that has never had a 5xx shows 0 instead of no data, and the latency rule is `1 -` the fast share, so it counts the *slow* requests. Try `slo:orders_availability_errors:ratio_rate5m`. While k6 runs, dev shows `0`. Any environment with no order traffic in the last 5 minutes shows `NaN`, because that's 0 divided by 0.
 
 ## 4. Why cardinality matters (3 min)
 
@@ -129,4 +129,4 @@ Rule of thumb: if a label's values can grow without limit (IDs, emails, URLs, ti
 - Your dev p95 is 0.25 s. Is that inside the SLO? Which query tells you the share of slow requests directly?
 - A teammate wants to add a `customer_id` label to `http_requests_total`. What do you tell them?
 
-Next: [2. Grafana](02-grafana.md) _(coming)_.
+Next: 2. Grafana _(coming)_.
