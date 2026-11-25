@@ -84,6 +84,18 @@ configs:
             hs.message = obj.status.health.message
           end
         end
+        -- A new child app that hasn't synced yet has no resources and
+        -- reports Healthy, so the next sync wave would start before this one
+        -- exists (CI on #31: wave 25 started 26 s after wave 20 appeared,
+        -- before monitoring existed). Hold it until it has synced once. An
+        -- app whose resources already match Git is Synced without ever
+        -- running a sync (no history), so that one passes.
+        local synced = obj.status.sync ~= nil and obj.status.sync.status == "Synced"
+        local never = obj.status.history == nil or #obj.status.history == 0
+        if never and not synced then
+          hs.status = "Progressing"
+          hs.message = "waiting for the first sync"
+        end
       end
       return hs
   rbac:
