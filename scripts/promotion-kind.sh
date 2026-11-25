@@ -10,8 +10,9 @@
 # An image contains every commit on main before the one it was built from,
 # so the whole range counts, not just the newest commit. Only main's
 # first-parent commits that change app/ change the image (the Dockerfile and
-# everything it copies are under app/; if the build ever reads files outside
-# app/, add them to the pathspec at the bottom). The range is a
+# everything it copies are under app/; app/k6 and Markdown aren't in the
+# image, so they don't count; if the build ever reads files outside app/,
+# add them to the pathspec at the bottom). The range is a
 # patch only if each of those is a merged PR labelled `dependencies` and not
 # `needs-owner-approval` (Renovate's patch and digest updates,
 # renovate.json5). Anything else, a direct commit or a PR without labels, is
@@ -56,7 +57,7 @@ while read -r c; do
   else
     features+=("#$num")
   fi
-done < <(git log --first-parent --format=%H "$from..$to" -- app/)
+done < <(git log --first-parent --format=%H "$from..$to" -- app/ ':(exclude)app/k6' ':(exclude)app/**/*.md' ':(exclude)app/*.md')
 
 if [ "${#features[@]}" -eq 0 ]; then
   echo "Promotion-Kind: patch"

@@ -2,10 +2,10 @@ name: app
 
 on:
   pull_request:
-    paths: ["app/**", ".github/workflows/app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh", "scripts/promotion-kind.sh"]
+    paths: ["app/**", "!app/k6/**", "!app/**/*.md", ".github/workflows/app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh", "scripts/promotion-kind.sh"]
   push:
     branches: [main]
-    paths: ["app/**", ".github/workflows/app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh", "scripts/promotion-kind.sh"]
+    paths: ["app/**", "!app/k6/**", "!app/**/*.md", ".github/workflows/app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh", "scripts/promotion-kind.sh"]
   # Re-publish the images from main by hand (Actions tab, "Run workflow").
   workflow_dispatch:
 
