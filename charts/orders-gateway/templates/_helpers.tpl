@@ -1,7 +1,9 @@
-{{- define "orders-gateway.name" -}}orders-gateway{{- end -}}
+{{- /* Every resource is named "app": the contract wants a Deployment named app,
+     labelled app.kubernetes.io/name=app, in each environment (decision 0026). */ -}}
+{{- define "orders-gateway.name" -}}app{{- end -}}
 
 {{- define "orders-gateway.selectorLabels" -}}
-app.kubernetes.io/name: orders-gateway
+app.kubernetes.io/name: app
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 

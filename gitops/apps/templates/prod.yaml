@@ -1,10 +1,10 @@
-# orders-gateway in namespace orders-prod: charts/orders-gateway with
+# The app in namespace prod: charts/orders-gateway with
 # environments/prod/values.yaml. Wave 40 (apps), after the gateway and
 # monitoring. Promotion changes environments/prod/values.yaml only.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: orders-prod
+  name: prod
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: orders-gateway-platform
@@ -17,16 +17,18 @@ spec:
     targetRevision: {{ .Values.repo.revision }}
     path: charts/orders-gateway
     helm:
-      releaseName: orders-gateway
+      releaseName: app
       valueFiles:
         - ../../environments/prod/values.yaml
   destination:
     server: https://kubernetes.default.svc
-    namespace: orders-prod
-  # Argo Rollouts moves canary traffic by changing the HTTPRoute's backend
-  # weights; the diff ignores them, so self-heal doesn't undo a canary step.
+    namespace: prod
+  # Prod runs a plain Deployment, but the canary demos copy this Application
+  # (scripts/demo.sh) and turn the Rollout on: Argo Rollouts then moves canary
+  # traffic by changing the HTTPRoute's backend weights, and the diff ignores
+  # them so self-heal doesn't undo a canary step.
   # Deliberately without RespectIgnoreDifferences and without
-  # managedFieldsManagers (see scripts/check-route-upgrade.sh, which fails for
+  # managedFieldsManagers (the removed scripts/check-route-upgrade.sh failed for
   # both): spec.rules is an atomic list, so the plugin owns all of it after
   # any canary, and either setting then keeps Git's route changes off the
   # cluster (#14 on ogp). The cost: a sync mid-canary applies Git's weights

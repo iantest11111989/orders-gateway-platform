@@ -17,21 +17,21 @@ Helm chart for `orders-gateway` (the app in `app/`). Each environment installs i
 
 ## Canary (`rollout.enabled`)
 
-The **Deployment stays the source of truth** (image, probes, resources, security). A `Rollout` points at it with `workloadRef`. Once the Rollout's own pods are up, it **scales the Deployment to zero and runs the pods itself**, so `kubectl get deploy` shows `0/0` in prod. That's expected. The HPA then targets the Rollout.
+The **Deployment stays the source of truth** (image, probes, resources, security). A `Rollout` points at it with `workloadRef`. Once the Rollout's own pods are up, it **scales the Deployment to zero and runs the pods itself**, and the HPA then targets the Rollout. That's why **prod itself runs without a Rollout** (`rollout.enabled: false`): the assignment's contract needs a Deployment named `app` that serves. The canary runs in the demo copy of prod (namespace `demo`, `./platform demo canary`), which turns the Rollout on.
 
-Every image change in prod becomes a canary. Argo Rollouts' Gateway API plugin moves traffic by changing the HTTPRoute's backend weights (`-stable` / `-canary` Services): 10% → analysis → 25% → analysis → 50% → analysis → 100% (after the last step Rollouts moves to 100% on its own). Each analysis (`AnalysisTemplate` `orders-gateway-slo`) asks Prometheus, about the canary pods only (`rollouts_pod_template_hash`), for:
+With the Rollout on, every image change becomes a canary. Argo Rollouts' Gateway API plugin moves traffic by changing the HTTPRoute's backend weights (`-stable` / `-canary` Services): 10% → analysis → 25% → analysis → 50% → analysis → 100% (after the last step Rollouts moves to 100% on its own). Each analysis (`AnalysisTemplate` `app-slo`) asks Prometheus, about the canary pods only (`rollouts_pod_template_hash`), for:
 
 - the 5xx ratio of `POST /orders`, which must be ≤ 0.5%
 - the p99 latency, which must be ≤ 300 ms
 
-Each waits 60 s for data, then is checked every 30 s, 4 times per step. A second failure aborts the rollout and sends all traffic back to stable. With no canary traffic, the measurements are Inconclusive, and a second one pauses the rollout until someone promotes or aborts it, which is why the demos run k6. Start the load before pushing a new prod image; otherwise the canary pauses at 10% and looks stuck.
+Each waits 60 s for data, then is checked every 30 s, 4 times per step. A second failure aborts the rollout and sends all traffic back to stable. With no canary traffic, the measurements are Inconclusive, and a second one pauses the rollout until someone promotes or aborts it, which is why the demos run k6. The demos start k6 before changing the image; otherwise the canary pauses at 10% and looks stuck.
 
 Watch or drive it from `./platform shell`, or read-only at https://rollouts.localtest.me:
 
 ```sh
-kubectl argo rollouts get rollout orders-gateway -n orders-prod --watch
-kubectl argo rollouts promote orders-gateway -n orders-prod   # skip the current step
-kubectl argo rollouts abort orders-gateway -n orders-prod
+kubectl argo rollouts get rollout app -n demo --watch
+kubectl argo rollouts promote app -n demo   # skip the current step
+kubectl argo rollouts abort app -n demo
 ```
 
 ## Image

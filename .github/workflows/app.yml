@@ -412,7 +412,7 @@ jobs:
           $trailers
           \`\`\`"
           [ "$ENV" = prod ] && body="$body
-          Merging starts the Argo Rollouts canary in orders-prod. Without traffic it pauses at 10% (decision 0011)."
+          Merging starts a rolling update of prod's Deployment (maxUnavailable 0; decision 0026)."
           body="$body
 
           Opened by CI (decision 0015); a newer image replaces this PR's commit. Checks run through workflow_dispatch."

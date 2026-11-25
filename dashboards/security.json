@@ -100,7 +100,7 @@
     {
       "type": "stat",
       "title": "Critical vulnerabilities in our app",
-      "description": "Critical findings Trivy Operator reports in the images running in orders-dev, orders-staging and orders-prod. CI blocks fixable ones at build time (decision 0016), so a non-zero value is usually a CVE published after the build. The OrdersImageCriticalVulnerability alert fires after 30 minutes.",
+      "description": "Critical findings Trivy Operator reports in the images running in dev, staging and prod. CI blocks fixable ones at build time (decision 0016), so a non-zero value is usually a CVE published after the build. The OrdersImageCriticalVulnerability alert fires after 30 minutes.",
       "id": 3,
       "datasource": {
         "type": "prometheus",
@@ -119,7 +119,7 @@
             "uid": "prometheus"
           },
           "refId": "A",
-          "expr": "sum(trivy_image_vulnerabilities{namespace=~\"orders-(dev|staging|prod)\", severity=\"Critical\"}) or vector(0)",
+          "expr": "sum(trivy_image_vulnerabilities{namespace=~\"dev|staging|prod\", severity=\"Critical\"}) or vector(0)",
           "instant": true
         }
       ],
@@ -162,7 +162,7 @@
     {
       "type": "stat",
       "title": "High vulnerabilities in our app",
-      "description": "High findings in the orders-* images. Not alerted on, but Renovate and the daily rescan (decision 0019) should bring this to 0.",
+      "description": "High findings in the app's images (dev, staging, prod). Not alerted on, but Renovate and the daily rescan (decision 0019) should bring this to 0.",
       "id": 4,
       "datasource": {
         "type": "prometheus",
@@ -181,7 +181,7 @@
             "uid": "prometheus"
           },
           "refId": "A",
-          "expr": "sum(trivy_image_vulnerabilities{namespace=~\"orders-(dev|staging|prod)\", severity=\"High\"}) or vector(0)",
+          "expr": "sum(trivy_image_vulnerabilities{namespace=~\"dev|staging|prod\", severity=\"High\"}) or vector(0)",
           "instant": true
         }
       ],
@@ -224,7 +224,7 @@
     {
       "type": "stat",
       "title": "Pods refused (24 h)",
-      "description": "Admission requests Kyverno refused in the last 24 hours (Deny mode: :latest and unsigned images in orders-*). ./platform verify adds one on purpose each run.",
+      "description": "Admission requests Kyverno refused in the last 24 hours (Deny mode: :latest and unsigned images in the app namespaces). ./platform verify adds one on purpose each run.",
       "id": 5,
       "datasource": {
         "type": "prometheus",
@@ -605,7 +605,7 @@
     {
       "type": "table",
       "title": "Vulnerabilities by namespace",
-      "description": "Findings in the images running in each namespace, by severity, from Trivy Operator's VulnerabilityReports. Platform namespaces run third-party images with known findings (decision 0021); orders-* is ours and should be clean. Unknown means the CVE has no severity rating yet.",
+      "description": "Findings in the images running in each namespace, by severity, from Trivy Operator's VulnerabilityReports. Platform namespaces run third-party images with known findings (decision 0021); dev, staging and prod are ours and should be clean. Unknown means the CVE has no severity rating yet.",
       "id": 12,
       "datasource": {
         "type": "prometheus",
@@ -1217,7 +1217,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Findings in orders-* over time",
+      "title": "Findings in dev, staging and prod over time",
       "description": "Critical and high findings in the app's images per environment. A step up without a new image means a newly published CVE; a step down follows a new image (Renovate, then the patch promoter, decision 0024).",
       "id": 14,
       "datasource": {
@@ -1237,7 +1237,7 @@
             "uid": "prometheus"
           },
           "refId": "A",
-          "expr": "sum by (namespace, severity) (trivy_image_vulnerabilities{namespace=~\"orders-(dev|staging|prod)\", severity=~\"Critical|High\"})",
+          "expr": "sum by (namespace, severity) (trivy_image_vulnerabilities{namespace=~\"dev|staging|prod\", severity=~\"Critical|High\"})",
           "legendFormat": "{{namespace}} {{severity}}"
         }
       ],

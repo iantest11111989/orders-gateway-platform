@@ -10,15 +10,15 @@ By the end you will have made the app fail on purpose, watched its error budget 
 
 ## 0. A copy of dev to break (3 min)
 
-Never break the real environments. Make a copy in `orders-demo` the way the demos do ([decision 0020](../decisions/0020-demos-in-a-copy-of-prod.md)):
+Never break the real environments. Make a copy in `demo` the way the demos do ([decision 0020](../decisions/0020-demos-in-a-copy-of-prod.md)):
 
 ```sh
 ./platform demo rolling-update --keep
 ```
 
-This takes about 2 minutes and leaves an Argo CD Application `orders-demo`, a copy of dev, running at `https://orders-demo.localtest.me`.
+This takes about 2 minutes and leaves an Argo CD Application `demo`, a copy of dev, running at `https://demo.localtest.me`.
 
-Open the **orders-gateway** dashboard in Grafana and set **environment** to `orders-demo`. The budgets are at 100% and the burn rates at 0.
+Open the **orders-gateway** dashboard in Grafana and set **environment** to `demo`. The budgets are at 100% and the burn rates at 0.
 
 ## 1. Break it (2 min)
 
@@ -26,7 +26,7 @@ The app has a fault switch: `FAULT_ERROR_RATE` makes that share of `/orders` req
 
 ```sh
 ./platform shell
-kubectl -n argocd patch applications.argoproj.io orders-demo --type json \
+kubectl -n argocd patch applications.argoproj.io demo --type json \
   -p '[{"op":"add","path":"/spec/source/helm/parameters/-","value":{"name":"config.faultErrorRate","value":"0.2"}}]'
 ```
 
@@ -35,14 +35,14 @@ Argo CD syncs the change and the pods restart with 20% of orders failing. Don't 
 Then send traffic, in the same shell:
 
 ```sh
-k6 run --quiet --insecure-skip-tls-verify -e BASE_URL=https://orders-demo.localtest.me -e RATE=5 -e DURATION=30m app/k6/load.js
+k6 run --quiet --insecure-skip-tls-verify -e BASE_URL=https://demo.localtest.me -e RATE=5 -e DURATION=30m app/k6/load.js
 ```
 
 k6 complains that its `orders_slo_good` threshold is crossed. That's expected: you broke it.
 
 ## 2. Watch the budget burn (5 min)
 
-On the dashboard (environment `orders-demo`):
+On the dashboard (environment `demo`):
 
 - **POST /orders: share failing with 5xx** climbs to about 20%, far above the dashed 0.5% line.
 - **Burn rate, availability (1 h)** jumps to about **40** (20% ÷ 0.5%).
@@ -55,11 +55,11 @@ Also look at **Prometheus → Alerts** (<https://prometheus.localtest.me/alerts>
 
 ## 3. Follow the runbook (4 min)
 
-The alert carries a `runbook_url`. Open [`runbooks/OrdersGatewayAvailabilityFastBurn.md`](../../runbooks/OrdersGatewayAvailabilityFastBurn.md) and use `orders-demo` for `<namespace>`:
+The alert carries a `runbook_url`. Open [`runbooks/OrdersGatewayAvailabilityFastBurn.md`](../../runbooks/OrdersGatewayAvailabilityFastBurn.md) and use `demo` for `<namespace>`:
 
-1. **How bad, and where?** `sum by (code) (rate(http_requests_total{namespace="orders-demo", route="/orders", method="POST"}[5m]))` shows `500` next to `201`. Every pod and the single version fail alike, so it isn't one bad canary pod.
-2. **What do the failing requests say?** In Explore, choose Loki: `{namespace="orders-demo", app="orders-gateway"} | json | level="ERROR"`. Each is a `500` with `duration_ms` near 0. The request failed instantly, without calling payments. (The response body says `{"error":"injected fault"}`; the log line doesn't.)
-3. **Did something just change?** The app reads its settings from a ConfigMap (`envFrom`): `kubectl -n orders-demo get configmap orders-gateway -o yaml | grep FAULT` shows `FAULT_ERROR_RATE: "0.2"`, and Argo CD shows a recent sync of `orders-demo`.
+1. **How bad, and where?** `sum by (code) (rate(http_requests_total{namespace="demo", route="/orders", method="POST"}[5m]))` shows `500` next to `201`. Every pod and the single version fail alike, so it isn't one bad canary pod.
+2. **What do the failing requests say?** In Explore, choose Loki: `{namespace="demo", app="app"} | json | level="ERROR"`. Each is a `500` with `duration_ms` near 0. The request failed instantly, without calling payments. (The response body says `{"error":"injected fault"}`; the log line doesn't.)
+3. **Did something just change?** The app reads its settings from a ConfigMap (`envFrom`): `kubectl -n demo get configmap app -o yaml | grep FAULT` shows `FAULT_ERROR_RATE: "0.2"`, and Argo CD shows a recent sync of `demo`.
 
 So the runbook leads to the cause: an injected fault.
 
@@ -68,9 +68,9 @@ So the runbook leads to the cause: an injected fault.
 Remove the parameter (keep k6 running):
 
 ```sh
-kubectl -n argocd get applications.argoproj.io orders-demo -o json |
+kubectl -n argocd get applications.argoproj.io demo -o json |
   jq '{spec: {source: {helm: {parameters: [.spec.source.helm.parameters[] | select(.name != "config.faultErrorRate")]}}}}' |
-  kubectl -n argocd patch applications.argoproj.io orders-demo --type merge --patch-file /dev/stdin
+  kubectl -n argocd patch applications.argoproj.io demo --type merge --patch-file /dev/stdin
 ```
 
 Now watch:

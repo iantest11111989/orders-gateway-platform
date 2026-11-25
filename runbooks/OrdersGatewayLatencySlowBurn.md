@@ -41,21 +41,21 @@ The alert's `namespace` label tells you which environment it is. Use it for `<na
    ```
 2. **Which requests are slow?** In Grafana Explore, choose Loki:
    ```logql
-   {namespace="<namespace>", app="orders-gateway"} | json | route="/orders" | duration_ms > 300
+   {namespace="<namespace>", app="app"} | json | route="/orders" | duration_ms > 300
 
    # Slow requests per minute by version (is it the canary?)
-   sum by (version) (count_over_time({namespace="<namespace>", app="orders-gateway"} | json | route="/orders" | duration_ms > 300 [1m]))
+   sum by (version) (count_over_time({namespace="<namespace>", app="app"} | json | route="/orders" | duration_ms > 300 [1m]))
    ```
 3. **Did something just change?**
    ```sh
    ./platform kubectl -n <namespace> get deploy,rollout,hpa,pods -o wide
-   ./platform kubectl -n <namespace> describe deploy orders-gateway | grep -iE 'image|FAULT|PAYMENTS|limits' -A1
+   ./platform kubectl -n <namespace> describe deploy app | grep -iE 'image|FAULT|PAYMENTS|limits' -A1
    ./platform kubectl top pods -n <namespace>
    ```
 
 ## How to fix
 
-- **Bad release:** roll back. In prod, run `./platform kubectl argo rollouts -n <namespace> abort orders-gateway`, then revert the image change in `environments/<env>/values.yaml` with a pull request.
+- **Bad release:** roll back. Run `./platform kubectl -n <namespace> rollout undo deploy/app`, which rolls the pods back to the previous version at once (Argo CD's self-heal puts Git's version back within minutes, so this buys time, it doesn't replace the fix). Then revert the image change in `environments/<env>/values.yaml` with a pull request.
 - **Slow payments:** there is nothing to fix in orders-gateway. In the demo, remove `PAYMENTS_LATENCY_MS` from the environment's values.
 - **Injected latency:** remove `FAULT_LATENCY_MS` from the environment's values and let Argo CD sync.
 - **Saturation:** raise the CPU limit or the HPA maximum in the environment's values, or find what else is using the node. Check `./platform budget` first, because the stack must stay within 6 CPU / 12 GB.

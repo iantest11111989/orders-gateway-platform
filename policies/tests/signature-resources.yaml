@@ -2,7 +2,7 @@
 # other policies aren't checked against these.
 apiVersion: v1
 kind: Pod
-metadata: {name: signed-app, namespace: orders-dev}
+metadata: {name: signed-app, namespace: dev}
 spec:
   containers:
     - name: app
@@ -10,7 +10,7 @@ spec:
 ---
 apiVersion: v1
 kind: Pod
-metadata: {name: unsigned-app, namespace: orders-dev}
+metadata: {name: unsigned-app, namespace: dev}
 spec:
   containers:
     - name: app

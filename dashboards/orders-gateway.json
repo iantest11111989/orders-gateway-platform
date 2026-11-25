@@ -26,17 +26,17 @@
           "uid": "prometheus"
         },
         "query": {
-          "query": "label_values(app_build_info{job=\"orders-gateway\"}, namespace)",
+          "query": "label_values(app_build_info{job=\"app\"}, namespace)",
           "refId": "ns"
         },
-        "definition": "label_values(app_build_info{job=\"orders-gateway\"}, namespace)",
+        "definition": "label_values(app_build_info{job=\"app\"}, namespace)",
         "current": {
-          "text": "orders-prod",
-          "value": "orders-prod"
+          "text": "prod",
+          "value": "prod"
         },
         "refresh": 2,
         "sort": 1,
-        "description": "Which environment's orders-gateway to show (orders-dev, orders-staging, orders-prod, and orders-demo while a demo runs)."
+        "description": "Which environment's orders-gateway to show (dev, staging, prod, and demo while a demo runs)."
       }
     ]
   },
@@ -1116,7 +1116,7 @@
             "uid": "loki"
           },
           "refId": "A",
-          "expr": "{namespace=\"$namespace\", app=\"orders-gateway\"} | json | level=~\"warn|error|WARN|ERROR\""
+          "expr": "{namespace=\"$namespace\", app=\"app\"} | json | level=~\"warn|error|WARN|ERROR\""
         }
       ],
       "options": {

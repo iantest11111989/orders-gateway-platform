@@ -20,7 +20,7 @@ Grafana Alloy collects every pod's stdout and sends it to Loki ([decision 0007](
 ## 1. Select a stream with labels (2 min)
 
 ```logql
-{namespace="orders-dev", app="orders-gateway"}
+{namespace="dev", app="app"}
 ```
 
 Everything inside `{}` is a **label matcher**. Loki stores logs in *streams*, one per unique set of labels, and only indexes the labels, not the text. Here there are just four: `namespace`, `app`, `env` and `pod`. Open the **Label browser** to see them.
@@ -38,7 +38,7 @@ Probes (`/healthz`, `/readyz`) and Prometheus scrapes are logged at `DEBUG`. dev
 Line filters run after the label selector and scan the text:
 
 ```logql
-{namespace="orders-dev", app="orders-gateway"} |= "POST"
+{namespace="dev", app="app"} |= "POST"
 ```
 
 - `|=` contains, `!=` doesn't contain, `|~` matches a regex, `!~` doesn't match one.
@@ -49,7 +49,7 @@ Line filters are fast, but they're plain text: they don't know that `201` is a s
 ## 3. Parse JSON and filter on fields (3 min)
 
 ```logql
-{namespace="orders-dev", app="orders-gateway"} | json | status >= 400
+{namespace="dev", app="app"} | json | status >= 400
 ```
 
 `| json` turns every JSON key into a field you can filter on, at query time. Now `status >= 400` is a number comparison. You'll see the invalid orders (`400`, about 5% of k6's traffic), logged at `WARN`.
@@ -62,11 +62,11 @@ Try a few more:
 
 ## 4. Follow one order (2 min)
 
-1. Run `{namespace="orders-dev", app="orders-gateway"} | json | status = 201` and click any line to expand it. Copy its `order_id` (`ord_…`).
+1. Run `{namespace="dev", app="app"} | json | status = 201` and click any line to expand it. Copy its `order_id` (`ord_…`).
 2. Search for that order everywhere:
 
    ```logql
-   {namespace=~"orders-.*", app="orders-gateway"} |= "ord_8e1e5a3a43f56129"
+   {namespace=~"dev|staging|prod", app="app"} |= "ord_8e1e5a3a43f56129"
    ```
 
    You'll find the `POST` that created it, across every environment and pod, without knowing in advance which pod served it. (k6's `GET /orders/{id}` requests ask for random IDs, so they won't match this one. A real client reading its order back would show up here too.) `request_id` works the same way for a single request.
@@ -78,7 +78,7 @@ This is why per-request values like order IDs and request IDs go in **logs**, no
 LogQL can count and measure log lines over time, like PromQL does with samples. Switch the visualisation to **Time series**:
 
 ```logql
-sum by (status) (count_over_time({namespace="orders-dev", app="orders-gateway"} | json | level != "DEBUG" [1m]))
+sum by (status) (count_over_time({namespace="dev", app="app"} | json | level != "DEBUG" [1m]))
 ```
 
 That's requests per minute by status, counted from the logs. `level != "DEBUG"` leaves out dev's probe and scrape lines, which would otherwise add a `200` series. Compare it with Prometheus (exercise 1): `201` at about 200/min is the same as `rate(...)` at about 3.4/s (k6 at 5 req/s, 70% of them valid orders).
@@ -86,7 +86,7 @@ That's requests per minute by status, counted from the logs. `level != "DEBUG"` 
 And a percentile from a field, with `unwrap`:
 
 ```logql
-quantile_over_time(0.95, {namespace="orders-dev", app="orders-gateway"} | json | route="/orders" | method="POST" | unwrap duration_ms [5m]) by (route)
+quantile_over_time(0.95, {namespace="dev", app="app"} | json | route="/orders" | method="POST" | unwrap duration_ms [5m]) by (route)
 ```
 
 That's the p95 of order request time in milliseconds, computed from every log line. Compare it with the histogram estimate from exercise 1: `histogram_quantile(0.95, …http_request_duration_seconds_bucket…)` × 1000. On ogp both gave about 48 ms. The log version is exact but reads every line. The metric version is an estimate from buckets, but it's cheap, kept longer, and it's what the alerts use.
@@ -96,7 +96,7 @@ That's the p95 of order request time in milliseconds, computed from every log li
 Every unique label set is a separate **stream**, and Loki keeps an index entry and an open chunk per stream. Count the app's streams:
 
 ```logql
-count(count by (pod, namespace) (count_over_time({namespace=~"orders-.*", app="orders-gateway"}[1h])))
+count(count by (pod, namespace) (count_over_time({namespace=~"dev|staging|prod", app="app"}[1h])))
 ```
 
 There's one per pod: a handful. If `order_id` or `request_id` were a label, every request would start a new stream, and Loki would slow down and run out of memory, the same cardinality problem as exercise 1. The rule: **labels say where a log came from** (namespace, app, pod), and **everything about the request stays in the line**, where `| json` can reach it.

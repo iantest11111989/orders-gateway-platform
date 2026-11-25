@@ -45,10 +45,12 @@ spec:
             runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/ArgoCDAppUnhealthy.md
 
         # A canary that aborted is already back on the stable version, so this
-        # is a ticket: find out why before trying again. orders-demo is left
-        # out because the canary-fail demo aborts on purpose.
+        # is a ticket: find out why before trying again. The demo
+        # namespace is left out because the canary-fail demo aborts on purpose.
+        # prod is a plain Deployment now (decision 0026), so this covers any
+        # Rollout outside the demo copy; KubeDeploymentRolloutStuck covers prod.
         - alert: RolloutAborted
-          expr: max by (exported_namespace, name) (rollout_info{phase="Abort", exported_namespace!="orders-demo"}) == 1
+          expr: max by (exported_namespace, name) (rollout_info{phase="Abort", exported_namespace!="demo"}) == 1
           for: 1m
           labels:
             severity: ticket

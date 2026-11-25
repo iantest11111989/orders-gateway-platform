@@ -1,10 +1,10 @@
-# orders-gateway in namespace orders-dev: charts/orders-gateway with
-# environments/dev/values.yaml. Wave 40 (apps), after the gateway and
-# monitoring. Promotion changes environments/dev/values.yaml only.
+# The app in namespace staging: charts/orders-gateway with
+# environments/staging/values.yaml. Wave 40 (apps), after the gateway and
+# monitoring. Promotion changes environments/staging/values.yaml only.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: orders-dev
+  name: staging
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: orders-gateway-platform
@@ -17,12 +17,12 @@ spec:
     targetRevision: {{ .Values.repo.revision }}
     path: charts/orders-gateway
     helm:
-      releaseName: orders-gateway
+      releaseName: app
       valueFiles:
-        - ../../environments/dev/values.yaml
+        - ../../environments/staging/values.yaml
   destination:
     server: https://kubernetes.default.svc
-    namespace: orders-dev
+    namespace: staging
   syncPolicy:
     automated:
       prune: true

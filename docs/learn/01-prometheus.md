@@ -20,11 +20,11 @@ By the end you will know where the app's metrics come from, how counters and his
 
 Each `orders-gateway` pod serves its own metrics at `/metrics`. Prometheus scrapes every pod about every 30 seconds and stores each line as a time series.
 
-1. Go to **Status → Targets** (or **Target health**) and find the `orders-gateway` job. There is one row per pod in `orders-dev`, `orders-staging` and `orders-prod`, and each should be **UP**.
+1. Go to **Status → Targets** (or **Target health**) and find the `app` job. There is one row per pod in `dev`, `staging` and `prod`, and each should be **UP**.
 2. Back on the **Query** page, run:
 
    ```promql
-   http_requests_total{namespace="orders-dev"}
+   http_requests_total{namespace="dev"}
    ```
 
    Each result row is one series. Its labels are `route`, `method` and `code` (set by the app) plus `namespace`, `pod`, `job` and others (added by Prometheus from Kubernetes).
@@ -33,18 +33,18 @@ The app's own metrics are defined in [`app/metrics.go`](../../app/metrics.go): `
 
 ## 2. Counters vs gauges vs histograms (4 min)
 
-**Counter:** a number that only goes up (until the pod restarts and it starts again at 0). Run `orders_created_total{namespace="orders-dev"}` and switch to the **Graph** tab. You'll see a line climbing steadily. A counter's raw value means little on its own. What you want is how fast it grows.
+**Counter:** a number that only goes up (until the pod restarts and it starts again at 0). Run `orders_created_total{namespace="dev"}` and switch to the **Graph** tab. You'll see a line climbing steadily. A counter's raw value means little on its own. What you want is how fast it grows.
 
 **Gauge:** a value that goes up and down, like a reading on a meter. `http_requests_in_flight` is how many requests a pod is serving right now. `app_build_info` is a gauge that is always 1. Its labels tell you which `version` each pod runs:
 
 ```promql
-app_build_info{namespace=~"orders-.*"}
+app_build_info{namespace=~"dev|staging|prod"}
 ```
 
 **Histogram:** counts observations in buckets. One histogram is really three series families:
 
 ```promql
-http_request_duration_seconds_bucket{namespace="orders-dev", route="/orders", method="POST"}
+http_request_duration_seconds_bucket{namespace="dev", route="/orders", method="POST"}
 ```
 
 - `_bucket{le="0.3"}`: how many requests took **at most** 0.3 s. Buckets add up as they go: `le="0.5"` includes everything in `le="0.3"`, and `le="+Inf"` counts every request.
@@ -60,7 +60,7 @@ The app has a bucket at exactly 0.3 s because the latency SLO is "under 300 ms".
 1. Orders created per second in dev:
 
    ```promql
-   sum(rate(orders_created_total{namespace="orders-dev"}[5m]))
+   sum(rate(orders_created_total{namespace="dev"}[5m]))
    ```
 
    With k6 at 5 requests/s and 70% of them valid orders, this settles at about **3.5**. It needs a few minutes of traffic first, because the window is 5 minutes.
@@ -68,7 +68,7 @@ The app has a bucket at exactly 0.3 s because the latency SLO is "under 300 ms".
 2. Requests per second by route and status code:
 
    ```promql
-   sum by (route, code) (rate(http_requests_total{namespace="orders-dev"}[5m]))
+   sum by (route, code) (rate(http_requests_total{namespace="dev"}[5m]))
    ```
 
    `sum by (...)` adds up all the pods and keeps only the labels you name. You should see `POST /orders` `201` (about 3.5/s), `400` (about 0.25/s, the invalid orders) and `GET /orders/{id}` (about 1.25/s). The small `/healthz`, `/readyz` and `/metrics` rates come from Kubernetes probes and Prometheus scrapes. The `503` on `/readyz` is a series that sits at 0, left over from pod startup.
@@ -76,23 +76,23 @@ The app has a bucket at exactly 0.3 s because the latency SLO is "under 300 ms".
 3. The share of order requests that failed with a 5xx error. With no faults turned on this is 0, or empty if there has never been a 5xx:
 
    ```promql
-   sum(rate(http_requests_total{namespace="orders-dev", route="/orders", method="POST", code=~"5.."}[5m]))
+   sum(rate(http_requests_total{namespace="dev", route="/orders", method="POST", code=~"5.."}[5m]))
    /
-   sum(rate(http_requests_total{namespace="orders-dev", route="/orders", method="POST"}[5m]))
+   sum(rate(http_requests_total{namespace="dev", route="/orders", method="POST"}[5m]))
    ```
 
 4. The 95th percentile (p95) latency from the histogram. Keep `le`, because `histogram_quantile` needs it:
 
    ```promql
-   histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{namespace="orders-dev", route="/orders", method="POST"}[5m])))
+   histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{namespace="dev", route="/orders", method="POST"}[5m])))
    ```
 
    And the share of order requests that were **fast enough** for the SLO:
 
    ```promql
-   sum(rate(http_request_duration_seconds_bucket{namespace="orders-dev", route="/orders", method="POST", le="0.3"}[5m]))
+   sum(rate(http_request_duration_seconds_bucket{namespace="dev", route="/orders", method="POST", le="0.3"}[5m]))
    /
-   sum(rate(http_request_duration_seconds_count{namespace="orders-dev", route="/orders", method="POST"}[5m]))
+   sum(rate(http_request_duration_seconds_count{namespace="dev", route="/orders", method="POST"}[5m]))
    ```
 
 The SLO rules in [`alerts/orders-gateway-slo.yaml`](../../alerts/orders-gateway-slo.yaml) are built from these queries, saved as recording rules, with three refinements: they leave out `499` (the client gave up), they use `or 0 * ...` so a namespace that has never had a 5xx shows 0 instead of no data, and the latency rule is `1 -` the fast share, so it counts the *slow* requests. Try `slo:orders_availability_errors:ratio_rate5m`. While k6 runs, dev shows `0`. Any environment with no order traffic in the last 5 minutes shows `NaN`, because that's 0 divided by 0.
@@ -112,7 +112,7 @@ topk(10, count by (__name__) ({__name__=~".+"}))
 The biggest are the Kubernetes API server's histograms, at thousands of series each. Now the app:
 
 ```promql
-count by (__name__) ({job="orders-gateway", __name__=~"http_.*|orders_.*"})
+count by (__name__) ({job="app", __name__=~"http_.*|orders_.*"})
 ```
 
 The app's metrics stay small because every label has a **fixed, short list of values**:

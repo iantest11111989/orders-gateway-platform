@@ -23,4 +23,4 @@ Sync waves: -10 CRDs, 0 Argo CD, 10 controllers, 20 observability, 30 policies, 
 | `loki` | 20 | Loki, single binary |
 | `alloy` | 20 | Log collection DaemonSet |
 | `platform-alerts` | 25 | PrometheusRules from `alerts/` |
-| `orders-dev`, `orders-staging`, `orders-prod` | 40 | orders-gateway per environment: `charts/orders-gateway` + `environments/<env>/values.yaml` ([0009](../docs/decisions/0009-chart-and-environments.md)) |
+| `dev`, `staging`, `prod` | 40 | orders-gateway per environment: `charts/orders-gateway` + `environments/<env>/values.yaml` ([0009](../docs/decisions/0009-chart-and-environments.md)) |
