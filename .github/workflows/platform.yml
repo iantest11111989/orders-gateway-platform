@@ -61,6 +61,21 @@ jobs:
           persist-credentials: false
       - run: ./platform doctor # runners have 4 CPUs: a warning, not a failure
       - run: ./platform up
+      # A cold start is mostly image pulls (nothing is cached on a runner),
+      # so list the slowest: a slow `up` can be explained from this log.
+      - name: Slowest image pulls
+        run: |
+          ./platform kubectl get events -A --field-selector reason=Pulled \
+            -o jsonpath='{range .items[*]}{.message}{"\n"}{end}' |
+            awk 'match($0, /^Successfully pulled image "[^"]+" in [0-9hms.]+/) {
+              split(substr($0, RSTART, RLENGTH), f, "\"")
+              d = f[3]; sub(/^ in /, "", d); s = 0; rest = d
+              if (match(rest, /[0-9.]+h/)) { s += substr(rest, RSTART, RLENGTH - 1) * 3600 }
+              if (match(rest, /[0-9.]+m[^s]/) || match(rest, /[0-9.]+m$/)) { v = substr(rest, RSTART); sub(/m.*/, "", v); s += v * 60 }
+              if (match(rest, /[0-9.]+ms/)) { s += substr(rest, RSTART, RLENGTH - 2) / 1000 }
+              else if (match(rest, /[0-9.]+s/)) { s += substr(rest, RSTART, RLENGTH - 1) }
+              printf "%7.1fs  %s\n", s, f[2]
+            }' | sort -rn | head -20
       - run: ./platform up # idempotent
       - run: ./platform kubectl get nodes -L topology.kubernetes.io/zone
       - run: ./platform kubectl -n argocd get applications
