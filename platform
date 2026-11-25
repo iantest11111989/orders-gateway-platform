@@ -19,6 +19,8 @@
 #   TOOLBOX_IMAGE   use this toolbox image instead of the pinned one
 #   REPO_URL        Git repo Argo CD syncs from (default: this repo on GitHub)
 #   REVISION        branch or tag Argo CD syncs (default: main)
+#   GITHUB_TOKEN    only for `demo gitops-revert`, which pushes a demo branch
+#                   to the repo Argo CD syncs from (e.g. GITHUB_TOKEN=$(gh auth token))
 set -eu
 
 cd "$(dirname "$0")"
@@ -28,7 +30,7 @@ TOOLBOX_REPO=ghcr.io/iantest11111989/orders-gateway-platform-toolbox
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -86,6 +88,7 @@ run_toolbox() {
     -e TOOLBOX_IMAGE="$img" \
     -e REPO_URL="${REPO_URL:-}" \
     -e REVISION="${REVISION:-}" \
+    -e GITHUB_TOKEN="${GITHUB_TOKEN:-}" \
     -e ARGOCD_OPTS="--port-forward --port-forward-namespace argocd --plaintext" \
     "$img" "$@"
 }

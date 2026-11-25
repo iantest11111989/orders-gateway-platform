@@ -69,11 +69,12 @@ All hostnames use `*.localtest.me`, which resolves to `127.0.0.1`.
 | --- | --- | --- |
 | `rolling-update` | v1 → v2 in a 3-replica copy of dev: pods replace one at a time (`maxSurge: 1`, `maxUnavailable: 0`), and the demo fails if fewer than 99.5% of k6's requests meet the SLO | ~2 min |
 | `chaos` | in a copy of prod: delete a pod, then drain a worker for the demo's pods (cordon + evictions, like `kubectl drain`). The PodDisruptionBudget refuses a second eviction until a replacement is ready; fails if fewer than 99.5% of k6's requests meet the SLO | ~3 min |
+| `gitops-revert` | a bad config commit (`FAULT_ERROR_RATE` 0.3) on a temporary `demo/gitops-revert-*` branch that a copy of dev follows: Argo CD syncs it and ~30% of orders fail; `git revert` heals it. Needs `GITHUB_TOKEN` with push access to the repo the cluster syncs from (your fork, `REPO_URL`); the branch is deleted afterwards | ~5 min |
 | `canary` | v1 → v2: Rollouts moves traffic 10% → 25% → 50% → 100% and the SLO analysis passes at each step | ~8 min |
 | `canary-fail` | v2 → v2-bad: the first analysis fails the SLO, Rollouts aborts and sends all traffic back to v2 | ~3 min |
 | `clean` | deletes the demo copy (after an interrupted demo, or `--keep`) | |
 
-Add `--keep` to leave `orders-demo` running afterwards. Watch in the Rollouts dashboard (`https://rollouts.localtest.me/rollouts/orders-demo`), Argo CD, or Grafana. Run `./platform budget --watch 600` in a second terminal to see the peak. Still to come: `autoscale`, `policy`, `gitops-revert`.
+Add `--keep` to leave `orders-demo` running afterwards. Watch in the Rollouts dashboard (`https://rollouts.localtest.me/rollouts/orders-demo`), Argo CD, or Grafana. Run `./platform budget --watch 600` in a second terminal to see the peak. Still to come: `autoscale`, `policy`.
 
 ## Repository layout
 
