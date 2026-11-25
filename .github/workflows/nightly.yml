@@ -1,0 +1,81 @@
+name: nightly
+
+# The full end-to-end test (brief, section 10): on fresh GitHub-hosted runners
+# with only Docker, `./platform up`, `verify`, a canary demo with `budget`
+# measuring alongside, then `down`. It proves a reviewer can start the repo
+# from scratch, on x86-64 and on arm64. Separate from real deploys: the
+# cluster lives only for this job and syncs from main.
+on:
+  schedule:
+    - cron: "17 4 * * *" # daily, 04:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    name: up, verify, canary + budget, down (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: ./platform doctor # runners have 4 CPUs: a warning, not a failure
+      - run: ./platform up
+      - name: ./platform verify
+        run: |
+          for attempt in 1 2 3; do
+            ./platform verify && exit 0
+            echo "verify attempt $attempt failed; retrying in 30s"
+            sleep 30
+          done
+          exit 1
+      # The brief's budget has to hold during the demos too: measure the peak
+      # while the canary runs (a second prod-sized copy plus k6).
+      - name: ./platform demo canary, with ./platform budget --watch alongside
+        run: |
+          ./platform budget --watch 720 >budget.log 2>&1 &
+          budget=$!
+          # Actions runs bash -e: capture both results, so a failed demo still
+          # prints the budget and writes the summary before the step fails.
+          demo=0; ./platform demo canary || demo=$?
+          status=0; wait "$budget" || status=$?
+          cat budget.log
+          {
+            echo "### Budget during the canary demo (${{ matrix.arch }})"
+            echo '```'
+            grep -E 'total caps|peak over|OOM|fits' budget.log || true
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          [ "$demo" -eq 0 ] || { echo "::error::demo canary failed (exit $demo)"; exit "$demo"; }
+          exit "$status"
+      - name: Diagnostics (on failure)
+        if: failure()
+        run: |
+          ./platform kubectl get pods -A -o wide || true
+          ./platform kubectl get events -A --sort-by=.lastTimestamp || true
+          ./platform kubectl get pods -A --no-headers 2>/dev/null \
+            | awk '{ split($3, r, "/") } (r[1] != r[2] || $5 + 0 > 0) && $4 != "Completed"' \
+            | while read -r ns pod _; do
+                echo "::group::describe $ns/$pod"
+                ./platform kubectl -n "$ns" describe pod "$pod" || true
+                ./platform kubectl -n "$ns" logs "$pod" --all-containers --tail=50 || true
+                ./platform kubectl -n "$ns" logs "$pod" --all-containers --tail=50 --previous 2>/dev/null || true
+                echo "::endgroup::"
+              done
+      - if: always()
+        run: ./platform down
