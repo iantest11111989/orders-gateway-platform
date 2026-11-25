@@ -11,9 +11,19 @@ controller:
   # a paused Rollout sets the weights again at once.
   extraArgs:
     - --rollout-resync=60
+  # The Gateway API plugin runs as a second Go process in this container, so
+  # both count against the limit. At 256Mi the nightly's arm64 run (fresh
+  # cluster: cache warm-up plus a canary) was OOMKilled; on ogp the peak is
+  # ~190Mi, steady ~70Mi.
   resources:
-    requests: {cpu: 25m, memory: 64Mi}
-    limits: {memory: 256Mi}
+    requests: {cpu: 25m, memory: 128Mi}
+    limits: {memory: 512Mi}
+  # Go's GC works harder near this soft limit. It is per process, and the
+  # plugin inherits it, so each of the two gets 240MiB: together they stay
+  # under the 512Mi container limit (controller peak ~190Mi, plugin small).
+  extraEnv:
+    - name: GOMEMLIMIT
+      value: 240MiB
   logging:
     format: json
 
