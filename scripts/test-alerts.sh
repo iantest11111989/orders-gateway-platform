@@ -28,8 +28,10 @@ docker run --rm -v "$PWD":/w -w /w --entrypoint promtool "$PROM_IMAGE" \
 
 # Every alert needs a runbook, and every runbook link must resolve.
 status=0
-for url in $(cat .build/alerts/*.rules.yaml | docker run --rm -i "$YQ_IMAGE" \
-    '.groups[].rules[] | select(has("alert")) | .alert + "=" + (.annotations.runbook_url // "")'); do
+# One yq call per file: concatenated files would read as one YAML document,
+# where the last file's "groups" hides the others.
+for url in $(for f in .build/alerts/*.rules.yaml; do docker run --rm -i "$YQ_IMAGE" \
+    '.groups[].rules[] | select(has("alert")) | .alert + "=" + (.annotations.runbook_url // "")' <"$f"; done); do
   alert=${url%%=*}
   link=${url#*=}
   want="https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/$alert.md"
