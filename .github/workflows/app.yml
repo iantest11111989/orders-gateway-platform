@@ -397,8 +397,15 @@ jobs:
           fi
           git push -q --force origin "HEAD:refs/heads/$branch"
           title="Promote $ENV to $tag"
+          if [ "$kind" = patch ]; then
+            prev=dev; [ "$ENV" = prod ] && prev=staging
+            approval="**Patches only:** the patch promoter merges it once $prev has run this image for an hour with its SLO met (decision 0024). To stop it, commit promotion/PAUSED."
+          else
+            approval="**Needs the owner's approval** (brief, section 7)."
+          fi
           body="Moves **$ENV** to \`$tag\` (\`$DIGEST\`), the image dev runs now.
-          It was published and signed by $RUN_URL. **Needs the owner's approval** (brief, section 7).
+          It was published and signed by $RUN_URL.
+          $approval
 
           Promotion kind: **$kind** (\`scripts/promotion-kind.sh\`, trailers in the commit):
           \`\`\`

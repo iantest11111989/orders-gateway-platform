@@ -22,6 +22,13 @@
   // native auto-merge would merge at once, since main has no required checks.
   platformAutomerge: false,
 
+  // Plain manifests with an image (the python image of the patch promoter,
+  // decision 0024, and the alert receiver, decision 0025). The kubernetes
+  // manager has no default file patterns.
+  kubernetes: {
+    managerFilePatterns: ['/^gitops/manifests/promoter/.+\\.yaml$/', '/^gitops/manifests/monitoring/alert-receiver\\.yaml$/'],
+  },
+
   customManagers: [
     {
       // Helm charts in the Argo CD Applications (Helm templates, so the

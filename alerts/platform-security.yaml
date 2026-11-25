@@ -85,11 +85,12 @@ spec:
               Trivy Operator hasn't answered a metrics scrape for 15 minutes. New vulnerabilities in the
               images that run in the cluster won't be found until it's back (CI's daily rescan still runs).
             runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/TrivyOperatorDown.md
+        # By digest: the environments run images by digest, so image_tag is empty.
         # Our own app's images only: the platform's third-party images carry
         # known findings (decision 0021), which would keep this firing.
         - alert: OrdersImageCriticalVulnerability
           expr: |
-            sum by (namespace, image_repository, image_tag) (
+            sum by (namespace, image_repository, image_digest) (
               trivy_image_vulnerabilities{namespace=~"orders-(dev|staging|prod)", severity="Critical"}
             ) > 0
           for: 30m
@@ -99,5 +100,5 @@ spec:
             summary: "{{ $labels.namespace }} runs an image with critical vulnerabilities"
             description: >-
               Trivy Operator found {{ $value }} critical vulnerabilities in
-              {{ $labels.image_repository }}:{{ $labels.image_tag }}, running in {{ $labels.namespace }}.
+              {{ $labels.image_repository }}@{{ $labels.image_digest }}, running in {{ $labels.namespace }}.
             runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/OrdersImageCriticalVulnerability.md

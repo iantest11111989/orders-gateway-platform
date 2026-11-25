@@ -97,9 +97,9 @@ tests:
         values: '1x60'
       - series: 'trivy_image_vulnerabilities{namespace="kube-system", image_repository="kindest/kindnetd", image_tag="v1", severity="Critical"}'
         values: '2x60'
-      - series: 'trivy_image_vulnerabilities{namespace="orders-prod", image_repository="iantest11111989/orders-gateway", image_tag="sha-0123456789ab", severity="Critical", resource_name="a"}'
+      - series: 'trivy_image_vulnerabilities{namespace="orders-prod", image_repository="iantest11111989/orders-gateway", image_digest="sha256:abc", severity="Critical", resource_name="a"}'
         values: '0x10 1x50'
-      - series: 'trivy_image_vulnerabilities{namespace="orders-prod", image_repository="iantest11111989/orders-gateway", image_tag="sha-0123456789ab", severity="High", resource_name="a"}'
+      - series: 'trivy_image_vulnerabilities{namespace="orders-prod", image_repository="iantest11111989/orders-gateway", image_digest="sha256:abc", severity="High", resource_name="a"}'
         values: '3x60'
     alert_rule_test:
       - eval_time: 30m
@@ -108,10 +108,10 @@ tests:
       - eval_time: 45m
         alertname: OrdersImageCriticalVulnerability
         exp_alerts:
-          - exp_labels: {severity: ticket, namespace: orders-prod, image_repository: iantest11111989/orders-gateway, image_tag: sha-0123456789ab}
+          - exp_labels: {severity: ticket, namespace: orders-prod, image_repository: iantest11111989/orders-gateway, image_digest: "sha256:abc"}
             exp_annotations:
               summary: "orders-prod runs an image with critical vulnerabilities"
-              description: "Trivy Operator found 1 critical vulnerabilities in iantest11111989/orders-gateway:sha-0123456789ab, running in orders-prod."
+              description: "Trivy Operator found 1 critical vulnerabilities in iantest11111989/orders-gateway@sha256:abc, running in orders-prod."
               runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/OrdersImageCriticalVulnerability.md
       - eval_time: 45m
         alertname: TrivyOperatorDown
