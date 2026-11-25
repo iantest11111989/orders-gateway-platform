@@ -119,6 +119,21 @@ Grafana 3000 /api/health
 Prometheus 9090 /-/ready
 Alertmanager 9093 /-/ready
 EOF2
+# The contract's dev UI login, admin / admin12345, on each UI that has one.
+c=$(code -u admin:admin12345 http://localhost:3000/api/user)
+if [ "$c" = 200 ]; then pass "Grafana login admin / admin12345 works"
+else miss "Grafana login admin / admin12345 answered $c"; fi
+pf_log=$(mktemp)
+kubectl -n argocd port-forward svc/argocd-server :80 >"$pf_log" 2>&1 & pf=$!
+port=''
+for _ in $(seq 1 20); do
+  port=$(sed -n 's/^Forwarding from 127.0.0.1:\([0-9]*\) .*/\1/p' "$pf_log" | head -1)
+  [ -n "$port" ] && break; sleep 0.5
+done
+c=$(code -X POST -H 'Content-Type: application/json' -d '{"username":"admin","password":"admin12345"}' "http://127.0.0.1:${port:-1}/api/v1/session")
+kill "$pf" 2>/dev/null || true; rm -f "$pf_log"
+if [ "$c" = 200 ]; then pass "Argo CD login admin / admin12345 works"
+else miss "Argo CD login admin / admin12345 answered $c"; fi
 
 step "Kyverno rejects a bad manifest at admission"
 # Server-side dry run: nothing is created. dev enforces Pod Security
