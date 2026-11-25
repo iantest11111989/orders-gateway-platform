@@ -726,7 +726,7 @@ data:
                 "uid": "prometheus"
               },
               "refId": "A",
-              "expr": "count by (namespace, version) (app_build_info{namespace=~\"orders-(dev|staging|prod)\"})",
+              "expr": "count by (namespace, version) (app_build_info{namespace=~\"dev|staging|prod\"})",
               "instant": true,
               "format": "table"
             }
@@ -998,7 +998,7 @@ data:
                 "uid": "prometheus"
               },
               "refId": "A",
-              "expr": "slo:orders_availability_errors:ratio_rate1h{namespace=~\"orders-(dev|staging|prod)\"} / 0.005",
+              "expr": "slo:orders_availability_errors:ratio_rate1h{namespace=~\"dev|staging|prod\"} / 0.005",
               "legendFormat": "{{namespace}}"
             }
           ],
@@ -1045,7 +1045,7 @@ data:
                 "uid": "prometheus"
               },
               "refId": "A",
-              "expr": "sum by (namespace) (rate(http_requests_total{namespace=~\"orders-(dev|staging|prod)\", route=\"/orders\", method=\"POST\"}[$__rate_interval]))",
+              "expr": "sum by (namespace) (rate(http_requests_total{namespace=~\"dev|staging|prod\", route=\"/orders\", method=\"POST\"}[$__rate_interval]))",
               "legendFormat": "{{namespace}}"
             }
           ],
@@ -1287,7 +1287,7 @@ data:
                 "uid": "prometheus"
               },
               "refId": "A",
-              "expr": "sum(rate(http_requests_total{route=\"/orders\", method=\"POST\", namespace=~\"orders-(dev|staging|prod)\"}[5m]))",
+              "expr": "sum(rate(http_requests_total{route=\"/orders\", method=\"POST\", namespace=~\"dev|staging|prod\"}[5m]))",
               "instant": true
             }
           ],

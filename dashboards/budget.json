@@ -538,7 +538,7 @@
       "id": 10,
       "type": "timeseries",
       "title": "CPU by namespace",
-      "description": "CPU of every pod, summed per namespace, stacked, in cores. During a demo, orders-demo's pods and Envoy (which carries the k6 traffic) show up here. k6 itself runs in the toolbox container on the Docker host, outside the kind nodes, so it isn't in this panel or in the budget.",
+      "description": "CPU of every pod, summed per namespace, stacked, in cores. During a demo, demo's pods and Envoy (which carries the k6 traffic) show up here. k6 itself runs in the toolbox container on the Docker host, outside the kind nodes, so it isn't in this panel or in the budget.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"

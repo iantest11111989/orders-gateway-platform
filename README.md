@@ -41,7 +41,7 @@ kubectl --kubeconfig out/kubeconfig.yaml get nodes
 ./platform down     # delete it all (safe to re-run)
 ```
 
-`up` creates the kind cluster (1 control plane + 2 workers), installs Argo CD and hands it the root Application, then waits until every Application is Synced and Healthy. From then on Argo CD manages everything, including itself, from Git, in sync waves (CRDs, then controllers, then observability, policies and the gateway, then the apps). From a clean machine that takes about 6–7 minutes, most of it pulling images (358–427 s in the nightly end-to-end run on fresh GitHub runners). `./platform verify` then checks the running stack: every Application Synced and Healthy, every Prometheus target up, logs in Loki from every namespace, HTTPS on every hostname, and Kyverno rejecting a bad manifest in `orders-dev`. `./platform budget` measures what the cluster uses against the 6 CPU / 12 GiB budget (`--watch 120` reports the peak while something runs).
+`up` creates the kind cluster (1 control plane + 2 workers), installs Argo CD and hands it the root Application, then waits until every Application is Synced and Healthy. From then on Argo CD manages everything, including itself, from Git, in sync waves (CRDs, then controllers, then observability, policies and the gateway, then the apps). From a clean machine that takes about 6–7 minutes, most of it pulling images (358–427 s in the nightly end-to-end run on fresh GitHub runners). `./platform verify` then checks the running stack: every Application Synced and Healthy, every Prometheus target up, logs in Loki from every namespace, HTTPS on every hostname, and Kyverno rejecting a bad manifest in `dev`. `./platform budget` measures what the cluster uses against the 6 CPU / 12 GiB budget (`--watch 120` reports the peak while something runs).
 
 To run from your fork or a branch: `REPO_URL=https://github.com/<you>/orders-gateway-platform.git REVISION=my-branch ./platform up`.
 
@@ -78,7 +78,7 @@ All hostnames use `*.localtest.me`, which resolves to `127.0.0.1`.
 
 ## Demos
 
-`./platform demo <name>` narrates each step in the terminal and says where to watch it. The demos run in `orders-demo`, a copy of the live `orders-prod` (canary, chaos and autoscale) or `orders-dev` (rolling update) Application, so the real environments only ever change through Git ([decision 0020](docs/decisions/0020-demos-in-a-copy-of-prod.md)). k6 sends ~10 requests/s through the gateway while they run (`autoscale` sends more).
+`./platform demo <name>` narrates each step in the terminal and says where to watch it. The demos run in `demo`, a copy of the live `prod` (canary, chaos and autoscale) or `dev` (rolling update) Application, so the real environments only ever change through Git ([decision 0020](docs/decisions/0020-demos-in-a-copy-of-prod.md)). k6 sends ~10 requests/s through the gateway while they run (`autoscale` sends more).
 
 | Demo | What happens | Time |
 | --- | --- | --- |
@@ -88,10 +88,10 @@ All hostnames use `*.localtest.me`, which resolves to `127.0.0.1`.
 | `canary` | v1 → v2: Rollouts moves traffic 10% → 25% → 50% → 100% and the SLO analysis passes at each step | ~8 min |
 | `canary-fail` | v2 → v2-bad: the first analysis fails the SLO, Rollouts aborts and sends all traffic back to v2 | ~3 min |
 | `autoscale` | in a copy of prod whose pods request 10m CPU (prod: 50m, so a laptop-sized load is enough). The HPA is prod's own (3–6 pods, 70% CPU target); only the request it measures against changes: k6 sends a fixed rate (`AUTOSCALE_RATE`, default 180 requests/s), CPU goes past the HPA's 70% target and it scales the Rollout from 3 to 6 pods; when k6 stops it scales back to 3 after the HPA's 5-minute scale-down window. Fails if it doesn't scale up, or isn't back at 3 within 10 minutes | ~8 min |
-| `policy` | Kyverno refuses two pods created for real in `orders-demo`: an orders-gateway image without main's signature (the unsigned image staging and prod ran until 2026-11-25) and a `:latest` image. Each prints the policy that refused it and why. A signed image is admitted (dry run). Nothing is left running ([decision 0022](docs/decisions/0022-enforce-in-orders.md)) | <1 min |
+| `policy` | Kyverno refuses two pods created for real in `demo`: an orders-gateway image without main's signature (the unsigned image staging and prod ran until 2026-11-25) and a `:latest` image. Each prints the policy that refused it and why. A signed image is admitted (dry run). Nothing is left running ([decision 0022](docs/decisions/0022-enforce-in-orders.md)) | <1 min |
 | `clean` | deletes the demo copy (after an interrupted demo, or `--keep`) | |
 
-Add `--keep` to leave `orders-demo` running afterwards. Watch in the Rollouts dashboard (`https://rollouts.localtest.me/rollouts/orders-demo`), Argo CD, or Grafana. Run `./platform budget --watch 600` in a second terminal to see the peak.
+Add `--keep` to leave `demo` running afterwards. Watch in the Rollouts dashboard (`https://rollouts.localtest.me/rollouts/demo`), Argo CD, or Grafana. Run `./platform budget --watch 600` in a second terminal to see the peak.
 
 ## Repository layout
 
@@ -122,7 +122,7 @@ flowchart LR
   gh -->|CI commits dev's new image;<br/>staging and prod by PR| gh
   subgraph cluster [kind cluster: 1 control plane + 2 workers]
     argocd[Argo CD<br/>app-of-apps] -->|syncs gitops/ in waves| apps
-    subgraph apps [orders-dev / orders-staging / orders-prod]
+    subgraph apps [dev / staging / prod]
       dep[orders-gateway<br/>Deployment] 
       ro[orders-gateway<br/>Rollout, prod]
     end
@@ -148,7 +148,7 @@ flowchart LR
 - **Traffic** enters through one Envoy Gateway with a cert-manager certificate from a demo CA ([0008](docs/decisions/0008-gateway-and-tls.md)). In prod, Argo Rollouts moves the HTTPRoute's weights step by step and checks the SLO in Prometheus at each step ([0011](docs/decisions/0011-canary-rollouts.md)).
 - **Patches promote themselves.** A CronJob in the cluster checks each staging and prod promotion PR against soak gates (an hour on the environment before, the SLO held, no alerts, healthy pods) and merges it when they pass; features still need the owner. A `promotion/PAUSED` file on main stops it ([0024](docs/decisions/0024-patch-promoter.md)).
 - **Alerts** go from Alertmanager to a small receiver that logs them, so they're in Loki next to everything else; the always-firing Watchdog proves the path ([0025](docs/decisions/0025-security-alerts-and-routing.md)).
-- **Admission:** Kyverno refuses `:latest` and unsigned app images in the `orders-*` namespaces and audits the rest ([0012](docs/decisions/0012-kyverno-policies.md), [0022](docs/decisions/0022-enforce-in-orders.md)).
+- **Admission:** Kyverno refuses `:latest` and unsigned app images in the app namespaces (`dev`, `staging`, `prod`, `demo`) and audits the rest ([0012](docs/decisions/0012-kyverno-policies.md), [0022](docs/decisions/0022-enforce-in-orders.md)).
 
 ## Resource budget (measured)
 
@@ -208,10 +208,10 @@ Start with `./platform doctor` (Docker, CPU, memory, disk, ports) and `./platfor
 | `up` fails: "nodes advertise more than their cap" | The cluster was created before node reservations existed | `./platform down && ./platform up` |
 | `budget` reports `OOMKilled` | A container hit its memory limit (init containers too) | `./platform kubectl -n <ns> describe pod <pod>`; limits are in `gitops/values/` |
 | Browser warns about the certificate | The demo CA isn't trusted | `./platform urls` shows how to trust it, or accept the warning |
-| A pod in `orders-*` is refused by `disallow-latest-tag` or `verify-image-signatures` | Working as intended: `:latest` and unsigned app images aren't allowed there | Use a tagged, signed image ([0022](docs/decisions/0022-enforce-in-orders.md)) |
+| A pod in `dev`, `staging`, `prod` or `demo` is refused by `disallow-latest-tag` or `verify-image-signatures` | Working as intended: `:latest` and unsigned app images aren't allowed there | Use a tagged, signed image ([0022](docs/decisions/0022-enforce-in-orders.md)) |
 | An app in Argo CD is `OutOfSync` after a manual change | Self-heal puts it back from Git within seconds | Change Git, not the cluster |
 | The promoter logs `dry run (no token)` after a rebuild | `./platform down` deleted its GitHub token, which lives only in the cluster | On macOS, `./platform up` restores it from the Keychain if you saved it once with `./platform promoter-token save`; or run `./platform promoter-token load` ([decision 0024](docs/decisions/0024-patch-promoter.md)). One `dry run` pass right after `up` is normal: it can fire before the token is restored |
-| A demo was interrupted | Its copy is left in `orders-demo` | `./platform demo clean` |
+| A demo was interrupted | Its copy is left in `demo` | `./platform demo clean` |
 | Under Colima, a path in `/tmp` isn't found | Colima mounts only your home folder | Keep the checkout (and any worktree) under `~` |
 | Slow or evicted pods | Docker has less than 6 CPU / 12 GB | Colima: `colima start --cpu 6 --memory 12`; check with `./platform budget` |
 

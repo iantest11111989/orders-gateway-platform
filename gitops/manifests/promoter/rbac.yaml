@@ -1,4 +1,4 @@
-# Read-only, and only what the gates read: the three orders Applications in
+# Read-only, and only what the gates read: the three environments' Applications in
 # Argo CD, and the pods in the environments it promotes from. The GitHub
 # token (Secret promoter-github) is the only thing that can change anything.
 apiVersion: v1
@@ -16,7 +16,7 @@ metadata:
 rules:
   - apiGroups: [argoproj.io]
     resources: [applications]
-    resourceNames: [orders-dev, orders-staging, orders-prod]
+    resourceNames: [dev, staging, prod]
     verbs: [get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -32,7 +32,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: promoter-read-pods
-  namespace: orders-dev
+  namespace: dev
 rules:
   - {apiGroups: [""], resources: [pods], verbs: [list]}
 ---
@@ -40,7 +40,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: promoter-read-pods
-  namespace: orders-dev
+  namespace: dev
 roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: promoter-read-pods}
 subjects:
   - {kind: ServiceAccount, name: promoter, namespace: promoter}
@@ -49,7 +49,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: promoter-read-pods
-  namespace: orders-staging
+  namespace: staging
 rules:
   - {apiGroups: [""], resources: [pods], verbs: [list]}
 ---
@@ -57,7 +57,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: promoter-read-pods
-  namespace: orders-staging
+  namespace: staging
 roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: promoter-read-pods}
 subjects:
   - {kind: ServiceAccount, name: promoter, namespace: promoter}

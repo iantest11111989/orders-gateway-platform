@@ -41,23 +41,23 @@ The alert's `namespace` label tells you which environment it is. Use it for `<na
    ```
 2. **What do the failing requests say?** In Grafana Explore, choose Loki:
    ```logql
-   {namespace="<namespace>", app="orders-gateway"} | json | level="ERROR"
+   {namespace="<namespace>", app="app"} | json | level="ERROR"
 
    # Errors per minute by status and version
-   sum by (status, version) (count_over_time({namespace="<namespace>", app="orders-gateway"} | json | status >= 500 [1m]))
+   sum by (status, version) (count_over_time({namespace="<namespace>", app="app"} | json | status >= 500 [1m]))
    ```
    Copy a `request_id` from a failing line and search for it to see that request's whole story.
 3. **Did something just change?**
    ```sh
-   ./platform kubectl -n <namespace> get deploy,rollout,pods -o wide
-   ./platform kubectl -n <namespace> get configmap orders-gateway -o yaml | grep -E 'FAULT|PAYMENTS'   # the app's settings (it reads them with envFrom)
-   ./platform kubectl argo rollouts -n <namespace> get rollout orders-gateway   # prod (and staging)
+   ./platform kubectl -n <namespace> get deploy,pods -o wide
+   ./platform kubectl -n <namespace> get configmap app -o yaml | grep -E 'FAULT|PAYMENTS'   # the app's settings (it reads them with envFrom)
+   ./platform kubectl -n <namespace> rollout history deploy/app   # recent revisions
    ```
    Check the Argo CD UI (`https://argocd.localtest.me`) for a recent sync of this environment.
 
 ## How to fix
 
-- **Bad release:** roll back. In prod, run `./platform kubectl argo rollouts -n <namespace> abort orders-gateway`, which sends traffic back to the stable version. Then revert the image change in `environments/<env>/values.yaml` with a pull request, so Git matches.
+- **Bad release:** roll back. Run `./platform kubectl -n <namespace> rollout undo deploy/app`, which rolls the pods back to the previous version at once (Argo CD's self-heal puts Git's version back within minutes, so this buys time, it doesn't replace the fix). Then revert the image change in `environments/<env>/values.yaml` with a pull request, so Git matches.
 - **Payments failing:** there is nothing to fix in orders-gateway. The 502s are its honest answer. Fix the dependency or wait for it. In the demo, remove `PAYMENTS_ERROR_RATE` from the environment's values.
 - **Injected faults:** remove `FAULT_ERROR_RATE` from the environment's values and let Argo CD sync.
 - **Crashing pods:** run `./platform kubectl -n <namespace> describe pod <pod>` and `logs --previous`, then fix the cause. For an OOM kill, raise the memory limit. For a failing probe, check `/readyz`.

@@ -1,5 +1,5 @@
 # Every image needs an explicit tag or digest, and never ":latest", so what
-# runs is what was reviewed. Enforced in the orders-* namespaces (decision
+# runs is what was reviewed. Enforced in the app namespaces, dev|staging|prod|demo (decision
 # 0022); disallow-latest-tag-platform audits the rest of the cluster.
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
@@ -25,8 +25,8 @@ spec:
         operations: [CREATE, UPDATE]
         resources: [pods]
   matchConditions:
-    - name: orders-namespaces
-      expression: request.namespace.startsWith('orders-')
+    - name: app-namespaces
+      expression: "request.namespace in ['dev', 'staging', 'prod', 'demo']"
   variables:
     - name: images
       expression: >-

@@ -1,4 +1,4 @@
-# disallow-latest-tag for every namespace except orders-*, in Audit: the
+# disallow-latest-tag for every namespace except the app namespaces (dev, staging, prod, demo), in Audit: the
 # third-party charts are reported, not blocked (decisions 0012 and 0022).
 # Same checks as disallow-latest-tag.yaml; keep the two in step.
 apiVersion: policies.kyverno.io/v1
@@ -24,8 +24,8 @@ spec:
         operations: [CREATE, UPDATE]
         resources: [pods]
   matchConditions:
-    - name: not-orders-namespaces
-      expression: "!request.namespace.startsWith('orders-')"
+    - name: not-app-namespaces
+      expression: "!(request.namespace in ['dev', 'staging', 'prod', 'demo'])"
   variables:
     - name: images
       expression: >-

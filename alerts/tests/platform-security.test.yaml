@@ -25,7 +25,7 @@ tests:
           - exp_labels: {severity: page}
             exp_annotations:
               summary: "Kyverno's admission controller is down: pods are admitted without policy checks"
-              description: "No Kyverno admission controller has answered a metrics scrape for 5 minutes. Its webhooks fail open (failurePolicy: Ignore), so new pods, including in orders-*, skip the tag and signature policies until it's back."
+              description: "No Kyverno admission controller has answered a metrics scrape for 5 minutes. Its webhooks fail open (failurePolicy: Ignore), so new pods, including in the app namespaces, skip the tag and signature policies until it's back."
               runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/KyvernoDown.md
 
   # The scrape target disappearing entirely (pod deleted) counts as down too.
@@ -41,7 +41,7 @@ tests:
           - exp_labels: {severity: page}
             exp_annotations:
               summary: "Kyverno's admission controller is down: pods are admitted without policy checks"
-              description: "No Kyverno admission controller has answered a metrics scrape for 5 minutes. Its webhooks fail open (failurePolicy: Ignore), so new pods, including in orders-*, skip the tag and signature policies until it's back."
+              description: "No Kyverno admission controller has answered a metrics scrape for 5 minutes. Its webhooks fail open (failurePolicy: Ignore), so new pods, including in the app namespaces, skip the tag and signature policies until it's back."
               runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/KyvernoDown.md
 
   # Passes and failures are normal; errors aren't. Both metric names count.
@@ -74,7 +74,7 @@ tests:
         values: '1x30'
       - series: 'sealed_secrets_controller_condition_info{condition="Synced", namespace="monitoring", name="grafana-admin"}'
         values: '1x30'
-      - series: 'sealed_secrets_controller_condition_info{condition="Synced", namespace="orders-prod", name="payments-key"}'
+      - series: 'sealed_secrets_controller_condition_info{condition="Synced", namespace="prod", name="payments-key"}'
         values: '1x10 0x20'
     alert_rule_test:
       - eval_time: 30m
@@ -83,13 +83,13 @@ tests:
       - eval_time: 30m
         alertname: SealedSecretUnsealFailed
         exp_alerts:
-          - exp_labels: {severity: ticket, condition: Synced, namespace: orders-prod, name: payments-key}
+          - exp_labels: {severity: ticket, condition: Synced, namespace: prod, name: payments-key}
             exp_annotations:
-              summary: "SealedSecret orders-prod/payments-key can't be unsealed"
-              description: "The controller couldn't turn SealedSecret orders-prod/payments-key into a Secret. Anything that reads that Secret has the old value, or none."
+              summary: "SealedSecret prod/payments-key can't be unsealed"
+              description: "The controller couldn't turn SealedSecret prod/payments-key into a Secret. Anything that reads that Secret has the old value, or none."
               runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/SealedSecretUnsealFailed.md
 
-  # Criticals in a platform namespace don't count; in orders-* they do.
+  # Criticals in a platform namespace don't count; in the app namespaces they do.
   - name: Trivy
     interval: 1m
     input_series:
@@ -97,9 +97,9 @@ tests:
         values: '1x60'
       - series: 'trivy_image_vulnerabilities{namespace="kube-system", image_repository="kindest/kindnetd", image_tag="v1", severity="Critical"}'
         values: '2x60'
-      - series: 'trivy_image_vulnerabilities{namespace="orders-prod", image_repository="iantest11111989/orders-gateway", image_digest="sha256:abc", severity="Critical", resource_name="a"}'
+      - series: 'trivy_image_vulnerabilities{namespace="prod", image_repository="iantest11111989/orders-gateway", image_digest="sha256:abc", severity="Critical", resource_name="a"}'
         values: '0x10 1x50'
-      - series: 'trivy_image_vulnerabilities{namespace="orders-prod", image_repository="iantest11111989/orders-gateway", image_digest="sha256:abc", severity="High", resource_name="a"}'
+      - series: 'trivy_image_vulnerabilities{namespace="prod", image_repository="iantest11111989/orders-gateway", image_digest="sha256:abc", severity="High", resource_name="a"}'
         values: '3x60'
     alert_rule_test:
       - eval_time: 30m
@@ -108,10 +108,10 @@ tests:
       - eval_time: 45m
         alertname: OrdersImageCriticalVulnerability
         exp_alerts:
-          - exp_labels: {severity: ticket, namespace: orders-prod, image_repository: iantest11111989/orders-gateway, image_digest: "sha256:abc"}
+          - exp_labels: {severity: ticket, namespace: prod, image_repository: iantest11111989/orders-gateway, image_digest: "sha256:abc"}
             exp_annotations:
-              summary: "orders-prod runs an image with critical vulnerabilities"
-              description: "Trivy Operator found 1 critical vulnerabilities in iantest11111989/orders-gateway@sha256:abc, running in orders-prod."
+              summary: "prod runs an image with critical vulnerabilities"
+              description: "Trivy Operator found 1 critical vulnerabilities in iantest11111989/orders-gateway@sha256:abc, running in prod."
               runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/OrdersImageCriticalVulnerability.md
       - eval_time: 45m
         alertname: TrivyOperatorDown

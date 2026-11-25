@@ -18,7 +18,7 @@ By the end you will have built a small dashboard yourself: a time series panel, 
 
 Open **Dashboards → orders-gateway** (or <https://grafana.localtest.me/d/orders-gateway>).
 
-- The **environment** drop-down at the top picks the namespace. Switch it to `orders-dev`: that's where your k6 traffic goes.
+- The **environment** drop-down at the top picks the namespace. Switch it to `dev`: that's where your k6 traffic goes.
 - Hover the **(i)** next to any panel title. Every panel says what it measures and why (CI refuses a panel without one).
 - The rows go from "is the service OK?" (SLO, error budget, alerts) to "why not?" (traffic, latency, pods, logs). That's the order you'd read it in during an incident.
 - Look at **Pods by version**. It's the same `app_build_info` metric you queried in exercise 1, counted per version.
@@ -29,7 +29,7 @@ Open **Dashboards → orders-gateway** (or <https://grafana.localtest.me/d/order
 2. In the query editor switch from **Builder** to **Code**, and enter:
 
    ```promql
-   sum by (code) (rate(http_requests_total{namespace="orders-dev", route="/orders", method="POST"}[$__rate_interval]))
+   sum by (code) (rate(http_requests_total{namespace="dev", route="/orders", method="POST"}[$__rate_interval]))
    ```
 
    `$__rate_interval` is a Grafana variable. It picks a `rate()` window that fits the zoom level and the scrape interval, so you don't have to change `[5m]` by hand when you zoom out to a day.
@@ -47,9 +47,9 @@ You should see a `201` line at about 3.5 req/s and a `400` line at about 0.25 re
 Add another visualization, choose **Stat** (top right), and enter:
 
 ```promql
-sum(rate(http_request_duration_seconds_bucket{namespace="orders-dev", route="/orders", method="POST", le="0.3"}[$__rate_interval]))
+sum(rate(http_request_duration_seconds_bucket{namespace="dev", route="/orders", method="POST", le="0.3"}[$__rate_interval]))
 /
-sum(rate(http_request_duration_seconds_count{namespace="orders-dev", route="/orders", method="POST"}[$__rate_interval]))
+sum(rate(http_request_duration_seconds_count{namespace="dev", route="/orders", method="POST"}[$__rate_interval]))
 ```
 
 That's the share of orders faster than 300 ms, from exercise 1. Then:
@@ -62,12 +62,12 @@ The panel is green while the app meets the latency SLO. In exercise 4 you'll mak
 
 ## 4. Add an environment drop-down (2 min)
 
-Hard-coding `orders-dev` means one dashboard per environment. Use a variable instead:
+Hard-coding `dev` means one dashboard per environment. Use a variable instead:
 
 1. **Edit → Settings → Variables → Add variable**.
 2. **Type:** Query. **Name:** `namespace`. **Label:** `environment`. **Data source:** Prometheus.
-3. **Query type:** Label values. **Label:** `namespace`. **Metric:** `app_build_info`. The preview lists `orders-dev`, `orders-prod` and `orders-staging`, plus any namespace a demo used in the last 24 hours (such as `orders-demo`): Prometheus still has those series.
-4. Back on the dashboard, edit both panels and replace `namespace="orders-dev"` with `namespace="$namespace"`.
+3. **Query type:** Label values. **Label:** `namespace`. **Metric:** `app_build_info`. The preview lists `dev`, `prod` and `staging`, plus any namespace a demo used in the last 24 hours (such as `demo`): Prometheus still has those series.
+4. Back on the dashboard, edit both panels and replace `namespace="dev"` with `namespace="$namespace"`.
 
 Now the drop-down switches both panels between environments, the same way the provided dashboard works.
 

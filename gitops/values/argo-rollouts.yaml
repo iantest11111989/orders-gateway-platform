@@ -5,7 +5,7 @@ controller:
   # One replica for the 6 CPU / 12 GB budget (default 2, with leader election).
   replicas: 1
   # Reconcile every Rollout each minute (default 15 min). If an Argo CD sync
-  # resets the HTTPRoute weights mid-canary (orders-prod ignores them only in
+  # resets the HTTPRoute weights mid-canary (the demo copy of prod ignores them only in
   # the diff), a paused canary gets its weights back within a minute instead
   # of running at 100/0 while it reports 10%. Checked on ogp: a reconcile of
   # a paused Rollout sets the weights again at once.
