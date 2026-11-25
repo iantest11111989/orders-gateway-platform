@@ -36,12 +36,19 @@ start=$(date +%s)
 deadline=$(( start + APPS_TIMEOUT ))
 # Seconds after the root was applied when each Application first appeared and
 # first became Synced+Healthy, so slow sync waves show up in the output.
-declare -A seen_at healthy_at drift_since drift_logged
+declare -A seen_at healthy_at drift_since drift_logged slow_since slow_logged
 timing() { echo "(appeared +${seen_at[$1]:-?}s, healthy +${healthy_at[$1]:-never}s)"; }
 # The root app's sync waves wait only for each child's health, so an app that
 # is Healthy but stays OutOfSync doesn't hold up later waves, but it does hold
 # up this wait (until Argo CD's next refresh, ~3 min). Name the drifting
 # resources once, so a slow `up` points at what needs an ignoreDifferences.
+# An app that stays Progressing or Missing for a minute is the other way to
+# hold up `up`: name its unhealthy resources and its sync operation (a
+# PostSync hook Job that's still running shows up there). Once per app.
+slow_report() {
+  warn "$1: $2 for ${3}s; resources not Healthy, then the sync operation:"
+  kubectl -n argocd get applications.argoproj.io "$1" -o jsonpath='{range .status.resources[?(@.health.status!="Healthy")]}    {.kind} {.namespace}/{.name}: {.health.status} {.health.message}{"\n"}{end}    operation: {.status.operationState.phase} {.status.operationState.message}{"\n"}' 2>/dev/null || true
+}
 drift_report() {
   warn "$1: Healthy but not Synced for ${2}s; OutOfSync resources:"
   kubectl -n argocd get applications.argoproj.io "$1" -o jsonpath='{range .status.resources[?(@.status=="OutOfSync")]}    {.group}/{.kind} {.namespace}/{.name}{"\n"}{end}' 2>/dev/null || true
@@ -64,6 +71,15 @@ while :; do
       fi
     else
       unset 'drift_since[$name]'
+    fi
+    if [ "$health" = Progressing ] || [ "$health" = Missing ]; then
+      [ -n "${slow_since[$name]:-}" ] || slow_since[$name]=$now
+      if [ -z "${slow_logged[$name]:-}" ] && [ $(( now - slow_since[$name] )) -ge 60 ]; then
+        slow_logged[$name]=1
+        slow_report "$name" "$health" $(( now - slow_since[$name] ))
+      fi
+    else
+      unset 'slow_since[$name]'
     fi
   done <<<"$status"
   total=$(grep -c . <<<"$status" || true)
