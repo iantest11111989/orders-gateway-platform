@@ -14,6 +14,10 @@
 #                         the demo copy of prod)
 #   ./platform shell [script]  open a shell (or run a script) in the toolbox
 #   ./platform kubectl …  run kubectl in the toolbox
+#   ./platform promoter-token save|load|forget  keep the patch promoter's
+#                         GitHub token in the macOS Keychain: save copies it
+#                         from the cluster, load puts it back (up does this
+#                         by itself after a rebuild), forget removes it
 #
 # Environment:
 #   TOOLBOX_IMAGE   use this toolbox image instead of the pinned one
@@ -30,7 +34,7 @@ TOOLBOX_REPO=ghcr.io/iantest11111989/orders-gateway-platform-toolbox
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -79,7 +83,7 @@ run_toolbox() {
   # lives in a named volume, not the repo, so no root-owned or locked files
   # land in the reviewer's checkout.
   # shellcheck disable=SC2086
-  exec docker run --rm $tty \
+  ${TOOLBOX_EXEC-exec} docker run --rm $tty \
     --network host \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "$REPO_ROOT":/work \
@@ -94,15 +98,65 @@ run_toolbox() {
     "$img" "$@"
 }
 
+# The patch promoter's GitHub token (decision 0024) lives only in the cluster,
+# so ./platform down loses it. On macOS it can also live in the Keychain of
+# whoever runs ./platform (never in Git): up restores it after a rebuild.
+# Runs on the host, not in the toolbox: the Keychain is a macOS service.
+KEYCHAIN_SERVICE=ogp-promoter-github
+NODE=ogp-control-plane
+node_kubectl() { docker exec -i "$NODE" kubectl --kubeconfig /etc/kubernetes/admin.conf -n promoter "$@"; }
+
+promoter_token_load() {
+  command -v security >/dev/null 2>&1 || return 0  # not macOS: nothing to do
+  if ! t=$(security find-generic-password -s "$KEYCHAIN_SERVICE" -w 2>/dev/null) || [ -z "$t" ]; then
+    echo "  (no promoter token in the Keychain: the promoter runs as a dry run; see ./platform promoter-token)"
+    return 0
+  fi
+  if printf %s "$t" | node_kubectl create secret generic promoter-github --from-file=token=/dev/stdin \
+       --dry-run=client -o yaml | node_kubectl apply -f - >/dev/null 2>&1; then
+    echo "  ✓ promoter token restored from the Keychain (promoter-github, ${#t} characters)"
+  else
+    echo "  ! couldn't restore the promoter token (is the promoter namespace there?); run ./platform promoter-token load later"
+  fi
+  unset t
+}
+
+promoter_token() {
+  command -v security >/dev/null 2>&1 || die "promoter-token needs macOS (the Keychain). Elsewhere, recreate the Secret by hand (decision 0024)."
+  case "${1:-}" in
+    save)
+      t=$(node_kubectl get secret promoter-github -o jsonpath='{.data.token}' 2>/dev/null | base64 -d) || true
+      [ -n "$t" ] || die "the cluster has no promoter token to save (Secret promoter/promoter-github is missing or empty)"
+      # Through security -i on stdin, so the token never appears in a process list.
+      printf 'add-generic-password -U -a "%s" -s %s -l "orders-gateway-platform promoter GitHub token" -w %s\n' \
+        "$(id -un)" "$KEYCHAIN_SERVICE" "$t" | security -i >/dev/null
+      echo "saved the promoter token (${#t} characters) in $(id -un)'s Keychain as $KEYCHAIN_SERVICE"
+      unset t ;;
+    load) promoter_token_load ;;
+    forget)
+      security delete-generic-password -s "$KEYCHAIN_SERVICE" >/dev/null 2>&1 &&
+        echo "removed $KEYCHAIN_SERVICE from the Keychain (the cluster's copy is untouched)" ||
+        echo "no $KEYCHAIN_SERVICE in the Keychain" ;;
+    *) die "usage: ./platform promoter-token save|load|forget" ;;
+  esac
+}
+
 [ $# -ge 1 ] || usage 1
 cmd=$1
 shift
 
 case "$cmd" in
   -h|--help|help) usage 0 ;;
-  doctor|up|down|urls|verify|budget|demo)
+  up)
+    check_docker
+    TOOLBOX_EXEC='' run_toolbox bash scripts/up.sh "$@"
+    promoter_token_load ;;
+  doctor|down|urls|verify|budget|demo)
     check_docker
     run_toolbox bash "scripts/$cmd.sh" "$@" ;;
+  promoter-token)
+    check_docker
+    promoter_token "$@" ;;
   shell)
     check_docker
     run_toolbox bash "$@" ;;
