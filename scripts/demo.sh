@@ -13,7 +13,7 @@
 #   canary       v1 -> v2 through the prod canary: 10% -> 25% -> 50% -> 100%,
 #                with the SLO analysis passing at every step
 #   canary-fail  v2 -> v2-bad: the analysis fails and Rollouts rolls back
-#   policy       Kyverno refuses, in orders-demo, an orders-gateway image that
+#   policy       Kyverno refuses, in namespace demo, an orders-gateway image that
 #                main's app workflow didn't sign (the old staging/prod image)
 #                and a :latest image; a signed image is admitted (dry run)
 #   autoscale    in a copy of prod whose pods request 10m CPU (prod: 50m): a
@@ -563,7 +563,7 @@ UNSIGNED_IMAGE=ghcr.io/iantest11111989/orders-gateway@sha256:09c2177caeb2c7b701c
 SIGNED_IMAGE=ghcr.io/iantest11111989/orders-gateway:v1
 CREATED_NS=''
 
-# A pod that meets Pod Security "restricted" (which orders-* enforce, and
+# A pod that meets Pod Security "restricted" (which the app namespaces enforce, and
 # which the API server checks before Kyverno), so the image is the only
 # thing a policy can object to.
 policy_pod() { # policy_pod <name> <image>
@@ -601,7 +601,7 @@ demo_policy() {
     kubectl create namespace "$NS" >/dev/null
     kubectl label namespace "$NS" pod-security.kubernetes.io/enforce=restricted >/dev/null
     CREATED_NS=1
-    ok "created namespace $NS (Pod Security restricted, like the other orders-* namespaces)"
+    ok "created namespace $NS (Pod Security restricted, like the app namespaces)"
   fi
 
   step "1. An orders-gateway image nobody signed"
