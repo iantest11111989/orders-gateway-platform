@@ -17,8 +17,8 @@ Grafana is <http://localhost:3000> (`admin` / `admin12345`); the other logins ar
 
    ```sh
    ./platform shell
-   kubectl -n dev scale deploy orders-gateway --replicas=2
-   kubectl -n dev get deploy orders-gateway -w
+   kubectl -n dev scale deploy app --replicas=2
+   kubectl -n dev get deploy app -w
    ```
 
    Within seconds `replicas` goes back to `1`. On ogp it took 5 seconds. Argo CD saw the live state drift from Git (dev runs one replica, `environments/dev/values.yaml`) and **self-healed** it. Press Ctrl-C. In the UI, `dev`'s **History and rollback** and the dashboard's **Syncs per Application** panel show the extra sync.
