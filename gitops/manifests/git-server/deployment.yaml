@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soft-serve
+  labels: {app.kubernetes.io/name: soft-serve}
+spec:
+  replicas: 1
+  # One writer on a ReadWriteOnce volume: stop the old pod first.
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app.kubernetes.io/name: soft-serve}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: soft-serve}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: soft-serve
+          # v0.12.4; Renovate keeps it current (kubernetes manager).
+          image: docker.io/charmcli/soft-serve:v0.12.4@sha256:740a313b3075ddbf4a24765cda8cfa1560c3fcad96e71d355dc365aeab351db6
+          env:
+            # The bootstrap's key (scripts/git-sync.sh) is the only writer.
+            - name: SOFT_SERVE_INITIAL_ADMIN_KEYS
+              valueFrom:
+                secretKeyRef: {name: git-admin, key: authorized_key}
+            # Anyone in the cluster may clone over HTTP (Argo CD does);
+            # nobody may push without the admin key.
+            - name: SOFT_SERVE_ANON_ACCESS
+              value: read-only
+            - name: SOFT_SERVE_DATA_PATH
+              value: /soft-serve
+            - name: SOFT_SERVE_HTTP_PUBLIC_URL
+              value: http://git.git.svc.cluster.local:23232
+          ports:
+            - {name: ssh, containerPort: 23231}
+            - {name: http, containerPort: 23232}
+          startupProbe:
+            tcpSocket: {port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            tcpSocket: {port: http}
+            periodSeconds: 20
+          readinessProbe:
+            tcpSocket: {port: http}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: data, mountPath: /soft-serve}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: soft-serve}
+        - name: tmp
+          emptyDir: {}

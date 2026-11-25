@@ -1,0 +1,11 @@
+# The repositories. On the kind node's local-path storage, so they survive
+# `docker compose stop`/`start` (the cluster isn't stopped).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: soft-serve
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
