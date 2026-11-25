@@ -57,10 +57,14 @@ trivy:
   # Same gate as CI (decision 0016): report everything, but the dashboards and
   # alerts care about fixable HIGH/CRITICAL.
   severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
-  # Scan Jobs are clients of the server: no DB in memory.
+  # Scan Jobs are clients of the server: no DB in memory. No CPU limit: Helm
+  # merges our map into the chart's default (limits.cpu 500m), so leaving cpu
+  # out kept the limit, and the first round of scans after an install was
+  # throttled hard enough to raise CPUThrottlingHigh (and InfoInhibitor) on a
+  # quiet system. `cpu: null` removes the default; scans are short Jobs.
   resources:
     requests: {cpu: 50m, memory: 128Mi}
-    limits: {memory: 512Mi}
+    limits: {cpu: null, memory: 512Mi}
   # The server keeps the DB on an emptyDir: it downloads again after a restart
   # (about a minute) but needs no PersistentVolume.
   storageClassEnabled: false
