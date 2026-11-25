@@ -26,6 +26,14 @@ kubectl create namespace git --dry-run=client -o yaml | kubectl apply -f - >/dev
 if kubectl -n git get secret git-admin >/dev/null 2>&1; then
   kubectl -n git get secret git-admin -o jsonpath='{.data.private_key}' | base64 -d >"$KEY"
 else
+  # A server whose data outlived its key would refuse every push (soft-serve
+  # takes its admin key only when it first creates its database). The data is
+  # only snapshots of this checkout, which the push below recreates: reset it.
+  if kubectl -n git get pvc soft-serve >/dev/null 2>&1; then
+    warn "the Git server's data is there but its admin key is gone; resetting the server (it only holds snapshots of this checkout)"
+    kubectl -n git delete deploy soft-serve --ignore-not-found --wait=true >/dev/null
+    kubectl -n git delete pvc soft-serve --wait=true >/dev/null
+  fi
   ssh-keygen -q -t ed25519 -N '' -C orders-gateway-platform-bootstrap -f "$KEY"
   kubectl -n git create secret generic git-admin \
     --from-file=private_key="$KEY" --from-file=authorized_key="$KEY.pub" >/dev/null
@@ -70,7 +78,8 @@ else
   commit=$(GIT_AUTHOR_NAME="orders-gateway-platform bootstrap" GIT_AUTHOR_EMAIL="bootstrap@localhost" \
     GIT_COMMITTER_NAME="orders-gateway-platform bootstrap" GIT_COMMITTER_EMAIL="bootstrap@localhost" \
     g commit-tree "$tree" ${parent:+-p "$parent"} -m "Snapshot of the checkout ($origin)")
-  g push -q "$remote" "$commit:refs/heads/main"
+  g push -q "$remote" "$commit:refs/heads/main" ||
+    die "push to the in-stack Git server refused; if its admin key changed, reset it: kubectl -n git delete secret git-admin, then run ./platform up again"
   ok "pushed ${commit:0:12}: snapshot of $origin"
   echo "$commit" >"$tmp/rev"
 fi

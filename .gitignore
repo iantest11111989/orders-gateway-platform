@@ -24,3 +24,8 @@ coverage.*
 
 # docker compose writes the kubeconfig for the host here
 /out/
+
+# Never snapshotted into the in-stack Git server (scripts/git-sync.sh) or committed
+node_modules/
+.env
+.env.*
