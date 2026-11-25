@@ -50,8 +50,10 @@ jobs:
         run: |
           ./platform budget --watch 720 >budget.log 2>&1 &
           budget=$!
-          ./platform demo canary
-          wait "$budget"; status=$?
+          # Actions runs bash -e: capture both results, so a failed demo still
+          # prints the budget and writes the summary before the step fails.
+          demo=0; ./platform demo canary || demo=$?
+          status=0; wait "$budget" || status=$?
           cat budget.log
           {
             echo "### Budget during the canary demo (${{ matrix.arch }})"
@@ -59,6 +61,7 @@ jobs:
             grep -E 'total caps|peak over|OOM|fits' budget.log || true
             echo '```'
           } >>"$GITHUB_STEP_SUMMARY"
+          [ "$demo" -eq 0 ] || { echo "::error::demo canary failed (exit $demo)"; exit "$demo"; }
           exit "$status"
       - name: Diagnostics (on failure)
         if: failure()
