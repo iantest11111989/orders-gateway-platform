@@ -275,9 +275,11 @@ demo_chaos() {
   node=$(demo_pods | awk '{print $2}' | sort | uniq -c | sort -rn | awk 'NR == 1 {print $2}')
   step "Draining $node for the demo's pods"
   kubectl cordon "$node" >/dev/null; CORDONED=$node
-  ok "cordoned $node (no new pods land there)"
+  ok "cordoned $node: no new pods land there, from any namespace, until it's uncordoned (about a minute)"
   for p in $(demo_pods | awk -v n="$node" '$2 == n {print $1}'); do evict "$p"; done
   wait_ready "$want" 300
+  left=$(demo_pods | awk -v n="$node" '$2 == n' | grep -c . || true)
+  [ "$left" -eq 0 ] || die "$left demo pod(s) still on the cordoned $node"
   ok "all $want pods ready again, none on $node"; show_pods
   kubectl uncordon "$node" >/dev/null; CORDONED=''
   ok "uncordoned $node"
@@ -290,7 +292,6 @@ demo_chaos() {
     die "requests failed during the chaos: only ${SLO_PCT:-?}% met the SLO (want >= 99.5%)"
   fi
 }
-
 
 demo_rolling_update() {
   step "Demo: rolling update v1 -> v2 in a copy of dev"
