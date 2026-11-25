@@ -76,7 +76,7 @@ Now the drop-down switches both panels between environments, the same way the pr
 Open the provided `orders-gateway` dashboard and, on **Requests per second, by route and status**, choose **⋮ → Edit** (look, don't save). Compare it with your panel:
 
 - It sums `by (method, route, code)`, so you see every endpoint, not only orders.
-- It leaves out `route!~"/healthz|/readyz|/metrics"`: Kubernetes probes and Prometheus scrapes, which would otherwise clutter the chart.
+- It filters out Kubernetes probes and Prometheus scrapes with `route!~"/healthz|/readyz|/metrics"`, which would otherwise clutter the chart.
 - **POST /orders: share under 300 ms** uses `1 - slo:orders_latency_errors:ratio_rate5m`. That's the recording rule from `alerts/`, so the dashboard and the alerts compute the SLI the same way, and Prometheus does the work once.
 
 Leave without saving. If Grafana asks, **Discard**.
