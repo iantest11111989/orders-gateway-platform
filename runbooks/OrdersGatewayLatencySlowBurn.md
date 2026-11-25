@@ -54,7 +54,7 @@ The alert's `namespace` label tells you which environment it is. Use it for `<na
 
 ## How to fix
 
-- **Bad release:** roll back. Run `./platform kubectl -n <namespace> rollout undo deploy/app`, which rolls the pods back to the previous version at once (Argo CD's self-heal puts Git's version back within minutes, so this buys time, it doesn't replace the fix). Then revert the image change in `environments/<env>/values.yaml` (README, Roll back).
+- **Bad release:** roll back through Git, so Argo CD doesn't undo it. In the default setup, `./platform rollback --env <env>` puts back the image `<env>` ran before (README, Roll back); it pushes a commit to the in-stack Git server and waits for the rollout. When Argo CD syncs from GitHub, revert the image change in `environments/<env>/values.yaml` with a pull request instead. Don't `kubectl rollout undo`: self-heal puts Git's version back within seconds.
 - **Injected latency:** remove `config.faultLatencyMs` from the environment's values and let Argo CD sync; for a runtime fault, delete the pods (they start clean).
 - **Saturation:** raise the HPA maximum or the CPU request in the environment's values, or find what else is using the node. Check `./platform budget` first, because the stack must stay within 6 CPU / 12 GB.
 
