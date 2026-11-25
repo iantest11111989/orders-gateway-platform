@@ -633,17 +633,22 @@ case "$name" in
 esac
 
 if [ -n "$keep" ]; then
-  if [ -n "${CREATED_NS:-}" ]; then ok "kept namespace $NS (kubectl delete namespace $NS removes it)"
+  if [ "$name" = policy ]; then
+    if [ -n "${CREATED_NS:-}" ]; then ok "kept namespace $NS (kubectl delete namespace $NS removes it)"; fi
   else ok "kept $APP running (./platform demo clean deletes it)"; fi
   [ -z "${DEMO_BRANCH:-}" ] || ok "kept branch $DEMO_BRANCH (delete it with: git push origin --delete $DEMO_BRANCH)"
-else
-  # The policy demo made orders-demo itself (no Application to delete it).
+elif [ "$name" = policy ]; then
+  # The policy demo creates no Application: delete only the namespace it
+  # made, and leave an orders-demo copy kept by another demo alone. Wait,
+  # so the next demo doesn't find it still Terminating.
   if [ -n "${CREATED_NS:-}" ]; then
-    kubectl delete namespace "$NS" --ignore-not-found --wait=false >/dev/null
+    kubectl delete namespace "$NS" --ignore-not-found --wait=true --timeout=120s >/dev/null
     ok "deleted namespace $NS"
   else
-    delete_app
+    ok "left the existing $NS (from another demo) as it was"
   fi
+else
+  delete_app
   if [ -n "${DEMO_BRANCH:-}" ]; then
     if delete_branch "$DEMO_REPO" "$DEMO_BRANCH"; then ok "${DRY_RUN:+would have }deleted the demo branch $DEMO_BRANCH"
     else warn "couldn't delete the demo branch $DEMO_BRANCH; delete it with: git push origin --delete $DEMO_BRANCH"; fi
