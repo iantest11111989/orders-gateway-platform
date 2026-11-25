@@ -18,3 +18,5 @@ Renaming the environments (#77) removed the `orders-dev`, `orders-staging` and `
 
 - A cluster that went through #77 before this keeps its orphans (namespaces `orders-dev`, `orders-staging`, `orders-prod`) until they're deleted by hand or the cluster is rebuilt.
 - The demo copy (`scripts/demo.sh`) already sets the finalizer for the same reason.
+- **The namespace stays.** A namespace made by `CreateNamespace` isn't in the Application's resource tree, so removing an environment leaves its namespace behind, empty. That's harmless; delete it by hand if you want it gone.
+- **Teardown order.** An Application with the finalizer is only deleted once Argo CD's controller has removed its resources. Deleting it while the controller is gone (for example after `kubectl delete namespace argocd`) hangs until the finalizer is patched away: `kubectl -n argocd patch application <name> --type merge -p '{"metadata":{"finalizers":null}}'`. Delete Applications before Argo CD. `./platform down` deletes the whole kind cluster, so it isn't affected.
