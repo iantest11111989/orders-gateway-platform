@@ -31,7 +31,7 @@ Each line is the app's JSON log for one request:
 {"time":"…","level":"INFO","msg":"request","method":"POST","route":"/orders","status":201,"duration_ms":39.6,"request_id":"f978ac39-…","version":"sha-d5d3d8f966ab","order_id":"ord_8e1e5a3a43f56129"}
 ```
 
-Probes (`/healthz`, `/readyz`) and Prometheus scrapes are logged at `DEBUG`, so they don't drown out the real requests.
+Probes (`/healthz`, `/readyz`) and Prometheus scrapes are logged at `DEBUG`. dev runs at `LOG_LEVEL=debug` (`environments/dev/values.yaml`), so you'll see them here. Staging and prod log at `INFO` and leave them out. To hide them in dev, add `| json | level != "DEBUG"`.
 
 ## 2. Filter by text (2 min)
 
@@ -78,10 +78,10 @@ This is why per-request values like order IDs and request IDs go in **logs**, no
 LogQL can count and measure log lines over time, like PromQL does with samples. Switch the visualisation to **Time series**:
 
 ```logql
-sum by (status) (count_over_time({namespace="orders-dev", app="orders-gateway"} | json [1m]))
+sum by (status) (count_over_time({namespace="orders-dev", app="orders-gateway"} | json | level != "DEBUG" [1m]))
 ```
 
-That's requests per minute by status, counted from the logs. Compare it with Prometheus (exercise 1): `201` at about 200/min is the same as `rate(...)` at about 3.4/s (k6 at 5 req/s, 70% of them valid orders).
+That's requests per minute by status, counted from the logs. `level != "DEBUG"` leaves out dev's probe and scrape lines, which would otherwise add a `200` series. Compare it with Prometheus (exercise 1): `201` at about 200/min is the same as `rate(...)` at about 3.4/s (k6 at 5 req/s, 70% of them valid orders).
 
 And a percentile from a field, with `unwrap`:
 
