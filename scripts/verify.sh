@@ -36,8 +36,13 @@ if res=$(proxy monitoring kube-prometheus-stack-prometheus:9090 '/api/v1/query?q
     # the Envoy proxy after its bootstrap rollout: 360 s grace period) isn't a
     # problem with the running stack: note it, don't fail on it.
     if [ "$pod" != "-" ]; then
-      if ! since=$(kubectl -n "$ns" get pod "$pod" -o jsonpath='{.metadata.deletionTimestamp}' 2>/dev/null); then
-        warn "target down: $job $ns/$pod: the pod is gone (ignored)"; ignored=$((ignored + 1)); continue
+      if ! since=$(kubectl -n "$ns" get pod "$pod" -o jsonpath='{.metadata.deletionTimestamp}' 2>&1); then
+        # Only a definite NotFound counts as gone; any other error (API,
+        # RBAC) leaves the target counted as down.
+        if [[ $since == *NotFound* || $since == *"not found"* ]]; then
+          warn "target down: $job $ns/$pod: the pod is gone (ignored)"; ignored=$((ignored + 1)); continue
+        fi
+        miss "target down: $job $ns/$pod (and couldn't check the pod: $since)"; real=1; continue
       elif [ -n "$since" ]; then
         warn "target down: $job $ns/$pod: the pod is terminating since $since (ignored)"; ignored=$((ignored + 1)); continue
       fi
