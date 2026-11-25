@@ -97,7 +97,10 @@ controller:
     # At 1Gi it was still OOMKilled once during a fresh CI bootstrap
     # (`./platform budget`, PR #29), after Kyverno, NetworkPolicies and Sealed
     # Secrets added more resources to watch; on ogp its peak was 856Mi.
-    requests: {cpu: 100m, memory: 384Mi}
+    # The request is ~2x steady state (~400Mi): under node memory pressure the
+    # kubelet evicts by usage above request, and an eviction loses sync
+    # progress just like an OOM kill.
+    requests: {cpu: 100m, memory: 768Mi}
     limits: {memory: 1536Mi}
   # Go's GC works harder as the heap nears this soft limit (~80% of the hard
   # limit), so a bootstrap spike slows the controller down instead of getting
