@@ -10,6 +10,8 @@
 #                         HTTPS and policies
 #   ./platform budget [--watch SECONDS]  measured CPU/memory vs the 6 CPU / 12 GiB
 #                         budget (peak over SECONDS with --watch)
+#   ./platform demo <name>  narrated demos: canary, canary-fail (clean removes
+#                         the demo copy of prod)
 #   ./platform shell [script]  open a shell (or run a script) in the toolbox
 #   ./platform kubectl …  run kubectl in the toolbox
 #
@@ -26,7 +28,7 @@ TOOLBOX_REPO=ghcr.io/iantest11111989/orders-gateway-platform-toolbox
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -94,7 +96,7 @@ shift
 
 case "$cmd" in
   -h|--help|help) usage 0 ;;
-  doctor|up|down|urls|verify|budget)
+  doctor|up|down|urls|verify|budget|demo)
     check_docker
     run_toolbox bash "scripts/$cmd.sh" "$@" ;;
   shell)

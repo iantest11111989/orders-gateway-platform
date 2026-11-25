@@ -1,0 +1,9 @@
+# A child whose resources already matched Git when it was created: Synced
+# without ever running a sync, so no history (cert-manager on ogp). It must
+# count as Healthy, or the root would wait for it forever.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: {name: synced-no-history, namespace: argocd}
+status:
+  health: {status: Healthy}
+  sync: {status: Synced}

@@ -1,0 +1,9 @@
+# A child Application right after the root created it: no resources applied
+# yet, so Argo CD reports it Healthy and OutOfSync, with no sync history.
+# The root's wave gate must see it as Progressing.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: {name: new-child, namespace: argocd}
+status:
+  health: {status: Healthy}
+  sync: {status: OutOfSync}
