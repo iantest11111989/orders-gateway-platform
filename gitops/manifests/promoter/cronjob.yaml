@@ -36,7 +36,7 @@ spec:
                 - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
                 - {name: GITHUB_REPOSITORY, value: iantest11111989/orders-gateway-platform}
                 - {name: SOAK_MINUTES, value: "60"}
-                - {name: MIN_ORDERS, value: "300"}
+                - {name: MIN_REQUESTS, value: "300"}
                 - name: GITHUB_TOKEN
                   valueFrom:
                     secretKeyRef: {name: promoter-github, key: token, optional: true}

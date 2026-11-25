@@ -94,8 +94,8 @@ rollout:
     count: 4          # 4 measurements (2 minutes) per analysis step
     failureLimit: 1   # a second failed measurement aborts and rolls back
     inconclusiveLimit: 1  # a second no-data measurement pauses for a human
-    maxErrorRatio: 0.005       # SLO: 99.5% non-5xx
-    maxP99LatencySeconds: 0.3  # SLO: under 300 ms
+    maxErrorRatio: 0.005        # SLO: 99.5% of /work and /echo non-5xx (decision 0027)
+    maxP99LatencySeconds: 0.25  # SLO: /echo and /version under 250 ms (the app has no 0.3 bucket)
 
 # The app's drain (5 s) + shutdown limit (20 s) fits inside this.
 # preStop sleep (5 s, so endpoints drop the pod before it stops accepting)

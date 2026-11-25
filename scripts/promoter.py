@@ -10,7 +10,7 @@ laptop. Two modes:
                          environment before it, and merge the PR when they all
                          pass. Every pass writes the gate results to one comment
                          on the PR, which is the record.
-  promoter.py trickle    a light, steady stream of orders to dev, staging and prod
+  promoter.py trickle    a light, steady stream of requests to dev, staging and prod
                          through the gateway, so "the SLO held for an hour" means
                          something (and prod's canary has traffic to analyse).
   promoter.py configmap  print the ConfigMap that ships this file
@@ -22,7 +22,7 @@ the image <tag> in the PR:
   - the PR is a patch (Promotion-Kind: patch, from scripts/promotion-kind.sh)
   - the PR's checks finished and passed
   - the environment before has run only <tag> for SOAK_MINUTES
-  - it served at least MIN_ORDERS orders in that time (an SLO with no traffic
+  - it served at least MIN_REQUESTS requests (/work and /echo) in that time (an SLO with no traffic
     proves nothing)
   - its availability and latency SLOs held over the last hour
   - no alert fired for it in the soak, and none is firing for <env>
@@ -50,7 +50,7 @@ REPO = os.environ.get("GITHUB_REPOSITORY", "iantest11111989/orders-gateway-platf
 TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
 PROMETHEUS = os.environ.get("PROMETHEUS_URL", "http://kube-prometheus-stack-prometheus.monitoring:9090")
 SOAK_MINUTES = int(os.environ.get("SOAK_MINUTES", "60"))
-MIN_ORDERS = int(os.environ.get("MIN_ORDERS", "300"))
+MIN_REQUESTS = int(os.environ.get("MIN_REQUESTS", "300"))
 SLO_ERROR_BUDGET = 0.005  # 99.5% (decision 0006)
 
 PREVIOUS = {"staging": "dev", "prod": "staging"}  # promotion order
@@ -178,16 +178,17 @@ def soak_gates(prev, env, tag, prom=prometheus, kube_get=kube):
     gates = []
 
     minutes = value(prom(
-        f'count_over_time((count(app_build_info{{namespace="{ns}",version="{tag}"}})'
-        f' unless count(app_build_info{{namespace="{ns}",version!="{tag}"}}))[{window}:1m])'))
+        f'count_over_time((count(app_info{{namespace="{ns}",version="{tag}"}})'
+        f' unless count(app_info{{namespace="{ns}",version!="{tag}"}}))[{window}:1m])'))
     # Allow two missed scrapes; a different version at any point resets the count.
     ran = int(minutes or 0)
     gates.append((f"{prev} has run only {tag} for {SOAK_MINUTES} min", ran >= SOAK_MINUTES - 2,
                   f"{ran} of the last {SOAK_MINUTES} minutes"))
 
-    orders = value(prom(f'sum(increase(http_requests_total{{namespace="{ns}",route="/orders",method="POST"}}[{window}]))'))
-    orders = int(orders or 0)
-    gates.append((f"{prev} served at least {MIN_ORDERS} orders", orders >= MIN_ORDERS, f"{orders} in {SOAK_MINUTES} min"))
+    # The SLIs' routes (decision 0027): an SLO held with no traffic proves nothing.
+    served = value(prom(f'sum(increase(http_requests_total{{namespace="{ns}",route=~"/work|/echo"}}[{window}]))'))
+    served = int(served or 0)
+    gates.append((f"{prev} served at least {MIN_REQUESTS} requests", served >= MIN_REQUESTS, f"{served} in {SOAK_MINUTES} min"))
 
     for slo in ("availability", "latency"):
         ratio = value(prom(f'slo:orders_{slo}_errors:ratio_rate1h{{namespace="{ns}"}}'))
@@ -299,13 +300,15 @@ def run():
 
 
 def trickle():
-    """Steady orders to every environment, through the gateway like real clients."""
+    """Steady requests to every environment, through the gateway like real clients:
+    each round a small GET /work and a POST /echo, so both SLIs have data."""
     gateway = os.environ.get("GATEWAY", "envoy-platform.envoy-gateway-system")
     hosts = os.environ.get("TRICKLE_HOSTS", "orders.dev.localtest.me orders.staging.localtest.me orders.localtest.me").split()
     interval = float(os.environ.get("TRICKLE_INTERVAL", "1"))
     ctx = ssl.create_default_context()
     ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE  # the platform's own local CA
-    body = json.dumps({"customer_id": "cust-trickle", "items": [{"sku": "SKU-PEN-5", "quantity": 1}]})
+    body = json.dumps({"from": "trickle"})
+    calls = [("GET", "/work?ms=10", None), ("POST", "/echo", body)]
     counts, conns = {}, {}
     # A line at once, then a summary every 5 minutes (not a line per request).
     # The first line also gives Loki this namespace right away (./platform verify checks it).
@@ -318,11 +321,11 @@ def trickle():
         return conn
 
     while True:
-        for host in hosts:
+        for host, (method, path, payload) in ((h, c) for h in hosts for c in calls):
             code = "error"
             try:
                 conn = conns.get(host) or connect(host)
-                conn.request("POST", "/orders", body, {"Content-Type": "application/json"})
+                conn.request(method, path, payload, {"Content-Type": "application/json"} if payload else {})
                 resp = conn.getresponse()
                 resp.read()
                 code = resp.status

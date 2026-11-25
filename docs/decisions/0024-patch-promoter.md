@@ -30,7 +30,7 @@ For staging the environment before is dev, and for prod it's staging. All of the
 | `Promotion-Kind: patch` | features need the owner |
 | the PR's checks all finished and passed | the PR's own CI, on the branch head |
 | the environment before ran **only** that image for 60 minutes (58 of the last 60 one-minute samples of `app_build_info`) | a newer image, or a rollback, starts the soak again |
-| it served at least 300 orders in that hour | an SLO with no traffic proves nothing |
+| it served at least 300 requests in that hour | an SLO with no traffic proves nothing |
 | its availability and latency SLOs held over the last hour (`slo:orders_*_errors:ratio_rate1h` ≤ 0.5%, no NaN) | the brief's "SLO holds" |
 | no alert fired for it during the soak, and none is firing for the target | "no alerts fire" |
 | its pods are all Ready and labelled with that version, and Argo CD shows both environments Synced and Healthy | what `./platform verify` checks |

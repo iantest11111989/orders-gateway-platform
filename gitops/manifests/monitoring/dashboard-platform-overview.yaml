@@ -707,7 +707,7 @@ data:
         {
           "type": "table",
           "title": "Versions and pods",
-          "description": "Which version each environment runs and how many pods run it. During a prod canary you'll see two versions.",
+          "description": "Which version each environment runs and how many pods run it. During a rolling update you'll see two versions for a minute.",
           "id": 10,
           "datasource": {
             "type": "prometheus",
@@ -726,7 +726,7 @@ data:
                 "uid": "prometheus"
               },
               "refId": "A",
-              "expr": "count by (namespace, version) (app_build_info{namespace=~\"dev|staging|prod\"})",
+              "expr": "count by (namespace, version) (app_info{namespace=~\"dev|staging|prod\"})",
               "instant": true,
               "format": "table"
             }
@@ -1025,8 +1025,8 @@ data:
         },
         {
           "type": "timeseries",
-          "title": "Order requests per second",
-          "description": "POST /orders per second in each environment, all status codes. dev and staging carry the patch promoter's trickle (decision 0024); prod also gets it, plus any demo load.",
+          "title": "Requests per second",
+          "description": "/work and /echo requests per second in each environment, all statuses. Each gets the patch promoter's trickle (decision 0024); prod also any load you send to http://localhost:8080.",
           "id": 12,
           "datasource": {
             "type": "prometheus",
@@ -1045,7 +1045,7 @@ data:
                 "uid": "prometheus"
               },
               "refId": "A",
-              "expr": "sum by (namespace) (rate(http_requests_total{namespace=~\"dev|staging|prod\", route=\"/orders\", method=\"POST\"}[$__rate_interval]))",
+              "expr": "sum by (namespace) (rate(http_requests_total{namespace=~\"dev|staging|prod\", route=~\"/work|/echo\"}[$__rate_interval]))",
               "legendFormat": "{{namespace}}"
             }
           ],
@@ -1267,8 +1267,8 @@ data:
         },
         {
           "type": "stat",
-          "title": "Orders per second, all environments",
-          "description": "POST /orders per second across dev, staging and prod. Without k6 or a demo this is the patch promoter's trickle (decision 0024), about one order a second per environment; 0 means the trickle or the gateway is down.",
+          "title": "Requests per second, all environments",
+          "description": "/work and /echo per second across dev, staging and prod. Without load this is the patch promoter's trickle (decision 0024), about four requests a second per environment; 0 means the trickle or the gateway is down.",
           "id": 17,
           "datasource": {
             "type": "prometheus",
@@ -1287,7 +1287,7 @@ data:
                 "uid": "prometheus"
               },
               "refId": "A",
-              "expr": "sum(rate(http_requests_total{route=\"/orders\", method=\"POST\", namespace=~\"dev|staging|prod\"}[5m]))",
+              "expr": "sum(rate(http_requests_total{route=~\"/work|/echo\", namespace=~\"dev|staging|prod\"}[5m]))",
               "instant": true
             }
           ],
