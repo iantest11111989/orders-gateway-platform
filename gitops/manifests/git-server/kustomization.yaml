@@ -1,0 +1,16 @@
+# The in-stack Git server (decision 0029): soft-serve, which Argo CD syncs from
+# by default, so the cluster runs the checkout it was started from. Applied by
+# scripts/git-sync.sh (from up.sh) before Argo CD exists, with kubectl apply -k.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: git
+resources:
+  - namespace.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - networkpolicy.yaml
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: orders-gateway-platform
+    includeSelectors: false

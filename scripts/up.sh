@@ -90,6 +90,17 @@ step "Loading the Sealed Secrets demo key"
 kubectl apply -f "$(dirname "$0")/../gitops/manifests/sealed-secrets/demo-key.yaml" >/dev/null
 ok "kube-system/sealed-secrets-demo-key"
 
+# Argo CD syncs from the in-stack Git server by default: the cluster runs this
+# checkout (decision 0029). REPO_URL (e.g. this repo on GitHub) switches to
+# GitHub mode, where CI's promotion PRs and the patch promoter apply.
+if [ -z "${REPO_URL:-}" ]; then
+  bash "$(dirname "$0")/git-sync.sh"
+  export REPO_URL=http://git.git.svc.cluster.local:23232/platform.git REVISION=main
+  ok "Argo CD syncs from the in-stack Git server (this checkout)"
+else
+  ok "GitHub mode: Argo CD syncs from $REPO_URL @ ${REVISION:-main}"
+fi
+
 echo
 bash "$(dirname "$0")/argocd-bootstrap.sh"
 

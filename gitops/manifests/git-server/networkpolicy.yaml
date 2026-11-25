@@ -1,0 +1,15 @@
+# Only Argo CD reads (HTTP). Pushes come through `kubectl port-forward`
+# (scripts/git-sync.sh), which the kubelet forwards to the pod directly.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: soft-serve
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: soft-serve}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: argocd}
+      ports:
+        - {port: 23232, protocol: TCP}

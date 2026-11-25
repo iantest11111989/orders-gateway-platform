@@ -127,15 +127,9 @@ jobs:
   cluster:
     name: ./platform doctor, up, up again, down
     runs-on: ubuntu-24.04
-    env:
-      # Argo CD syncs the exact commit this job checks out, so verify.sh and
-      # the manifests it checks always match. On a PR that's the merge commit
-      # (github.sha, refs/pull/N/merge in this repo, fetchable by SHA, fork
-      # PRs included); syncing the branch head instead tested an out-of-date
-      # branch's manifests against main's scripts (#54). On push, schedule
-      # and dispatch it's the branch.
-      REPO_URL: https://github.com/${{ github.repository }}.git
-      REVISION: ${{ github.event_name == 'pull_request' && github.sha || github.ref_name }}
+    # No REPO_URL: Argo CD syncs from the in-stack Git server, which the
+    # bootstrap fills with this job's checkout (decision 0029), exactly what a
+    # reviewer gets. (This replaces syncing the PR's merge commit from GitHub.)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

@@ -40,3 +40,4 @@ Records are not edited after they are accepted. If a decision changes, add a new
 | [0025](0025-security-alerts-and-routing.md) | Security component alerts, and routing every alert to a local receiver | Accepted |
 | [0026](0026-compose-entrypoint.md) | docker compose is the entry point; one `ready` service bootstraps the cluster | Accepted |
 | [0028](0028-contract-ports-on-the-gateway.md) | The contract's ports go through the existing Envoy Gateway | Accepted |
+| [0029](0029-in-stack-git-server.md) | Argo CD syncs from an in-stack Git server holding this checkout | Accepted |

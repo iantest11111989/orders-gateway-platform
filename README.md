@@ -43,7 +43,7 @@ kubectl --kubeconfig out/kubeconfig.yaml get nodes
 
 `up` creates the kind cluster (1 control plane + 2 workers), installs Argo CD and hands it the root Application, then waits until every Application is Synced and Healthy. From then on Argo CD manages everything, including itself, from Git, in sync waves (CRDs, then controllers, then observability, policies and the gateway, then the apps). From a clean machine that takes about 6–7 minutes, most of it pulling images (358–427 s in the nightly end-to-end run on fresh GitHub runners). `./platform verify` then checks the running stack: every Application Synced and Healthy, every Prometheus target up, logs in Loki from every namespace, HTTPS on every hostname, and Kyverno rejecting a bad manifest in `dev`. `./platform budget` measures what the cluster uses against the 6 CPU / 12 GiB budget (`--watch 120` reports the peak while something runs).
 
-To run from your fork or a branch: `REPO_URL=https://github.com/<you>/orders-gateway-platform.git REVISION=my-branch ./platform up`.
+Argo CD deploys **this checkout**: the bootstrap pushes a snapshot of the working tree to a Git server inside the cluster, and every `up` (or Compose start) pushes your changes again ([decision 0029](docs/decisions/0029-in-stack-git-server.md)). To follow a repo on GitHub instead (GitHub mode, where CI's promotion PRs and the patch promoter apply): `REPO_URL=https://github.com/<you>/orders-gateway-platform.git REVISION=main ./platform up`.
 
 `./platform` runs everything inside a **toolbox** container with every tool pinned and checksum-verified (`toolbox/versions.env`). The first run pulls or builds it. Set `TOOLBOX_IMAGE` to use a different image.
 
