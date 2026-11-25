@@ -98,4 +98,4 @@ Stop k6 (Ctrl-C), leave the shell, and delete the copy:
 - 20% of requests fail for 10 minutes, then it's fixed. Roughly how much of a 30-day budget did that cost, and why did it still page?
 - Why change `FAULT_ERROR_RATE` through the Argo CD Application (or Git) instead of `kubectl edit`?
 
-Next: 5. Kubernetes operations _(coming)_.
+Next: [5. Kubernetes operations](05-k8s-operations.md).
