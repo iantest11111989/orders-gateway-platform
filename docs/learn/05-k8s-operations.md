@@ -42,7 +42,7 @@ prod doesn't use a Deployment. It uses a **Rollout**, which moves traffic to a n
    kubectl -n orders-prod get analysistemplate orders-gateway-slo -o yaml
    ```
 
-   Two Prometheus queries, `error-ratio` (at most 0.5%) and `p99-latency` (at most 0.3 s), run only against the **canary's** pods (`rollouts_pod_template_hash`). They're measured 4 times, 30 seconds apart, after a 60-second warm-up. One failure aborts the canary and sends all traffic back to the stable version. They're the same SLO thresholds as exercise 4, applied to the new version alone.
+   Two Prometheus queries, `error-ratio` (at most 0.5%) and `p99-latency` (at most 0.3 s), run only against the **canary's** pods (`rollouts_pod_template_hash`). They're measured 4 times, 30 seconds apart, after a 60-second warm-up. `failureLimit: 1` allows one failed measurement, so a second one fails the analysis: Rollouts aborts the canary and sends all traffic back to the stable version. `inconclusiveLimit: 1` does the same for missing data (no canary traffic): a second inconclusive result pauses the canary instead of guessing. They're the same SLO thresholds as exercise 4, applied to the new version alone.
 3. In Grafana, open the **Argo Rollouts** dashboard (<https://grafana.localtest.me/d/argo-rollouts>). **Rollouts now** shows `orders-gateway` as `Completed`. **Recent analysis runs** and **Analysis metrics** list the runs from the last canary, each `Successful`. The live, step-by-step view is the Rollouts dashboard at <https://rollouts.localtest.me>. It's read-only: promote or abort with `kubectl argo rollouts promote|abort`.
 
 To see a canary move and abort, run `./platform demo canary` and then `./platform demo canary-fail` (about 11 minutes together), with both dashboards open.
@@ -58,14 +58,15 @@ Kyverno checks every pod at admission ([decisions 0012](../decisions/0012-kyvern
    ```
 
    It's **admitted** (`pod/try-latest`). `default` isn't an `orders-*` namespace, so `disallow-latest-tag-platform` only audits it.
-2. Now ask for the same image in an orders namespace. The pod meets Pod Security `restricted`, which `orders-*` also enforce and which the API server checks before Kyverno, so the image is the only problem:
+2. Now ask for the same image in an orders namespace. The pod meets Pod Security `restricted`, which `orders-*` also enforce and which the API server checks before Kyverno. It also meets the Audit policies, so it doesn't add findings to the table in step 4. The image is its only problem:
 
    ```sh
    kubectl -n orders-dev run try-latest --image=docker.io/library/busybox:latest --restart=Never --dry-run=server -o name --overrides='{
      "apiVersion": "v1",
      "spec": {"securityContext": {"runAsNonRoot": true, "runAsUser": 65534, "seccompProfile": {"type": "RuntimeDefault"}},
        "containers": [{"name": "try-latest", "image": "docker.io/library/busybox:latest",
-         "securityContext": {"allowPrivilegeEscalation": false, "capabilities": {"drop": ["ALL"]}}}]}}'
+         "securityContext": {"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true, "capabilities": {"drop": ["ALL"]}},
+         "resources": {"requests": {"cpu": "10m", "memory": "16Mi"}, "limits": {"memory": "32Mi"}}}]}}'
    ```
 
    It's **refused**: `Policy disallow-latest-tag failed: Images must not use the latest tag`. (`./platform verify` runs this same check, and `./platform demo policy` shows the signature policy too.)
