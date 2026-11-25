@@ -1,0 +1,49 @@
+# The app image must carry a keyless cosign signature from this repo's app
+# workflow on main (decision 0013), so only reviewed code can run. Audit for
+# now (decision 0012). Other images (third-party charts) aren't matched.
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
+metadata:
+  name: verify-image-signatures
+  annotations:
+    policies.kyverno.io/title: Verify app image signatures
+    policies.kyverno.io/description: >-
+      ghcr.io/iantest11111989/orders-gateway images must be signed by the
+      app workflow on main (keyless cosign, GitHub OIDC).
+spec:
+  validationActions: [Audit]
+  # While policies only audit, a Kyverno or Sigstore outage must not block
+  # pod creation.
+  failurePolicy: Ignore
+  evaluation:
+    background:
+      enabled: false
+  webhookConfiguration:
+    # Verification fetches the signature from GHCR and Sigstore's trust root.
+    timeoutSeconds: 15
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  matchImageReferences:
+    - glob: ghcr.io/iantest11111989/orders-gateway*
+  validationConfigurations:
+    # The environments already deploy by digest, so there's no tag to pin.
+    mutateDigest: false
+    verifyDigest: false
+    required: false
+  attestors:
+    - name: cosign
+      cosign:
+        keyless:
+          identities:
+            - issuer: https://token.actions.githubusercontent.com
+              subject: https://github.com/iantest11111989/orders-gateway-platform/.github/workflows/app.yml@refs/heads/main
+  validations:
+    - expression: >-
+        images.containers.map(image, verifyImageSignatures(image, [attestors.cosign])).all(e, e > 0)
+      message: >-
+        The orders-gateway image must be signed by the app workflow on main
+        (see docs/decisions/0013-image-signing.md).

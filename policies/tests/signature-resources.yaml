@@ -1,0 +1,25 @@
+# Pods for verify-image-signatures. Only the image matters here, so the
+# other policies aren't checked against these.
+apiVersion: v1
+kind: Pod
+metadata: {name: signed-app, namespace: orders-dev}
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/iantest11111989/orders-gateway@sha256:4335a501ea45036a82262a9b7032a6261557d0537bea747ceeb9be9af65a88e9
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: unsigned-app, namespace: orders-dev}
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/iantest11111989/orders-gateway@sha256:09c2177caeb2c7b701c1f091fd65600065c836d4b25b930bff82cb6ec62b3476
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: other-image, namespace: monitoring}
+spec:
+  containers:
+    - name: app
+      image: quay.io/prometheus/prometheus:v3.5.0

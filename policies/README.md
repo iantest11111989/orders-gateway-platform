@@ -8,14 +8,19 @@ Kyverno admission policies (`ValidatingPolicy` and `MutatingPolicy`, Kyverno 1.2
 docker run --rm -v "$PWD/policies:/p:ro" -w /p ghcr.io/kyverno/kyverno-cli:v1.20.0 test tests
 ```
 
-CI runs the same command (`.github/workflows/policies.yml`).
+CI runs the same command (`.github/workflows/policies.yml`). The
+`verify-image-signatures` cases need network access: they fetch real
+signatures from GHCR and Sigstore's trust root.
 
 ## See what Audit finds on a live cluster
 
 Failed checks don't block anything yet; they're counted in Prometheus:
 
 ```promql
-sum by (policy_name, resource_namespace) (kyverno_validating_policy_results_total{result="fail"})
+sum by (policy_name, resource_namespace) (
+  kyverno_validating_policy_results_total{result="fail"}
+  or kyverno_image_validating_policy_results_total{result="fail"}
+)
 ```
 
 Each failure is also a `PolicyViolation` event on the resource
