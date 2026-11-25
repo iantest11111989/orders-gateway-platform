@@ -10,8 +10,8 @@ on:
   workflow_dispatch:
 
 # Least privilege: jobs read the repo; only `publish` and `sign` may write
-# packages, and only `sign` and the PR `image` job (signing rehearsal) may
-# request an OIDC token.
+# packages, only `sign` and the PR `image` job (signing rehearsal) may
+# request an OIDC token, and only `promote-dev` may push (to dev's values).
 permissions:
   contents: read
 
@@ -259,3 +259,46 @@ jobs:
         run: |
           scripts/sign-images.sh "$D_MAIN" "$D_V1" "$D_V2" "$D_V2_BAD" |
             tee -a "$GITHUB_STEP_SUMMARY"
+
+  # Points dev at the image this commit just published and signed (brief,
+  # section 10: "bump the image tag in environments/dev/values.yaml
+  # automatically; Argo deploys it to dev"). It runs only after `sign`, so dev
+  # never runs an unsigned digest. The commit goes straight to main as
+  # github-actions[bot]; a push made with GITHUB_TOKEN starts no workflows, so
+  # it can't loop. Runs on main are serialized by the workflow's concurrency
+  # group, so the newest commit's image wins. Staging and prod move by
+  # promotion PRs (decision 0014).
+  promote-dev:
+    name: promote to dev
+    needs: [publish, sign]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # the one-line commit to environments/dev/values.yaml
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: true # this job pushes
+      - name: Set dev to sha-<commit>@<digest>, commit, push
+        working-directory: .
+        env:
+          DIGEST: ${{ needs.publish.outputs.digest-main }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          tag="sha-${GITHUB_SHA::12}"
+          scripts/set-image.sh dev "$tag" "$DIGEST"
+          if git diff --quiet; then
+            echo "dev already runs $tag@$DIGEST" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -am "dev: orders-gateway $tag" \
+            -m "Image $IMAGE@$DIGEST, published and signed by $RUN_URL (commit $GITHUB_SHA)."
+          # main may have moved since checkout; replay this one-line change on top.
+          for attempt in 1 2 3; do
+            git push origin HEAD:main && break
+            [ "$attempt" = 3 ] && { echo "::error::push to main failed 3 times"; exit 1; }
+            git pull -q --rebase origin main
+          done
+          echo "dev now runs \`$tag\` (\`$DIGEST\`): $(git rev-parse --short HEAD)" >>"$GITHUB_STEP_SUMMARY"
