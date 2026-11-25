@@ -6,7 +6,7 @@
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 cd "$(dirname "$0")/.."
-rm -f /tmp/bootstrapped
+rm -f /tmp/bootstrapped /tmp/installed-once
 
 # up.sh is idempotent; a cold start can fail on a registry hiccup, so retry
 # instead of leaving the service up but never healthy.

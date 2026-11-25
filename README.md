@@ -26,6 +26,8 @@ docker compose up -d --wait   # the whole platform; returns when it's ready (dec
 kubectl --kubeconfig out/kubeconfig.yaml get nodes
 ```
 
+`out/` is written by the toolbox as root (the kubeconfig is mode 0644, so you can read it). `docker compose down` stops `ready` but leaves the cluster; `./platform down` deletes it.
+
 `./platform` does the same and everything after it:
 
 ```sh
