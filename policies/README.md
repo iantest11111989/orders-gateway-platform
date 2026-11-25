@@ -18,8 +18,8 @@ Failed checks don't block anything yet; they're counted in Prometheus:
 
 ```promql
 sum by (policy_name, resource_namespace) (
-  kyverno_validating_policy_results_total{result="fail"}
-  or kyverno_image_validating_policy_results_total{result="fail"}
+  kyverno_validating_policy_results_total{result="fail", resource_namespace!="default"}
+  or kyverno_image_validating_policy_results_total{result="fail", resource_namespace!="default"}
 )
 ```
 
@@ -27,7 +27,8 @@ Each failure is also a `PolicyViolation` event on the resource
 (`kubectl get events -A --field-selector reason=PolicyViolation`). Only
 admission requests are checked (background scans are off), so a pod that
 already exists shows up only once it's created or updated again.
-(Metric name and labels checked on ogp with Kyverno 1.20.)
+(Metric name and labels checked on ogp with Kyverno 1.20.) The query leaves out
+`default`, where `./platform verify` makes a test dry run every time it runs.
 
 ## Adding a policy
 

@@ -29,3 +29,4 @@ Records are not edited after they are accepted. If a decision changes, add a new
 | [0014](0014-promotion.md) | CI promotes every signed image to dev; staging and prod move by PR | Accepted |
 | [0015](0015-promotion-prs.md) | CI opens the staging and prod promotion PRs | Accepted |
 | [0016](0016-trivy-image-scan.md) | Trivy scans the app image in CI | Accepted |
+| [0017](0017-network-policies.md) | NetworkPolicies for the platform namespaces | Accepted |

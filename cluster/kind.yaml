@@ -7,6 +7,10 @@ networking:
   # API server only on loopback; the toolbox shares the host network.
   apiServerAddress: 127.0.0.1
   # kindnet enforces NetworkPolicy (kind >= v0.24), so no extra CNI is needed.
+  # kind's default pod range, set explicitly: the NetworkPolicies in
+  # gitops/manifests/network-policies/ treat everything outside it as "the
+  # nodes" (decision 0017). Keep the two in step; changing it needs a new cluster.
+  podSubnet: 10.244.0.0/16
 nodes:
   - role: control-plane
     image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
