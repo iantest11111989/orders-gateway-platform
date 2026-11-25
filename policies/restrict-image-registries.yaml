@@ -1,6 +1,11 @@
 # Images may come only from this repo's GHCR namespace and the upstream
 # registries the platform's pinned charts use. The list comes from every
 # image running on a full cluster (decision 0012).
+# localhost/orders-gateway:<tag> is the app built on the host and loaded
+# into kind by the README's "ship a new version" (no registry involved). Only
+# that one name, with a tag: not all of localhost/. verify-image-signatures
+# doesn't match it, deliberately: production would admit only CI's signed
+# ghcr.io images.
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -34,7 +39,7 @@ spec:
     - name: allowed
       expression: >-
         ['ghcr.io/iantest11111989/', 'quay.io/', 'registry.k8s.io/', 'docker.io/',
-         'ecr-public.aws.com/', 'reg.kyverno.io/']
+         'ecr-public.aws.com/', 'reg.kyverno.io/', 'localhost/orders-gateway:']
   validations:
     - expression: >-
         variables.images.all(i, variables.allowed.exists(p, i.startsWith(p)))

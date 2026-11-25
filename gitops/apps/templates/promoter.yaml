@@ -1,7 +1,8 @@
 # The patch promoter (gitops/manifests/promoter, decision 0024): merges
 # patch-only promotion PRs once the environment before has soaked for an hour
-# with its SLO met, and keeps a light trickle of orders flowing so that soak
-# means something. Wave 45: after the environments dev, staging and prod (40), whose
+# with its SLO met, and keeps a light trickle of requests flowing so that soak
+# means something (and the dashboards show traffic). The promoter itself runs
+# only when Argo syncs from GitHub. Wave 45: after the environments dev, staging and prod (40), whose
 # namespaces its Roles live in.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -18,6 +19,14 @@ spec:
     repoURL: {{ .Values.repo.url }}
     targetRevision: {{ .Values.repo.revision }}
     path: gitops/manifests/promoter
+    {{- if not (contains "github.com" .Values.repo.url) }}
+    # In-stack mode (Argo syncs from the stack's own git server, not
+    # GitHub): there are no GitHub PRs to promote, so no CronJob, and no
+    # anonymous GitHub API calls every 10 minutes. The trickle stays: the
+    # dashboards and SLOs show live traffic without anyone sending any.
+    directory:
+      exclude: cronjob.yaml
+    {{- end }}
   destination:
     server: https://kubernetes.default.svc
     namespace: promoter

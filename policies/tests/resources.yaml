@@ -203,3 +203,33 @@ spec:
       image: quay.io/prometheus/prometheus:latest
       resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 32Mi}}
       securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+---
+# The README's local build, loaded into kind: allowed by name and tag.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: local-build
+  namespace: prod
+  labels: {app: app, env: prod, team: orders}
+spec:
+  securityContext: {runAsNonRoot: true}
+  containers:
+    - name: app
+      image: localhost/orders-gateway:local-20261125-1
+      resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 32Mi}}
+      securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+---
+# Any other local image is still refused.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-local-other
+  namespace: prod
+  labels: {app: app, env: prod, team: orders}
+spec:
+  securityContext: {runAsNonRoot: true}
+  containers:
+    - name: app
+      image: localhost/something-else:1
+      resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 32Mi}}
+      securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}

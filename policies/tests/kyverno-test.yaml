@@ -73,11 +73,11 @@ results:
     result: fail
 
   - policy: restrict-image-registries
-    resources: [good-pod, platform-no-labels]
+    resources: [good-pod, platform-no-labels, local-build]
     kind: Pod
     result: pass
   - policy: restrict-image-registries
-    resources: [bad-registry, bad-bare-name, bad-untagged-port]
+    resources: [bad-registry, bad-bare-name, bad-untagged-port, bad-local-other]
     kind: Pod
     result: fail
 
