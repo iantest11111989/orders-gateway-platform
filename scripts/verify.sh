@@ -48,10 +48,12 @@ else
 fi
 
 step "HTTPS on every hostname"
-if "$(dirname "$0")/check-https.sh" >/tmp/verify-https.log 2>&1; then
+https_log=$(mktemp)
+trap 'rm -f "$https_log"' EXIT
+if "$(dirname "$0")/check-https.sh" >"$https_log" 2>&1; then
   pass "every hostname answers over HTTPS with the demo CA"
 else
-  cat /tmp/verify-https.log
+  cat "$https_log"
   miss "HTTPS check failed (output above)"
 fi
 
