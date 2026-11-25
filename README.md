@@ -16,13 +16,13 @@ That is all it takes. Compose starts one service, `ready`, which creates a kind 
 
 | Thing | How it's met | Check it |
 | --- | --- | --- |
-| Readiness | Compose service `ready`; its healthcheck passes only when every Argo CD Application is Synced and Healthy and prod's `/readyz` answers ([0026](docs/decisions/0026-compose-entrypoint.md)) | `docker compose ps` shows `ready` (healthy) |
+| Readiness | Compose service `ready`; its healthcheck first passes only when the bootstrap has finished, every Argo CD Application is Synced and Healthy, and prod's `/readyz` answers on `:8080`. After that it checks only prod's `/readyz`, so a platform component restarting later doesn't mark the whole stack unhealthy ([0026](docs/decisions/0026-compose-entrypoint.md)) | `docker compose ps` shows `ready` (healthy) |
 | Kubeconfig | Written to `./out/kubeconfig.yaml`, pointing at `127.0.0.1` | `kubectl --kubeconfig out/kubeconfig.yaml get nodes` |
 | Namespaces | `dev`, `staging` and `prod` each run a Deployment `app` labelled `app.kubernetes.io/name=app`, from one Helm chart with a values file per environment | `kubectl --kubeconfig out/kubeconfig.yaml get deploy -A -l app.kubernetes.io/name=app` |
 | App endpoint | prod at `http://localhost:8080` through Envoy Gateway. It's a Gateway API `HTTPRoute`, the successor to the Ingress resource, so `kubectl get ingress` is empty on purpose ([0028](docs/decisions/0028-contract-ports-on-the-gateway.md)). `/admin/*` is answered 403 at the edge; pods inside the cluster can still reach it | `curl localhost:8080/version`; `curl -X POST localhost:8080/admin/fault` → 403 |
 | Logins | `admin` / `admin12345` for Grafana and Argo CD. Prometheus, Alertmanager and the Rollouts dashboard have no login | `./platform urls` |
 | Dashboards | Grafana `:3000`, Prometheus `:9090`, Alertmanager `:9093`, all through the same gateway | open them |
-| Persistence and restarts | `ready` has `restart: unless-stopped`. The cluster lives outside Compose (kind creates its own node containers), so `docker compose stop` / `start` leaves Prometheus, Loki, Grafana and Argo CD running with their data; `start` re-runs the bootstrap, which changes nothing. CI tests a stop/start cycle | `docker compose stop && docker compose start` |
+| Persistence and restarts | `ready` has `restart: unless-stopped`. The cluster lives outside Compose (kind creates its own node containers), so `docker compose stop` / `start` leaves Prometheus, Loki, Grafana and Argo CD running with their data; `start` re-runs the bootstrap, which changes nothing. Prometheus, Loki and the in-stack Git server keep their data on PersistentVolumes, so it also survives their pods restarting. The kubeconfig is kept in a named volume and rewritten on `start`. CI tests a stop/start cycle (healthy again in seconds) | `docker compose stop && docker compose start` |
 | 6 CPU / 12 GB | Each kind node is capped at 2 CPU / 4 GiB; measured peak 4.46 CPU and 62% of memory at 100 requests/s ([Resource budget](#resource-budget-measured)) | `./platform budget` |
 | Healthy in under 15 min | 9 min 43 s from `docker compose up` to healthy on a GitHub runner ([run](https://github.com/iantest11111989/orders-gateway-platform/actions/runs/45710719231/job/139544268716)) | time it |
 
@@ -171,7 +171,7 @@ while true; do curl -s -o /dev/null -w '%{http_code} ' 'http://localhost:8080/wo
 
 These are Git changes on purpose: `kubectl set image` or `kubectl rollout undo` would be reverted by Argo CD within seconds. The edit to `environments/prod/values.yaml` stays in your checkout to commit or revert.
 
-**Tested with traffic flowing.** CI's cluster job ships a new version and rolls it back while a request loop hits `:8080/work` the whole time, and fails on any non-200: 2,641 requests, 0 errors ([run](https://github.com/iantest11111989/orders-gateway-platform/actions/runs/45710719231/job/139544268716)).
+**Tested with traffic flowing.** CI's cluster job ships a new version and rolls it back while three clients hit `:8080` the whole time (`/work?ms=5`, `POST /echo`, and a slow `/work?ms=200`, so requests are in flight while old pods drain), and fails on any non-200: 2,641 requests, 0 errors. It then rolls back once more to prove a second rollback goes further back instead of toggling ([run](https://github.com/iantest11111989/orders-gateway-platform/actions/runs/45710719231/job/139544268716)).
 
 **From GitHub instead.** In GitHub mode, CI ships: every merge to `main` builds, scans, signs and pushes an image and commits it to dev; staging and prod move by pull request ([0014](docs/decisions/0014-promotion.md), [0015](docs/decisions/0015-promotion-prs.md)). Roll back there with a revert PR.
 
@@ -270,7 +270,7 @@ What we'd test next: killing Envoy Gateway's proxy (one replica here, so a short
 
 Pull requests run checks only (read-only token, no secrets); pushes to `main` build, sign and promote. Every job declares least-privilege `permissions:`, actions are pinned by commit SHA, and Docker layers and the cluster's images are cached. Prod's approval gate is a pull request the owner approves, rather than a GitHub Environment.
 
-We run the workflows on real GitHub rather than locally with `act`: they're the same files, GitHub gives evidence anyone can open (the [cluster job](https://github.com/iantest11111989/orders-gateway-platform/actions/runs/45710719231/job/139544268716) above), and `act` can't run the multi-arch builds, OIDC keyless signing or a kind cluster inside its containers without changes to the workflows.
+We run the workflows on real GitHub rather than locally with `act`: they're the same files, GitHub gives evidence anyone can open (the [cluster job](https://github.com/iantest11111989/orders-gateway-platform/actions/runs/45710719231/job/139544268716) above), and `act` would need changes to them: it has no GitHub OIDC token, so cosign keyless signing can't run, and the cluster job needs the host's Docker socket plus the full 6 CPU / 12 GB, which `act`'s default runner images aren't set up for.
 
 ## Resource budget (measured)
 
