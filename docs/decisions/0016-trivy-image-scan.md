@@ -21,6 +21,8 @@ The brief (section 9.3) asks for Trivy image scanning in CI. Decision 0002 also 
 
 - A new CVE in a dependency fails the next PR that touches the app, even if the PR didn't cause it. The fix is a dependency bump, usually already opened by Renovate.
 - Images already running aren't rescanned yet. The Trivy Operator (decision 0002), or a scheduled scan of the digests the environments run, comes later; this ADR covers only the CI gate.
+- **If main's scan fails,** the images stay published and signed, but dev doesn't move, and neither do the staging/prod promotion PRs, which wait on `promote-dev`. Fix it with a dependency bump in a PR, whose own scan has to pass; its merge publishes, scans and promotes as usual. Re-running the failed `scan` job only helps if the finding was a DB glitch.
+- Both platforms (linux/amd64 and linux/arm64) are scanned. Given an index, Trivy would scan only the runner's platform.
 - No exceptions file yet. If one is needed, a `.trivyignore` with an expiry date and a reason per entry is the plan.
 
 ## Tests
