@@ -148,7 +148,7 @@ The brief's budget is **6 CPU / 12 GiB** for everything. `./platform up` caps ea
 | GitHub runner, x86-64 Ubuntu, Docker only (nightly) | `demo canary` | 3.59 | **8,049 MiB (65%)** | none |
 | GitHub runner, arm64 Ubuntu, Docker only (nightly) | `demo canary` | 2.13 | 7,251 MiB (59%) | none |
 
-Measured on 2026-11-25. Mac rows at commit `6c51240`; nightly rows from [run 45577072639](https://github.com/iantest11111989/orders-gateway-platform/actions/runs/45577072639). The heaviest moment is the autoscale demo's 180 req/s from k6, which runs inside the budget too; memory never went above two thirds.
+Measured on 2026-11-25. Mac rows at commit `6c51240`; nightly rows from [run 45577072639](https://github.com/iantest11111989/orders-gateway-platform/actions/runs/45577072639). The heaviest moment is the autoscale demo's 180 req/s from k6, which runs inside the budget too; memory never went above two thirds. These numbers are from before the patch promoter's order trickle (about 0.8 orders/s to each environment, about 10m CPU and 15 MiB), which adds little.
 
 **Time to a healthy stack** (`./platform up`, every pod image pulled fresh): 383 s on the x86-64 runner and 390 s on the arm64 runner (same nightly run); **316 s** on the Mac mini under Colima (6 CPU / 12 GiB, after `./platform down`), followed by `./platform verify` passing every check.
 
