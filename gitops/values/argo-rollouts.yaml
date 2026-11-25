@@ -59,9 +59,15 @@ controller:
         readOnlyRootFilesystem: true
         capabilities: {drop: [ALL]}
         seccompProfile: {type: RuntimeDefault}
+      # The plugin binary is 74 MiB (amd64; arm64 70 MiB). While wget writes
+      # it, its dirty page cache is charged to this container, and sha256sum
+      # reads it back, so a 64Mi limit was OOM-killed whenever writeback was
+      # slower than the download (seen in CI on GitHub runners; the retry
+      # succeeds, so only `./platform budget` noticed). The limit only applies
+      # while this runs; the request, which the budget counts, is unchanged.
       resources:
         requests: {cpu: 10m, memory: 16Mi}
-        limits: {memory: 64Mi}
+        limits: {memory: 160Mi}
       volumeMounts:
         - name: gatewayapi-plugin
           mountPath: /plugins
