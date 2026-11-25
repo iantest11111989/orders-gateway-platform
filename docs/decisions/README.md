@@ -37,3 +37,4 @@ Records are not edited after they are accepted. If a decision changes, add a new
 | [0022](0022-enforce-in-orders.md) | Enforce the tag and signature policies in the orders namespaces | Accepted |
 | [0023](0023-dashboards-as-code.md) | Grafana dashboards as code, checked in CI | Accepted |
 | [0024](0024-patch-promoter.md) | An in-cluster patch promoter, a pause file and an order trickle | Accepted |
+| [0025](0025-security-alerts-and-routing.md) | Security component alerts, and routing every alert to a local receiver | Accepted |
