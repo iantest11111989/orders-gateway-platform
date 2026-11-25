@@ -30,4 +30,5 @@ The brief's architecture table (section 4) fixes image scanning as "Trivy in CI 
 ## Consequences
 
 - The security dashboard and an alert on fixable HIGH/CRITICAL in running images come in a follow-up, built on these metrics.
+- Its images come from Docker Hub, whose anonymous pulls are rate-limited per IP, like ECR Public's (seen on #30's CI). If that starts flaking CI, the fix is the side-loading planned for Argo CD's Redis image: pull once on the runner, then `kind load`.
 - The rescan workflow (decision 0019) stays. It covers the app image even when no cluster is running.
