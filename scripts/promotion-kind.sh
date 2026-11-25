@@ -9,7 +9,9 @@
 #
 # An image contains every commit on main before the one it was built from,
 # so the whole range counts, not just the newest commit. Only main's
-# first-parent commits that change app/ change the image. The range is a
+# first-parent commits that change app/ change the image (the Dockerfile and
+# everything it copies are under app/; if the build ever reads files outside
+# app/, add them to the pathspec at the bottom). The range is a
 # patch only if each of those is a merged PR labelled `dependencies` and not
 # `needs-owner-approval` (Renovate's patch and digest updates,
 # renovate.json5). Anything else, a direct commit or a PR without labels, is
@@ -40,7 +42,12 @@ features=()
 while read -r c; do
   [ -n "$c" ] || continue
   # The PR this first-parent commit came from (a merge or squash commit).
-  pr=$(gh api "repos/$repo/commits/$c/pulls" --jq '[.[] | select(.merged_at != null)][0] // empty | "\(.number) \([.labels[].name] | join(","))"')
+  # If the API can't answer, nothing in this range is proven a patch:
+  # report unknown rather than fail (promote-prs must still open its PR).
+  if ! pr=$(gh api "repos/$repo/commits/$c/pulls" --jq '[.[] | select(.merged_at != null)][0] // empty | "\(.number) \([.labels[].name] | join(","))"' 2>/dev/null); then
+    echo "Promotion-Kind: unknown"
+    exit 0
+  fi
   read -r num labels <<<"${pr:-}"
   if [ -z "${num:-}" ]; then
     features+=("${c:0:12}")
