@@ -78,6 +78,17 @@ if [ "$watch" -gt 0 ]; then
   ok "$(printf 'peak over %d samples: %.2f of %d CPU, %d of %d MiB (%d%%)' "$samples" "$peak_cpu" "$BUDGET_CPU" "$peak_mem" "$BUDGET_MEM_MI" $((peak_mem * 100 / BUDGET_MEM_MI)))"
 fi
 
+step "Peak memory per node since it started (cgroup v2 memory.peak)"
+for n in "${nodes[@]}"; do
+  peak=$(docker exec "$n" cat /sys/fs/cgroup/memory.peak 2>/dev/null || true)
+  cap=$(docker exec "$n" cat /sys/fs/cgroup/memory.max 2>/dev/null || true)
+  if [ -n "${peak:-}" ] && [[ ${cap:-} =~ ^[0-9]+$ ]]; then
+    ok "$(printf '%-20s %6d of %d MiB (%d%%)' "$n" $((peak / 1048576)) $((cap / 1048576)) $((peak * 100 / cap)))"
+  else
+    warn "$n: no memory.peak (needs cgroup v2 and kernel >= 5.19)"
+  fi
+done
+
 step "By namespace (kubectl top, metrics-server)"
 if top=$(kubectl top pods -A --no-headers 2>/dev/null) && [ -n "$top" ]; then
   awk '{ c = $3; sub(/m$/, "", c); m = $4; sub(/Mi$/, "", m); cpu[$1] += c; mem[$1] += m }
@@ -90,9 +101,21 @@ else
 fi
 
 step "Out-of-memory kills (a cap that's too small shows up here)"
-oom=$(kubectl get pods -A -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.lastState.terminated.reason}{" "}{end}{"|"}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' 2>/dev/null |
+# Containers and init containers of current pods (a pod that was replaced
+# since isn't seen here; its OOM kill shows in Prometheus as
+# kube_pod_container_status_last_terminated_reason while it lasted).
+oom=$(kubectl get pods -A -o jsonpath='{range .items[*]}{range .status.initContainerStatuses[*]}{.lastState.terminated.reason}{" "}{end}{range .status.containerStatuses[*]}{.lastState.terminated.reason}{" "}{end}{"|"}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' 2>/dev/null |
   awk -F'|' '$1 ~ /OOMKilled/ {print $2}')
-if [ -z "$oom" ]; then ok "no container's last termination was OOMKilled"
+# A node container at its cap can lose kubelet or containerd itself, with
+# nothing in any pod's status. memory.events.local counts only the node's own
+# cgroup hitting its cap (cgroup v2), unlike docker inspect's OOMKilled, which
+# a pod's OOM kill inside the node also sets.
+for n in "${nodes[@]}"; do
+  kills=$(docker exec "$n" sh -c 'awk "\$1 == \"oom_kill\" {print \$2}" /sys/fs/cgroup/memory.events.local 2>/dev/null')
+  [ -n "$kills" ] && [ "$kills" -gt 0 ] && oom+=$'\n'"node container $n hit its memory cap ($kills kills)"
+done
+oom=$(sed '/^$/d' <<<"$oom")
+if [ -z "$oom" ]; then ok "no OOM kills (containers, init containers, node containers)"
 else while read -r p; do fail "OOMKilled: $p"; done <<<"$oom"; failed=1; fi
 
 echo
