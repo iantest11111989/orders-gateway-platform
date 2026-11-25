@@ -49,12 +49,15 @@ create_app() { # create_app <image tag>
 }
 
 set_image() { # set_image <tag>
-  kubectl -n argocd patch applications.argoproj.io "$APP" --type json -p "$(jq -nc --arg tag "$1" '
-    [{op: "replace", path: "/spec/source/helm/parameters/1", value: {name: "image.tag", value: $tag}}]')" >/dev/null
+  # Rewrites the image.tag parameter by name, whatever its position.
+  kubectl -n argocd get applications.argoproj.io "$APP" -o json |
+    jq --arg tag "$1" '.spec.source.helm.parameters |= map(if .name == "image.tag" then .value = $tag else . end)
+                       | {spec: {source: {helm: {parameters: .spec.source.helm.parameters}}}}' |
+    kubectl -n argocd patch applications.argoproj.io "$APP" --type merge --patch-file /dev/stdin >/dev/null
   ok "Git-equivalent change: $APP now wants orders-gateway:$1 (Argo CD syncs it, Rollouts starts a canary)"
 }
 
-current_tag() { kubectl -n argocd get applications.argoproj.io "$APP" -o jsonpath='{.spec.source.helm.parameters[1].value}' 2>/dev/null; }
+current_tag() { kubectl -n argocd get applications.argoproj.io "$APP" -o json 2>/dev/null | jq -r '.spec.source.helm.parameters[]? | select(.name == "image.tag") | .value'; }
 
 wait_healthy() { # wait_healthy <tag> <timeout s>
   local deadline=$(( $(date +%s) + $2 )) s phase img
@@ -104,7 +107,8 @@ where_to_watch() {
 # the rollout ends (Healthy or Degraded) or the timeout passes. Echoes the
 # final phase.
 narrate() { # narrate <timeout s>
-  local deadline=$(( $(date +%s) + $1 )) last='' line phase step weights runs started=''
+  local deadline=$(( $(date +%s) + $1 )) last='' line phase step weights runs started='' steps
+  steps=$(kubectl -n "$NS" get rollout orders-gateway -o jsonpath='{.spec.strategy.canary.steps}' 2>/dev/null | jq length 2>/dev/null || echo '?')
   while :; do
     phase=$(kubectl -n "$NS" get rollout orders-gateway -o jsonpath='{.status.phase}' 2>/dev/null || true)
     step=$(kubectl -n "$NS" get rollout orders-gateway -o jsonpath='{.status.currentStepIndex}' 2>/dev/null || true)
@@ -112,7 +116,7 @@ narrate() { # narrate <timeout s>
       -o jsonpath='{range .spec.rules[0].backendRefs[*]}{.weight}{"/"}{end}' 2>/dev/null | sed 's|/$||')
     runs=$(kubectl -n "$NS" get analysisruns --sort-by=.metadata.creationTimestamp \
       -o jsonpath='{range .items[*]}{.status.phase}{" "}{end}' 2>/dev/null || true)
-    line="phase=${phase:-?}  step=${step:-?}/6  stable/canary weight=${weights:-?}  analysis runs: ${runs:-none}"
+    line="phase=${phase:-?}  step=${step:-?}/${steps}  stable/canary weight=${weights:-?}  analysis runs: ${runs:-none}"
     if [ "$line" != "$last" ]; then printf '  %s  %s\n' "$(date +%H:%M:%S)" "$line" >&2; last=$line; fi
     # Right after the image change the Rollout can still read Healthy from
     # the previous version: only accept Healthy once the canary has started.

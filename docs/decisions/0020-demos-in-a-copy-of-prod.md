@@ -22,4 +22,5 @@ k6 (`app/k6/load.js`) sends about 10 requests per second through the gateway dur
 - Real prod never changes during a demo, and stays pure GitOps.
 - The demo needs room for a second prod: the HPA's minimum replicas plus the canary pods. `./platform budget --watch` shows the peak while it runs.
 - Policy audit results include the `orders-demo` namespace while it exists. The SLO alerts may fire for it during `canary-fail`, which is the point of that demo.
+- The copy runs the demo images by tag (`v1`, `v2`, `v2-bad`, with `image.digest` emptied), not by digest like the real environments: the demo tags are rebuilt and re-signed from every main commit (decision 0013), so a pinned digest would go stale. That's fine for a demo, and the image-signature policy (Audit) still checks each pod's resolved digest.
 - `./platform demo clean` deletes the copy if a demo is interrupted; `--keep` leaves it running to look around.
