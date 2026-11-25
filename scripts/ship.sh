@@ -82,7 +82,8 @@ case "$cmd" in
     ok "image $LOCAL_REPO:$tag (digest empty: a local build has no registry digest)"
     roll_out "$LOCAL_REPO:$tag"
     echo
-    echo "  Roll back: ./platform rollback${env:+ --env $env}" >&2
+    if [ "$env" = prod ]; then echo "  Roll back: ./platform rollback" >&2
+    else echo "  Roll back: ./platform rollback --env $env" >&2; fi
     ;;
   rollback)
     step "Finding $env's previous image in the in-stack Git history"
@@ -93,15 +94,22 @@ case "$cmd" in
     for _ in $(seq 1 30); do port=$(sed -n 's/^Forwarding from 127.0.0.1:\([0-9]*\) .*/\1/p' "$tmp/pf" | head -1); [ -n "$port" ] && break; sleep 0.5; done
     [ -n "$port" ] || die "couldn't reach the in-stack Git server"
     git clone -q "http://127.0.0.1:$port/platform.git" "$tmp/r"
-    # The image block at each commit that touched the file, newest first; the
-    # first one different from the current one is what to go back to.
+    # The image before the current one *first* appeared: so a second rollback
+    # goes further back instead of toggling to the build just rolled back
+    # from (v0, v1, v2, rollback -> v1, rollback -> v0).
     cur=$(yq -o json -I0 '.image' "$values")
-    prev=''
-    for c in $(git -C "$tmp/r" log --format=%H -- "environments/$env/values.yaml"); do
-      img=$(git -C "$tmp/r" show "$c:environments/$env/values.yaml" | yq -o json -I0 '.image')
-      if [ "$img" != "$cur" ]; then prev=$img; break; fi
+    imgs=()
+    for c in $(git -C "$tmp/r" log --reverse --format=%H -- "environments/$env/values.yaml"); do
+      imgs+=("$(git -C "$tmp/r" show "$c:environments/$env/values.yaml" | yq -o json -I0 '.image')")
     done
-    [ -n "$prev" ] || die "no earlier image for $env in the in-stack history"
+    first=-1
+    for i in "${!imgs[@]}"; do [ "${imgs[$i]}" = "$cur" ] && { first=$i; break; }; done
+    prev=''
+    for (( i = first - 1; i >= 0; i-- )); do
+      [ "${imgs[$i]}" != "$cur" ] && { prev=${imgs[$i]}; break; }
+    done
+    [ "$first" -ge 0 ] || die "$env's current image isn't in the in-stack history; push the checkout first (./platform up)"
+    [ -n "$prev" ] || die "$env runs the oldest image in the in-stack history: nothing earlier to roll back to"
     r=$(jq -r '.repository // "ghcr.io/iantest11111989/orders-gateway"' <<<"$prev")
     t=$(jq -r '.tag' <<<"$prev"); d=$(jq -r '.digest // ""' <<<"$prev")
     ok "back to $r:$t${d:+@${d:0:19}…}"
