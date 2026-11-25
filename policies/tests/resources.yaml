@@ -188,3 +188,18 @@ spec:
         - name: app
           image: ghcr.io/iantest11111989/orders-gateway:v1
           readinessProbe: {httpGet: {path: /readyz, port: 8080}}
+---
+# A :latest image outside orders-*: disallow-latest-tag-platform reports it
+# (Audit), disallow-latest-tag (Deny, orders-* only) skips it.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: platform-latest
+  namespace: monitoring
+spec:
+  securityContext: {runAsNonRoot: true}
+  containers:
+    - name: app
+      image: quay.io/prometheus/prometheus:latest
+      resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 32Mi}}
+      securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
