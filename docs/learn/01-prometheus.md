@@ -129,4 +129,4 @@ Rule of thumb: if a label's values can grow without limit (IDs, emails, URLs, ti
 - Your dev p95 is 0.25 s. Is that inside the SLO? Which query tells you the share of slow requests directly?
 - A teammate wants to add a `customer_id` label to `http_requests_total`. What do you tell them?
 
-Next: 2. Grafana _(coming)_.
+Next: [2. Grafana](02-grafana.md).
