@@ -4,7 +4,8 @@
 
 # Background scans, cleanup policies and policy reports are off to save
 # memory. Audit results still show up as metrics
-# (kyverno_policy_results_total) and Kubernetes events.
+# (kyverno_validating_policy_results_total and
+# kyverno_image_validating_policy_results_total) and Kubernetes events.
 backgroundController:
   enabled: false
 cleanupController:
@@ -20,6 +21,12 @@ features:
     enabled: false
   validatingAdmissionPolicyReports:
     enabled: false
+
+# The chart checks for legacy kyverno.io policies (removed in 1.20) at
+# render time and in a pre-install hook Job. This repo has only CEL policies
+# (policies.kyverno.io), so skip both: the Job is a serial step on every sync.
+upgrade:
+  acknowledgeLegacyPoliciesNotEnforced: true
 
 admissionController:
   replicas: 1

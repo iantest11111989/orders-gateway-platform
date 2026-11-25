@@ -1,7 +1,9 @@
 # Kyverno: admission policies (policies/, applied by kyverno-policies).
 # Admission controller only; the background, cleanup and reports controllers
 # are off to save memory (decision 0012). Values: gitops/values/kyverno.yaml.
-# Wave 10 (controllers).
+# Wave 20, beside observability: nothing before the policies (wave 30) needs
+# it, and its sync is slow (a pre-install check, the controller, then a
+# post-sync migration Job), so in wave 10 it held up everything after it.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -10,7 +12,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: orders-gateway-platform
   annotations:
-    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-wave: "20"
 spec:
   project: default
   sources:
