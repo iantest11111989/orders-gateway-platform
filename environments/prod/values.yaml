@@ -16,6 +16,10 @@ autoscaling:
 route:
   hostname: orders.localtest.me
 
+# http://localhost:8080 (the contract's app endpoint).
+publicRoute:
+  enabled: true
+
 podDisruptionBudget:
   enabled: true
 

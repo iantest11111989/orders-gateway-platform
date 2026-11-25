@@ -39,6 +39,12 @@ route:
     namespace: envoy-gateway-system
     sectionName: https
 
+# The contract's endpoint, http://localhost:8080 with no hostname: prod only
+# (environments/prod/values.yaml). Same Gateway, listener "app".
+publicRoute:
+  enabled: false
+  sectionName: app
+
 autoscaling:
   enabled: false
   minReplicas: 3

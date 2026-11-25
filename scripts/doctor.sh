@@ -46,7 +46,7 @@ else
   warn "Could not measure free disk for Docker; make sure about 20 GB is free."
 fi
 
-for port in 80 443; do
+for port in 80 443 8080 3000 9090 9093; do
   if ! nc -z -w 1 127.0.0.1 "$port" 2>/dev/null; then
     ok "Port $port is free"
   elif cluster_exists; then

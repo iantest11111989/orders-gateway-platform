@@ -5,6 +5,8 @@
 #   2. every Prometheus scrape target is up
 #   3. Loki has logs from every namespace that runs pods
 #   4. HTTPS answers on every hostname (scripts/check-https.sh)
+#   4b. the contract's host endpoints: prod on :8080 (/admin/* refused),
+#       Grafana :3000, Prometheus :9090, Alertmanager :9093
 #   5. Kyverno rejects a bad manifest at admission (a server-side dry run of
 #      a :latest pod in dev must be denied by disallow-latest-tag)
 # Prometheus, Loki and Kyverno are reached through the API server's service
@@ -87,6 +89,26 @@ else
   cat "$https_log"
   miss "HTTPS check failed (output above)"
 fi
+
+step "The contract's endpoints on the host (decision 0028)"
+# Runs with the host's network (the toolbox, and Compose's ready service), so
+# localhost is the host's.
+code() { curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$@" || echo 000; }
+c=$(code http://localhost:8080/readyz)
+if [ "$c" = 200 ]; then pass "prod serves at http://localhost:8080 (/readyz 200)"
+else miss "prod at http://localhost:8080/readyz answered $c"; fi
+c=$(code -X POST -d '{}' http://localhost:8080/admin/fault)
+if [ "$c" = 403 ]; then pass "/admin/* is refused at the edge (POST /admin/fault: 403)"
+else miss "POST http://localhost:8080/admin/fault answered $c, not 403: /admin must not be reachable from outside"; fi
+while read -r name port path; do
+  c=$(code "http://localhost:$port$path")
+  if [ "$c" = 200 ]; then pass "$name on http://localhost:$port ($path 200)"
+  else miss "$name at http://localhost:$port$path answered $c"; fi
+done <<'EOF2'
+Grafana 3000 /api/health
+Prometheus 9090 /-/ready
+Alertmanager 9093 /-/ready
+EOF2
 
 step "Kyverno rejects a bad manifest at admission"
 # Server-side dry run: nothing is created. dev enforces Pod Security

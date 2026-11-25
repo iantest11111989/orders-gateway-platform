@@ -26,4 +26,5 @@ spec:
         - name: {{ include "orders-gateway.name" . }}
           port: 80
         {{- end }}
+    {{- include "orders-gateway.adminDeny" . | nindent 4 }}
 {{- end }}

@@ -1,0 +1,16 @@
+{{- if or .Values.route.enabled .Values.publicRoute.enabled }}
+# The 403 that every route answers for /admin/* (decision 0028).
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: {{ include "orders-gateway.name" . }}-admin-deny
+  labels:
+    {{- include "orders-gateway.labels" . | nindent 4 }}
+spec:
+  directResponse:
+    statusCode: 403
+    contentType: application/json
+    body:
+      type: Inline
+      inline: '{"error":"forbidden: /admin is only reachable inside the cluster"}'
+{{- end }}
