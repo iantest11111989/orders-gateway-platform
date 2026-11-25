@@ -1,0 +1,30 @@
+# A fixed-name ClusterIP Service in front of the Envoy proxy pods. Envoy
+# Gateway names its own Service with a hash (envoy-envoy-gateway-system-
+# platform-<hash>), so in-cluster clients (the load generator, which must
+# resolve the gateway once because k6 can't map a hostname to a hostname)
+# use this one. It selects the same pods as Envoy Gateway's Service and
+# targets the same listener ports. Renaming Envoy Gateway's own Service
+# instead (EnvoyProxy envoyService.name) would briefly create a second
+# Service with the pinned NodePorts 30080/30443, which Kubernetes refuses
+# while the old one holds them.
+apiVersion: v1
+kind: Service
+metadata:
+  name: envoy-platform
+  namespace: envoy-gateway-system
+  labels:
+    app.kubernetes.io/part-of: orders-gateway-platform
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/component: proxy
+    app.kubernetes.io/managed-by: envoy-gateway
+    gateway.envoyproxy.io/owning-gateway-name: platform
+    gateway.envoyproxy.io/owning-gateway-namespace: envoy-gateway-system
+  ports:
+    - name: http
+      port: 80
+      targetPort: 10080
+    - name: https
+      port: 443
+      targetPort: 10443
