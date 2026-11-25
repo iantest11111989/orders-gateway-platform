@@ -3,6 +3,10 @@
 #
 #   rolling-update  v1 -> v2 in a copy of dev (3 replicas): pods replace one
 #                at a time and k6 sees no errors
+#   gitops-revert  a bad config commit (30% of orders fail) on a demo branch
+#                that a copy of dev follows; Argo CD syncs it, then a
+#                `git revert` heals it. Needs GITHUB_TOKEN (push access to the
+#                repo Argo CD syncs from, e.g. your fork)
 #   canary       v1 -> v2 through the prod canary: 10% -> 25% -> 50% -> 100%,
 #                with the SLO analysis passing at every step
 #   canary-fail  v2 -> v2-bad: the analysis fails and Rollouts rolls back
@@ -25,9 +29,17 @@ APP=orders-demo NS=orders-demo HOST=orders-demo.localtest.me
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 K6_LOG=/tmp/orders-demo-k6.log
 
-usage() { die "usage: ./platform demo <rolling-update|canary|canary-fail|clean> [--keep]"; }
+usage() { die "usage: ./platform demo <rolling-update|gitops-revert|canary|canary-fail|clean> [--keep]"; }
 name=${1:-}; shift || true
 keep=; [ "${1:-}" = --keep ] && keep=1
+
+# Runs on any exit, also Ctrl-C: stop k6 and remove the gitops-revert clone.
+K6_PID='' GIT_WORK=''
+cleanup() {
+  [ -z "$K6_PID" ] || kill "$K6_PID" 2>/dev/null || true
+  [ -z "$GIT_WORK" ] || rm -rf "$GIT_WORK"
+}
+trap cleanup EXIT
 
 # --- the demo copy of prod ---------------------------------------------------
 
@@ -39,7 +51,7 @@ create_app() { # create_app <source app> <image tag> [helm-param=value ...]
   local src=$1 tag=$2; shift 2
   step "Creating $APP: a copy of the $src Application, image $tag"
   kubectl -n argocd get applications.argoproj.io "$src" -o json | jq --arg app "$APP" --arg ns "$NS" \
-    --arg host "$HOST" --arg tag "$tag" --arg src "$src" --args '
+    --arg host "$HOST" --arg tag "$tag" --arg src "$src" --arg rev "${DEMO_REVISION:-}" --args '
     {apiVersion, kind,
      metadata: {name: $app, namespace: "argocd",
                 labels: {"app.kubernetes.io/part-of": "orders-gateway-platform", "demo": "true", "demo-source": $src},
@@ -47,6 +59,7 @@ create_app() { # create_app <source app> <image tag> [helm-param=value ...]
                 finalizers: ["resources-finalizer.argocd.argoproj.io"]},
      spec: (.spec
        | .destination.namespace = $ns
+       | (if $rev != "" then .source.targetRevision = $rev else . end)
        | .source.helm.parameters = ([
            {name: "route.hostname", value: $host},
            {name: "image.tag", value: $tag},
@@ -113,7 +126,6 @@ start_load() {
   k6 run --quiet --insecure-skip-tls-verify --summary-mode=compact \
     -e BASE_URL="https://$HOST" -e RATE=10 -e DURATION=30m "$ROOT/app/k6/load.js" >"$K6_LOG" 2>&1 &
   K6_PID=$!
-  trap 'kill "$K6_PID" 2>/dev/null || true' EXIT
   sleep 15
   kill -0 "$K6_PID" 2>/dev/null || { cat "$K6_LOG"; die "k6 stopped (see above)"; }
   ok "k6 running (pid $K6_PID)"
@@ -188,7 +200,107 @@ narrate_rolling() { # narrate_rolling <generation before the change> <timeout s>
   done
 }
 
+# --- gitops-revert helpers ---------------------------------------------------
+
+# git with GITHUB_TOKEN sent as an HTTP header for this one command: it is
+# never written into the clone's config or shown in a remote URL or error.
+gitauth() {
+  git -c http.extraHeader="Authorization: Basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')" "$@"
+}
+
+# Deletes leftover demo branches (an interrupted run, or --keep). Only with
+# GITHUB_TOKEN; otherwise prints how to.
+clean_branches() {
+  local repo b
+  repo=$(kubectl -n argocd get applications.argoproj.io root -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || true)
+  [ -n "$repo" ] || return 0
+  for b in $(git ls-remote --heads "$repo" 'demo/gitops-revert-*' 2>/dev/null | awk '{sub("refs/heads/", "", $2); print $2}'); do
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+      gitauth push -q "$repo" --delete "$b" && ok "deleted the leftover demo branch $b"
+    else
+      warn "leftover demo branch $b: delete it with GITHUB_TOKEN=\$(gh auth token) ./platform demo clean, or git push origin --delete $b"
+    fi
+  done
+}
+
+# 5xx share of POST /orders in orders-demo over the last minute, from
+# Prometheus (the same metric the SLO and the canary analysis use).
+error_ratio() {
+  local q='sum(rate(http_requests_total{namespace="orders-demo",route="/orders",code=~"5.."}[1m])) / sum(rate(http_requests_total{namespace="orders-demo",route="/orders"}[1m]))'
+  kubectl get --raw "/api/v1/namespaces/monitoring/services/kube-prometheus-stack-prometheus:9090/proxy/api/v1/query?query=$(jq -rn --arg q "$q" '$q|@uri')" 2>/dev/null |
+    jq -r '.data.result[0].value[1] // "0" | tonumber * 100 | floor | tostring + "%"' 2>/dev/null || echo "?"
+}
+# Waits until Argo CD has synced <commit> and the Deployment has rolled out,
+# printing the 5xx share every 10 s; then keeps printing it for <settle> s.
+narrate_git() { # narrate_git <commit> <settle s> <timeout s>
+  local want=$1 settle=$2 deadline=$(( $(date +%s) + $3 )) rev synced_at=''
+  kubectl -n argocd annotate applications.argoproj.io "$APP" argocd.argoproj.io/refresh=normal --overwrite >/dev/null
+  while :; do
+    rev=$(kubectl -n argocd get applications.argoproj.io "$APP" -o jsonpath='{.status.sync.revision}' 2>/dev/null)
+    if [ -z "$synced_at" ] && [ "$rev" = "$want" ] &&
+       kubectl -n "$NS" rollout status deployment/orders-gateway --timeout=1s >/dev/null 2>&1; then
+      synced_at=$(date +%s)
+      printf '  %s  Argo CD synced %s and the pods rolled out\n' "$(date +%H:%M:%S)" "${want:0:7}" >&2
+    fi
+    printf '  %s  synced %s   5xx share of POST /orders (1 min): %s\n' "$(date +%H:%M:%S)" "${rev:0:7}" "$(error_ratio)" >&2
+    if [ -n "$synced_at" ] && [ $(( $(date +%s) - synced_at )) -ge "$settle" ]; then return 0; fi
+    [ "$(date +%s)" -lt "$deadline" ] || die "Argo CD didn't sync ${want:0:7} within ${3}s (it shows ${rev:0:7})"
+    sleep 10
+  done
+}
+
 # --- demos -------------------------------------------------------------------
+
+demo_gitops_revert() {
+  step "Demo: GitOps revert, in a copy of dev that follows a demo branch"
+  echo "  A bad config commit (FAULT_ERROR_RATE 0.3: 30% of orders return 500)"
+  echo "  lands on a demo branch; Argo CD syncs it and the errors show up. Then"
+  echo "  \`git revert\` and Argo CD heals it. Nothing is changed by hand in the"
+  echo "  cluster. Takes about 5 minutes."
+  [ -n "${GITHUB_TOKEN:-}" ] || die "needs push access to the repo Argo CD syncs from: GITHUB_TOKEN=\$(gh auth token) ./platform demo gitops-revert"
+  local repo base branch work
+  repo=$(kubectl -n argocd get applications.argoproj.io root -o jsonpath='{.spec.source.repoURL}')
+  base=$(kubectl -n argocd get applications.argoproj.io root -o jsonpath='{.spec.source.targetRevision}')
+  [[ $repo == https://github.com/* ]] || die "Argo CD syncs from $repo; this demo pushes to GitHub repos over HTTPS only"
+  branch="demo/gitops-revert-$(date -u +%Y%m%d-%H%M%S)"
+  work=$(mktemp -d); GIT_WORK=$work
+  DEMO_BRANCH=$branch DEMO_REPO=$repo
+
+  step "Creating $branch in $repo (from $base)"
+  gitauth clone -q --depth 5 --branch "$base" "$repo" "$work"
+  git -C "$work" -c user.name="orders-gateway demo" -c user.email="demo@localhost" switch -q -c "$branch"
+  gitauth -C "$work" push -q origin "$branch"
+  ok "pushed $branch"
+
+  delete_app
+  DEMO_REVISION=$branch create_app orders-dev v1 replicas=3
+  wait_healthy v1 600
+  start_load
+  where_to_watch
+  narrate_git "$(git -C "$work" rev-parse HEAD)" 30 300
+
+  step "Committing a bad config change to $branch"
+  yq -i '.config.faultErrorRate = 0.3' "$work/environments/dev/values.yaml"
+  git -C "$work" -c user.name="orders-gateway demo" -c user.email="demo@localhost" \
+    commit -q -am "demo: FAULT_ERROR_RATE 0.3 in dev (30% of orders fail)"
+  gitauth -C "$work" push -q origin "$branch"
+  ok "pushed $(git -C "$work" log -1 --format='%h %s')"
+  narrate_git "$(git -C "$work" rev-parse HEAD)" 60 400
+  bad=$(error_ratio)
+
+  step "Reverting it in Git"
+  git -C "$work" -c user.name="orders-gateway demo" -c user.email="demo@localhost" revert --no-edit HEAD >/dev/null
+  gitauth -C "$work" push -q origin "$branch"
+  ok "pushed $(git -C "$work" log -1 --format='%h %s')"
+  narrate_git "$(git -C "$work" rev-parse HEAD)" 70 400
+  good=$(error_ratio)
+  k6_summary
+
+  [ "${bad%\%}" -ge 10 ] 2>/dev/null || die "the bad commit didn't show up as errors (5xx share $bad)"
+  [ "${good%\%}" -le 1 ] 2>/dev/null || die "errors didn't stop after the revert (5xx share $good)"
+  ok "bad commit: ${bad} of orders failed; after the revert: ${good}. Git was the only thing changed."
+}
+
 
 demo_rolling_update() {
   step "Demo: rolling update v1 -> v2 in a copy of dev"
@@ -256,14 +368,19 @@ demo_canary_fail() {
 
 case "$name" in
   rolling-update) demo_rolling_update ;;
+  gitops-revert) demo_gitops_revert ;;
   canary) demo_canary ;;
   canary-fail) demo_canary_fail ;;
-  clean) delete_app; exit 0 ;;
+  clean) delete_app; clean_branches; exit 0 ;;
   *) usage ;;
 esac
 
 if [ -n "$keep" ]; then
   ok "kept $APP running (./platform demo clean deletes it)"
+  [ -z "${DEMO_BRANCH:-}" ] || ok "kept branch $DEMO_BRANCH (delete it with: git push origin --delete $DEMO_BRANCH)"
 else
   delete_app
+  if [ -n "${DEMO_BRANCH:-}" ]; then
+    gitauth push -q "$DEMO_REPO" --delete "$DEMO_BRANCH" && ok "deleted the demo branch $DEMO_BRANCH"
+  fi
 fi
