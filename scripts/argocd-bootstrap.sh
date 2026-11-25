@@ -36,17 +36,60 @@ start=$(date +%s)
 deadline=$(( start + APPS_TIMEOUT ))
 # Seconds after the root was applied when each Application first appeared and
 # first became Synced+Healthy, so slow sync waves show up in the output.
-declare -A seen_at healthy_at
+declare -A seen_at healthy_at drift_since drift_logged slow_since slow_logged
 timing() { echo "(appeared +${seen_at[$1]:-?}s, healthy +${healthy_at[$1]:-never}s)"; }
+# The root app's sync waves wait only for each child's health, so an app that
+# is Healthy but stays OutOfSync doesn't hold up later waves, but it does hold
+# up this wait (until Argo CD's next refresh, ~3 min). Name the drifting
+# resources once, so a slow `up` points at what needs an ignoreDifferences.
+# An app that stays Progressing or Missing, or whose sync operation stays
+# Running, for a minute is the other way to hold up `up`. Print its sync
+# operation (the message names what it waits for, such as a CRD or a PostSync
+# Job) and the not-ready pods in its namespace (Argo CD 3 no longer keeps
+# per-resource health in the Application status). Once per app.
+slow_report() {
+  local ns
+  warn "$1: $2 for ${3}s; sync operation, then pods not ready in its namespace:"
+  kubectl -n argocd get applications.argoproj.io "$1" -o jsonpath='    operation: {.status.operationState.phase} {.status.operationState.message}{"\n"}' 2>/dev/null || true
+  ns=$(kubectl -n argocd get applications.argoproj.io "$1" -o jsonpath='{.spec.destination.namespace}' 2>/dev/null || true)
+  [ -n "$ns" ] || return 0
+  kubectl -n "$ns" get pods --no-headers 2>/dev/null |
+    awk -v ns="$ns" '{ split($2, r, "/"); if ($3 != "Completed" && ($3 != "Running" || r[1] != r[2])) printf "    pod %s/%s %s %s\n", ns, $1, $2, $3 }' || true
+}
+drift_report() {
+  warn "$1: Healthy but not Synced for ${2}s; OutOfSync resources:"
+  kubectl -n argocd get applications.argoproj.io "$1" -o jsonpath='{range .status.resources[?(@.status=="OutOfSync")]}    {.group}/{.kind} {.namespace}/{.name}{"\n"}{end}' 2>/dev/null || true
+}
 while :; do
-  # name sync health, one line per Application
+  # name sync health operation-phase, one line per Application
   status=$(kubectl -n argocd get applications.argoproj.io \
-    -o jsonpath='{range .items[*]}{.metadata.name} {.status.sync.status} {.status.health.status}{"\n"}{end}' 2>/dev/null || true)
+    -o jsonpath='{range .items[*]}{.metadata.name} {.status.sync.status} {.status.health.status} {.status.operationState.phase}{"\n"}{end}' 2>/dev/null || true)
   now=$(( $(date +%s) - start ))
-  while read -r name sync health; do
+  while read -r name sync health phase; do
     [ -n "$name" ] || continue
     [ -n "${seen_at[$name]:-}" ] || seen_at[$name]=$now
     if [ "$sync" = Synced ] && [ "$health" = Healthy ] && [ -z "${healthy_at[$name]:-}" ]; then healthy_at[$name]=$now; fi
+    # Skip apps still in a sync (root works through its waves this way).
+    if [ "$health" = Healthy ] && [ "$sync" != Synced ] && [ "${phase:-}" != Running ]; then
+      [ -n "${drift_since[$name]:-}" ] || drift_since[$name]=$now
+      if [ -z "${drift_logged[$name]:-}" ] && [ $(( now - drift_since[$name] )) -ge 30 ]; then
+        drift_logged[$name]=1
+        drift_report "$name" $(( now - drift_since[$name] ))
+      fi
+    else
+      unset 'drift_since[$name]'
+    fi
+    # A sync operation still Running with healthy resources is a hook (e.g.
+    # a PostSync Job) the app waits for; it counts as slow too.
+    if [ "$health" = Progressing ] || [ "$health" = Missing ] || [ "${phase:-}" = Running ]; then
+      [ -n "${slow_since[$name]:-}" ] || slow_since[$name]=$now
+      if [ -z "${slow_logged[$name]:-}" ] && [ $(( now - slow_since[$name] )) -ge 60 ]; then
+        slow_logged[$name]=1
+        slow_report "$name" "$health, sync ${phase:-idle}" $(( now - slow_since[$name] ))
+      fi
+    else
+      unset 'slow_since[$name]'
+    fi
   done <<<"$status"
   total=$(grep -c . <<<"$status" || true)
   ready=$(awk '$2 == "Synced" && $3 == "Healthy"' <<<"$status" | grep -c . || true)
@@ -55,7 +98,7 @@ while :; do
     break
   fi
   if [ "$(date +%s)" -ge "$deadline" ]; then
-    while read -r name sync health; do
+    while read -r name sync health _; do
       if [ "$sync" = Synced ] && [ "$health" = Healthy ]; then ok "$name: Synced, Healthy $(timing "$name")"; else fail "$name: ${sync:-Unknown}, ${health:-Unknown} $(timing "$name")"; fi
     done <<<"$status"
     die "not every Application became Synced and Healthy in ${APPS_TIMEOUT}s. Inspect with: ./platform kubectl -n argocd get applications"
