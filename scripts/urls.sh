@@ -36,11 +36,9 @@ else
   warn "demo CA not ready yet; re-run ./platform urls in a minute"
 fi
 
-pw=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || true)
-
 step "Argo CD"
 echo "  https://argocd.localtest.me"
-echo "  Login: admin / ${pw:-<not found: run ./platform up>}"
+echo "  Login: admin / admin12345 (the contract's dev UI login)"
 # The toolbox sets ARGOCD_OPTS to reach Argo CD by port-forward, so the CLI
 # works even if the gateway is down; no server address needed there.
 echo "  CLI (inside ./platform shell): argocd login --username admin --password <above>, then argocd app list"

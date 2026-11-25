@@ -16,6 +16,16 @@ redis-ha:
   enabled: false
 
 configs:
+  # The contract's dev UI login, admin / admin12345, for Argo CD too (not the
+  # random argocd-initial-admin-secret). A bcrypt hash, as the chart expects:
+  # it isn't the password, and the password itself is the published contract.
+  # Not a SealedSecret: Argo CD is installed before the Sealed Secrets
+  # controller exists, so a sealed argocd-secret couldn't be decrypted at
+  # bootstrap. Regenerate with: argocd account bcrypt --password <new>, and
+  # bump the mtime (it logs out existing sessions).
+  secret:
+    argocdServerAdminPassword: "$2a$10$XEl/Kynful4ORRtkDtt9H.n7GglQet9YoTAnqiQNHj3Jxq7BgDimG"
+    argocdServerAdminPasswordMtime: "2026-11-25T23:00:00Z"
   params:
     # TLS is terminated at Envoy Gateway (gateway PR); Argo CD serves HTTP
     # inside the cluster.
