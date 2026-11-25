@@ -2,7 +2,7 @@
 
 A local, reproducible **"cluster in a box"** that shows how a platform team would **run, ship, observe and operate** a small stateless HTTP service, `orders-gateway`, on Kubernetes.
 
-The service is a small Go stand-in. The platform around it is the real point: GitOps with Argo CD, canary releases with Argo Rollouts, HTTPS through Envoy Gateway, metrics and logs with Prometheus, Grafana and Loki, and a security baseline that keeps itself patched.
+The service is the assignment's small Node.js app (`app/server.js`, unchanged; see [app/README.md](app/README.md)). The platform around it is the real point: GitOps with Argo CD, canary releases with Argo Rollouts, HTTPS through Envoy Gateway, metrics and logs with Prometheus, Grafana and Loki, and a security baseline that keeps itself patched.
 
 > **Status:** everything in the brief's definition of done is built: the stack, all six demos, the `docs/learn/` track, dashboards and alerts for every component, and automatic patch promotion. The promoter runs as a **dry run** until the owner adds a GitHub token ([decision 0024](docs/decisions/0024-patch-promoter.md)).
 
@@ -96,7 +96,7 @@ Add `--keep` to leave `demo` running afterwards. Watch in the Rollouts dashboard
 ## Repository layout
 
 ```
-app/                    Go source, Dockerfile, tests, k6 scripts
+app/                    the app (server.js, unchanged), its Dockerfile, tests, k6 scripts
 charts/orders-gateway/  Helm chart
 environments/           dev, staging and prod values
 gitops/                 Argo CD Applications per component
