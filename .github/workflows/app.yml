@@ -2,10 +2,10 @@ name: app
 
 on:
   pull_request:
-    paths: ["app/**", ".github/workflows/app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh"]
+    paths: ["app/**", ".github/workflows/app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh", "scripts/promotion-kind.sh"]
   push:
     branches: [main]
-    paths: ["app/**", ".github/workflows/app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh"]
+    paths: ["app/**", ".github/workflows/app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh", "scripts/promotion-kind.sh"]
   # Re-publish the images from main by hand (Actions tab, "Run workflow").
   workflow_dispatch:
 
@@ -358,6 +358,7 @@ jobs:
         with:
           ref: main
           persist-credentials: true # this job pushes its branch
+          fetch-depth: 0 # promotion-kind.sh walks main's history
       - name: Rebuild promote/${{ matrix.env }} and open or update its PR
         working-directory: .
         env:
@@ -368,6 +369,10 @@ jobs:
         run: |
           tag="sha-${GITHUB_SHA::12}"
           branch="promote/$ENV"
+          # What this promotion ships, from the image $ENV runs now (read
+          # before set-image.sh changes it): Promotion-Range/-Kind trailers.
+          trailers=$(scripts/promotion-kind.sh "$ENV" "$GITHUB_SHA")
+          kind=$(sed -n 's/^Promotion-Kind: //p' <<<"$trailers")
           scripts/set-image.sh "$ENV" "$tag" "$DIGEST"
           if git diff --quiet; then
             echo "$ENV already runs $tag" | tee -a "$GITHUB_STEP_SUMMARY"
@@ -377,7 +382,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -q -b "$branch"
           git commit -q -am "$ENV: orders-gateway $tag" \
-            -m "Image $IMAGE@$DIGEST, published and signed by $RUN_URL (commit $GITHUB_SHA)."
+            -m "Image $IMAGE@$DIGEST, published and signed by $RUN_URL (commit $GITHUB_SHA)." \
+            -m "$trailers"
           # The branch belongs to this job: each run rebuilds it from main, so
           # the PR always shows exactly one change against the newest image.
           # Refuse if someone else committed to it, so a hand-made commit is
@@ -392,7 +398,12 @@ jobs:
           git push -q --force origin "HEAD:refs/heads/$branch"
           title="Promote $ENV to $tag"
           body="Moves **$ENV** to \`$tag\` (\`$DIGEST\`), the image dev runs now.
-          It was published and signed by $RUN_URL. **Needs the owner's approval** (brief, section 7)."
+          It was published and signed by $RUN_URL. **Needs the owner's approval** (brief, section 7).
+
+          Promotion kind: **$kind** (\`scripts/promotion-kind.sh\`, trailers in the commit):
+          \`\`\`
+          $trailers
+          \`\`\`"
           [ "$ENV" = prod ] && body="$body
           Merging starts the Argo Rollouts canary in orders-prod. Without traffic it pauses at 10% (decision 0011)."
           body="$body
