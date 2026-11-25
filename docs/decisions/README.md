@@ -30,3 +30,4 @@ Records are not edited after they are accepted. If a decision changes, add a new
 | [0015](0015-promotion-prs.md) | CI opens the staging and prod promotion PRs | Accepted |
 | [0016](0016-trivy-image-scan.md) | Trivy scans the app image in CI | Accepted |
 | [0017](0017-network-policies.md) | NetworkPolicies for the platform namespaces | Accepted |
+| [0018](0018-sealed-secrets.md) | Sealed Secrets with a committed demo key; no plain Secrets in Git | Accepted |

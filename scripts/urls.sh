@@ -41,7 +41,9 @@ echo "  CLI on your machine, through the gateway: argocd login argocd.localtest.
 
 step "Grafana"
 echo "  https://grafana.localtest.me"
-echo "  Login: admin / prom-operator (DEMO ONLY, until the Sealed Secrets PR)"
+gpw=$(kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d || true)
+# From a SealedSecret sealed with the committed DEMO ONLY key (decision 0018).
+echo "  Login: admin / ${gpw:-<not unsealed yet: re-run ./platform urls in a minute>}"
 
 step "Prometheus and Alertmanager (no login; bound to 127.0.0.1 only)"
 echo "  https://prometheus.localtest.me"

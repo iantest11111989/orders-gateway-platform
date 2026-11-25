@@ -37,9 +37,13 @@ alertmanager:
 
 # ---- Grafana ----
 grafana:
-  # DEMO ONLY: the chart's fixed default login (admin / prom-operator) until
-  # the Sealed Secrets PR moves it into a sealed secret.
-  adminPassword: prom-operator
+  # Login from the SealedSecret gitops/manifests/monitoring/grafana-admin.sealed.yaml
+  # (decision 0018). Read it with:
+  #   ./platform kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
   # Helm test pods aren't used by Argo CD.
   testFramework:
     enabled: false
