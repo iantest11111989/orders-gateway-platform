@@ -21,6 +21,13 @@
 # kube-system pods, whose images the workers hold too. Uses ctr directly
 # rather than `kind load image-archive`, which imports --all-platforms and
 # fails on a single-platform archive.
+# `list` reads the pods that exist when it runs (finished pods included while
+# they're kept), so an image used only by a Job pod already cleaned up isn't
+# cached; it's pulled as before.
+# This is for reliability, not speed: on a GitHub runner `up` took about as
+# long with the cache as without (pulls aren't the bottleneck; Argo CD's sync
+# waves are). What it buys is a cold start that doesn't fail when a registry
+# rate-limits or flakes. Keep it even though the import costs time.
 # Runs in the toolbox (needs the Docker socket).
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -95,5 +102,5 @@ case "$cmd" in
     wait "${pids[@]}"
     ok "image cache loaded in $(( $(date +%s) - start ))s"
     ;;
-  *) die "usage: scripts/images.sh save|load <dir>" ;;
+  *) die "usage: scripts/images.sh list | save <dir> | load <dir>" ;;
 esac
