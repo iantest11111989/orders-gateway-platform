@@ -1,0 +1,49 @@
+# docker compose up -d --wait   brings up the whole platform (README, Quick start).
+#
+# Compose is only the outer shell: the one long-running service, `ready`, runs
+# the toolbox (every pinned tool) and bootstraps a kind cluster in which Argo CD
+# installs everything else from Git (decision 0026). Its healthcheck passes only
+# when every Argo CD Application is Synced and Healthy and prod is serving, so
+# `--wait` returns when the platform is really up.
+#
+# The kind node containers are created by kind, not by Compose: `docker compose
+# stop`/`start` only restarts `ready`, which re-runs the (idempotent) bootstrap
+# against the running cluster, so the cluster and its data are untouched.
+# `./platform down` deletes the cluster.
+name: orders-gateway-platform
+
+services:
+  ready:
+    # The toolbox image ./platform uses: its tag is a hash of toolbox/
+    # (scripts/check-compose-toolbox.sh keeps the two in step, in CI).
+    # If the tag isn't published yet (a branch that changes toolbox/),
+    # Compose builds it from toolbox/.
+    image: ghcr.io/iantest11111989/orders-gateway-platform-toolbox:sha-8ff4ca6604ba
+    build: ./toolbox
+    command: ["bash", "scripts/compose-ready.sh"]
+    # Host network: kind's API server and the platform's ports are on the
+    # host's 127.0.0.1, so ./out/kubeconfig.yaml works from the host as is.
+    network_mode: host
+    working_dir: /work
+    volumes:
+      - .:/work
+      - /var/run/docker.sock:/var/run/docker.sock  # kind creates its node containers
+      - kube:/root/.kube
+    environment:
+      REPO_URL: ${REPO_URL:-}
+      REVISION: ${REVISION:-}
+      PRELOAD_IMAGES: ${PRELOAD_IMAGES:-}  # CI's image cache (scripts/images.sh)
+    init: true  # `sleep infinity` as PID 1 would ignore SIGTERM
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "scripts/ready-check.sh"]
+      interval: 30s
+      timeout: 25s
+      retries: 3
+      # A cold start pulls about 60 images; the brief allows 15 minutes.
+      start_period: 20m
+      start_interval: 10s
+
+volumes:
+  kube:
+    name: ogp-kube  # the same volume ./platform uses, so both see one kubeconfig
