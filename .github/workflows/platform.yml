@@ -44,13 +44,83 @@ jobs:
         with:
           persist-credentials: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      # Build only: every download is checksum-verified during the build.
-      # Publishing to GHCR comes with the release workflow.
+      # Build only (every download is checksum-verified during the build);
+      # `toolbox-publish` pushes it from main.
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: toolbox
           platforms: linux/amd64,linux/arm64
           push: false
+
+  # Publishes the toolbox from main, so `./platform` pulls it instead of
+  # building it locally (minutes on a fresh machine). The tag is the same hash
+  # of toolbox/ that `./platform` computes (toolbox_image in ./platform), so a
+  # change to any pinned tool gives a new tag, and an unchanged toolbox isn't
+  # rebuilt. Signed and checked like the app image (scripts/sign-images.sh,
+  # decision 0013), with this workflow on main as the identity.
+  toolbox-publish:
+    name: publish toolbox (amd64 + arm64)
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: toolbox
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write # push the image and its signature
+      id-token: write # keyless signing
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/orders-gateway-platform-toolbox
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: tag
+        name: Tag = hash of toolbox/ (same as ./platform)
+        run: |
+          hash=$(cd toolbox && find . -type f | LC_ALL=C sort | xargs cat | sha256sum | cut -c1-12)
+          echo "tag=sha-$hash" >>"$GITHUB_OUTPUT"
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
+      # Published AND signed by this workflow on main: nothing to do. Published
+      # but not (verifiably) signed, e.g. a sign step that failed after the
+      # push: sign that digest now instead of leaving it unsigned for good.
+      - id: exists
+        name: Already published and signed?
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          IDENTITY: ${{ github.server_url }}/${{ github.workflow_ref }}
+        run: |
+          if digest=$(docker buildx imagetools inspect "$IMAGE:$TAG" --format '{{json .Manifest}}' 2>/dev/null | jq -r .digest) && [ -n "$digest" ]; then
+            echo "digest=$digest" >>"$GITHUB_OUTPUT"
+            if cosign verify "$IMAGE@$digest" --certificate-identity "$IDENTITY" \
+                 --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null 2>&1; then
+              echo "signed=true" >>"$GITHUB_OUTPUT"
+              echo "\`$IMAGE:$TAG\` is already published and signed" >>"$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+      - if: steps.exists.outputs.digest == ''
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - id: build
+        if: steps.exists.outputs.digest == ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: toolbox
+          platforms: linux/amd64,linux/arm64
+          push: true
+          sbom: true
+          tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.tag }}
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+      - name: Sign, then verify signature and SBOMs
+        if: steps.exists.outputs.signed != 'true'
+        env:
+          # e.g. https://github.com/<owner>/<repo>/.github/workflows/platform.yml@refs/heads/main
+          IDENTITY: ${{ github.server_url }}/${{ github.workflow_ref }}
+          # The new build's digest, or the published-but-unsigned one.
+          DIGEST: ${{ steps.build.outputs.digest || steps.exists.outputs.digest }}
+        run: scripts/sign-images.sh "$DIGEST" | tee -a "$GITHUB_STEP_SUMMARY"
 
   cluster:
     name: ./platform doctor, up, up again, down
