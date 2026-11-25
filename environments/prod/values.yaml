@@ -4,8 +4,8 @@
 env: prod
 
 image:
-  tag: sha-76ee05c156cf
-  digest: sha256:7c7dad1299f9397c944d1d6879fbb1a2ef0bd7de18a6cce8418d8e1c24570f24
+  tag: sha-9ab553b08d9f
+  digest: sha256:4a3e5f1af2371bd526a8eed0b4fcf23f86d7475cf26350d93e0e41af684f9735
 
 autoscaling:
   enabled: true
