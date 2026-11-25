@@ -1,0 +1,100 @@
+# Alerts for the delivery side of the platform: Argo CD, Argo Rollouts,
+# cert-manager, and the 6 CPU / 12 GiB budget (brief, section 8).
+#
+# Severities match the routing (page | ticket), like the SLO alerts in
+# orders-gateway-slo.yaml. The chart's defaults already cover TargetDown,
+# Watchdog and KubePodCrashLooping, with upstream runbooks.
+#
+# Tests: alerts/tests/platform-delivery.test.yaml (promtool, run in CI).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-delivery
+  labels:
+    app.kubernetes.io/part-of: orders-gateway-platform
+    app.kubernetes.io/component: alerts
+spec:
+  groups:
+    - name: platform-delivery
+      rules:
+        # Self-heal puts a manual change back within seconds, so an app that
+        # stays OutOfSync means Argo CD can't apply what's in Git.
+        - alert: ArgoCDAppOutOfSync
+          expr: max by (name) (argocd_app_info{sync_status="OutOfSync"}) == 1
+          for: 15m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "Argo CD application {{ $labels.name }} has been OutOfSync for 15 minutes"
+            description: >-
+              The live state of {{ $labels.name }} differs from Git and Argo CD hasn't
+              been able to sync it. Changes merged for it aren't reaching the cluster.
+            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/ArgoCDAppOutOfSync.md
+
+        # Degraded: something it deployed is failing (pods crashing, a Rollout
+        # aborted). Missing: a resource Git expects doesn't exist.
+        - alert: ArgoCDAppUnhealthy
+          expr: max by (name, health_status) (argocd_app_info{health_status=~"Degraded|Missing"}) == 1
+          for: 10m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "Argo CD application {{ $labels.name }} is {{ $labels.health_status }}"
+            description: >-
+              {{ $labels.name }} has been {{ $labels.health_status }} for 10 minutes.
+            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/ArgoCDAppUnhealthy.md
+
+        # A canary that aborted is already back on the stable version, so this
+        # is a ticket: find out why before trying again. orders-demo is left
+        # out because the canary-fail demo aborts on purpose.
+        - alert: RolloutAborted
+          expr: max by (exported_namespace, name) (rollout_info{phase="Abort", exported_namespace!="orders-demo"}) == 1
+          for: 1m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "Rollout {{ $labels.exported_namespace }}/{{ $labels.name }} aborted its canary"
+            description: >-
+              The canary failed its analysis (or was aborted by hand) and all traffic is
+              back on the stable version. The new version won't go further until fixed.
+            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/RolloutAborted.md
+
+        - alert: CertificateNotReady
+          expr: max by (exported_namespace, name) (certmanager_certificate_ready_status{condition="False"}) == 1
+          for: 10m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "Certificate {{ $labels.exported_namespace }}/{{ $labels.name }} isn't Ready"
+            description: >-
+              cert-manager couldn't issue or renew this certificate for 10 minutes.
+            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/CertificateNotReady.md
+
+        # cert-manager renews well before this (the gateway's certificate 30 days
+        # ahead), so under 14 days left means renewal has been failing.
+        - alert: CertificateExpiringSoon
+          expr: (max by (exported_namespace, name) (certmanager_certificate_expiration_timestamp_seconds) - time()) < 14 * 86400
+          for: 1h
+          labels:
+            severity: ticket
+          annotations:
+            summary: "Certificate {{ $labels.exported_namespace }}/{{ $labels.name }} expires in {{ $value | humanizeDuration }}"
+            description: >-
+              It should have been renewed already; renewal is failing.
+            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/CertificateExpiringSoon.md
+
+        # The whole stack against its 12 GiB budget. cAdvisor's root cgroup on
+        # each kind node is the node container itself (pods plus kubelet and
+        # containerd), so the sum matches `./platform budget` (7067 vs 7055 MiB
+        # on ogp, 2026-11-25). At 90% a node is close to its 4 GiB cap and
+        # will start OOM-killing.
+        - alert: StackNearMemoryBudget
+          expr: sum(container_memory_working_set_bytes{id="/"}) / (12 * 2^30) > 0.9
+          for: 10m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "The stack uses {{ $value | humanizePercentage }} of its 12 GiB memory budget"
+            description: >-
+              Memory across the kind nodes has been above 90% of the budget for 10 minutes.
+            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/StackNearMemoryBudget.md
