@@ -79,12 +79,24 @@ else
 fi
 
 step "Kyverno rejects a bad manifest at admission"
-# Server-side dry run: Kyverno sees the request, nothing is created.
+# Server-side dry run: nothing is created. orders-dev enforces Pod Security
+# "restricted", which runs before Kyverno's webhook and stops at the first
+# rejection, so the pod meets it (and the Audit policies): the :latest tag
+# is the only thing wrong with it.
+latest_pod='{
+  "apiVersion": "v1",
+  "spec": {
+    "securityContext": {"runAsNonRoot": true, "runAsUser": 65534, "seccompProfile": {"type": "RuntimeDefault"}},
+    "containers": [{"name": "verify-latest-tag", "image": "docker.io/library/busybox:latest",
+      "securityContext": {"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true, "capabilities": {"drop": ["ALL"]}},
+      "resources": {"requests": {"cpu": "10m", "memory": "16Mi"}, "limits": {"memory": "32Mi"}}}]}}'
 if out=$(kubectl -n orders-dev run verify-latest-tag --image=docker.io/library/busybox:latest \
-    --restart=Never --dry-run=server -o name 2>&1); then
+    --restart=Never --dry-run=server -o name --overrides="$latest_pod" 2>&1); then
   miss "Kyverno let a :latest pod into orders-dev (is it running? disallow-latest-tag is Deny there)"
 elif grep -q 'disallow-latest-tag' <<<"$out"; then
   pass "a :latest pod in orders-dev was rejected by disallow-latest-tag"
+elif grep -q 'PodSecurity' <<<"$out"; then
+  miss "Pod Security rejected the test pod before Kyverno saw it (fix its securityContext): $out"
 else
   miss "a :latest pod in orders-dev failed for another reason: $out"
 fi

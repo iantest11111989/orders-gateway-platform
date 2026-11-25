@@ -12,7 +12,7 @@ Until 2026-11-25, staging and prod ran `sha-85cbba12fef7` (`sha256:09c2177c…`)
 
 - **`disallow-latest-tag`: Deny, in `orders-*` only** (`matchConditions: request.namespace.startsWith('orders-')`). The app's own pods have always passed. A copy, **`disallow-latest-tag-platform`**, keeps the same checks in Audit for every other namespace, so third-party charts are reported, not blocked. A CEL policy has one `validationActions`, so a split is the only way to have both. The two files carry a "keep in step" comment.
 - **`verify-image-signatures`: Deny.** It only matches `ghcr.io/iantest11111989/orders-gateway*`, which only runs in `orders-*`, so it needs no namespace condition. Every image the environments and demos use (dev's, staging's, prod's, and the demo `v1`, `v2`, `v2-bad`) is signed by the app workflow on main.
-- **`failurePolicy` stays `Ignore`.** Kyverno runs one admission replica to fit the budget. With `Fail`, every orders pod (scale-ups, canary steps, rescheduled pods) would be refused while Kyverno restarts. With `Ignore`, a Kyverno outage lets pods through unchecked, and as soon as Kyverno answers it rejects them. That's the right trade for a demo cluster with a single Kyverno replica. Production would run three Kyverno replicas with `Fail`.
+- **`failurePolicy` stays `Ignore`.** Kyverno runs one admission replica to fit the budget. With `Fail`, every orders pod (scale-ups, canary steps, rescheduled pods) would be refused while Kyverno restarts. With `Ignore`, a Kyverno outage lets pods through unchecked. Kyverno checks again only on the next pod creation once it answers. That's the right trade for a demo cluster with a single Kyverno replica. Production would run three Kyverno replicas with `Fail`.
 - **`./platform verify` now checks a rejection,** not an audit count: a server-side dry run of a `:latest` pod in `orders-dev` must be denied, with `disallow-latest-tag` named in the error. A dry run creates nothing.
 - **The other policies stay in Audit** for now. They move the same way, one PR each.
 
@@ -20,7 +20,9 @@ Until 2026-11-25, staging and prod ran `sha-85cbba12fef7` (`sha256:09c2177c…`)
 
 - A `:latest` or untagged image, or an orders-gateway image not signed by main's app workflow, can't start in `orders-dev`, `orders-staging`, `orders-prod` or `orders-demo`.
 - Signature checks need GHCR and Sigstore's trust root to be reachable when a pod is created. If they aren't, verification errors and the pod is refused until they are. The ReplicaSet or Rollout retries, and running pods are unaffected.
+- A pod created while Kyverno is down is admitted unchecked and **stays running**. Nothing re-checks it, because the background controller is off. Only later pod creations are rejected.
 - A new environment must be named `orders-*` to be covered.
+- `orders-*` namespaces enforce Pod Security `restricted`, which the API server checks before Kyverno's webhook. A pod that breaks both is refused by Pod Security, without naming the Kyverno policy. `./platform verify`'s test pod meets `restricted` for that reason.
 
 ## Tests
 
