@@ -504,6 +504,12 @@
                       "Missing": {
                         "color": "red"
                       },
+                      "Abort": {
+                        "color": "red"
+                      },
+                      "Timeout": {
+                        "color": "red"
+                      },
                       "Inconclusive": {
                         "color": "orange"
                       }
@@ -562,6 +568,12 @@
                         "color": "orange"
                       },
                       "Missing": {
+                        "color": "red"
+                      },
+                      "Abort": {
+                        "color": "red"
+                      },
+                      "Timeout": {
                         "color": "red"
                       },
                       "Inconclusive": {
@@ -624,6 +636,12 @@
                       "Missing": {
                         "color": "red"
                       },
+                      "Abort": {
+                        "color": "red"
+                      },
+                      "Timeout": {
+                        "color": "red"
+                      },
                       "Inconclusive": {
                         "color": "orange"
                       }
@@ -682,6 +700,12 @@
                         "color": "orange"
                       },
                       "Missing": {
+                        "color": "red"
+                      },
+                      "Abort": {
+                        "color": "red"
+                      },
+                      "Timeout": {
                         "color": "red"
                       },
                       "Inconclusive": {

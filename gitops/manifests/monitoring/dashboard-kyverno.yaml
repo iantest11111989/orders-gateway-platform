@@ -516,6 +516,12 @@ data:
                           "Missing": {
                             "color": "red"
                           },
+                          "Abort": {
+                            "color": "red"
+                          },
+                          "Timeout": {
+                            "color": "red"
+                          },
                           "Inconclusive": {
                             "color": "orange"
                           }
@@ -574,6 +580,12 @@ data:
                             "color": "orange"
                           },
                           "Missing": {
+                            "color": "red"
+                          },
+                          "Abort": {
+                            "color": "red"
+                          },
+                          "Timeout": {
                             "color": "red"
                           },
                           "Inconclusive": {
@@ -636,6 +648,12 @@ data:
                           "Missing": {
                             "color": "red"
                           },
+                          "Abort": {
+                            "color": "red"
+                          },
+                          "Timeout": {
+                            "color": "red"
+                          },
                           "Inconclusive": {
                             "color": "orange"
                           }
@@ -694,6 +712,12 @@ data:
                             "color": "orange"
                           },
                           "Missing": {
+                            "color": "red"
+                          },
+                          "Abort": {
+                            "color": "red"
+                          },
+                          "Timeout": {
                             "color": "red"
                           },
                           "Inconclusive": {

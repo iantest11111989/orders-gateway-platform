@@ -50,7 +50,7 @@ data:
         {
           "type": "table",
           "title": "Rollouts now",
-          "description": "Every Argo Rollout and its phase: Healthy (done), Progressing (a canary is stepping), Paused (waiting at a step), Degraded (aborted or failing). orders-gateway in orders-prod is the canary; orders-demo appears while a demo runs.",
+          "description": "Every Argo Rollout and its phase: Completed (done, all traffic on the stable version), Progressing (a canary is stepping), Paused (waiting at a step), Abort (analysis failed or someone aborted, traffic back on stable), Error / Timeout (the controller can't make progress). orders-gateway in orders-prod is the canary; orders-demo appears while a demo runs.",
           "id": 2,
           "datasource": {
             "type": "prometheus",
@@ -69,7 +69,7 @@ data:
                 "uid": "prometheus"
               },
               "refId": "A",
-              "expr": "max by (exported_namespace, name, phase, strategy) (rollout_phase == 1)",
+              "expr": "max by (exported_namespace, name, phase, strategy) (rollout_info)",
               "instant": true,
               "format": "table"
             }
@@ -170,6 +170,12 @@ data:
                           "Missing": {
                             "color": "red"
                           },
+                          "Abort": {
+                            "color": "red"
+                          },
+                          "Timeout": {
+                            "color": "red"
+                          },
                           "Inconclusive": {
                             "color": "orange"
                           }
@@ -228,6 +234,12 @@ data:
                             "color": "orange"
                           },
                           "Missing": {
+                            "color": "red"
+                          },
+                          "Abort": {
+                            "color": "red"
+                          },
+                          "Timeout": {
                             "color": "red"
                           },
                           "Inconclusive": {
@@ -290,6 +302,12 @@ data:
                           "Missing": {
                             "color": "red"
                           },
+                          "Abort": {
+                            "color": "red"
+                          },
+                          "Timeout": {
+                            "color": "red"
+                          },
                           "Inconclusive": {
                             "color": "orange"
                           }
@@ -348,6 +366,12 @@ data:
                             "color": "orange"
                           },
                           "Missing": {
+                            "color": "red"
+                          },
+                          "Abort": {
+                            "color": "red"
+                          },
+                          "Timeout": {
                             "color": "red"
                           },
                           "Inconclusive": {
@@ -446,7 +470,7 @@ data:
         {
           "type": "table",
           "title": "Recent analysis runs",
-          "description": "Each canary step runs an AnalysisRun that checks the SLO (error ratio and p99 latency) in Prometheus. Successful lets the canary move on; Failed aborts it and sends traffic back to the stable version (that's the canary-fail demo).",
+          "description": "Each canary step runs an AnalysisRun that checks the SLO (error ratio and p99 latency) in Prometheus. Successful lets the canary move on; Failed aborts it and sends traffic back to the stable version (that's the canary-fail demo). Only runs whose AnalysisRun objects still exist show here (Rollouts keeps a short history), so this is recent runs, not all-time.",
           "id": 5,
           "datasource": {
             "type": "prometheus",
@@ -563,6 +587,12 @@ data:
                           "Missing": {
                             "color": "red"
                           },
+                          "Abort": {
+                            "color": "red"
+                          },
+                          "Timeout": {
+                            "color": "red"
+                          },
                           "Inconclusive": {
                             "color": "orange"
                           }
@@ -623,6 +653,12 @@ data:
                           "Missing": {
                             "color": "red"
                           },
+                          "Abort": {
+                            "color": "red"
+                          },
+                          "Timeout": {
+                            "color": "red"
+                          },
                           "Inconclusive": {
                             "color": "orange"
                           }
@@ -681,6 +717,12 @@ data:
                             "color": "orange"
                           },
                           "Missing": {
+                            "color": "red"
+                          },
+                          "Abort": {
+                            "color": "red"
+                          },
+                          "Timeout": {
                             "color": "red"
                           },
                           "Inconclusive": {
@@ -821,6 +863,12 @@ data:
                           "Missing": {
                             "color": "red"
                           },
+                          "Abort": {
+                            "color": "red"
+                          },
+                          "Timeout": {
+                            "color": "red"
+                          },
                           "Inconclusive": {
                             "color": "orange"
                           }
@@ -879,6 +927,12 @@ data:
                             "color": "orange"
                           },
                           "Missing": {
+                            "color": "red"
+                          },
+                          "Abort": {
+                            "color": "red"
+                          },
+                          "Timeout": {
                             "color": "red"
                           },
                           "Inconclusive": {
@@ -941,6 +995,12 @@ data:
                           "Missing": {
                             "color": "red"
                           },
+                          "Abort": {
+                            "color": "red"
+                          },
+                          "Timeout": {
+                            "color": "red"
+                          },
                           "Inconclusive": {
                             "color": "orange"
                           }
@@ -999,6 +1059,12 @@ data:
                             "color": "orange"
                           },
                           "Missing": {
+                            "color": "red"
+                          },
+                          "Abort": {
+                            "color": "red"
+                          },
+                          "Timeout": {
                             "color": "red"
                           },
                           "Inconclusive": {
@@ -1101,7 +1167,7 @@ data:
                 "uid": "prometheus"
               },
               "refId": "A",
-              "expr": "sum(rate(rollout_reconcile_error[5m]))",
+              "expr": "sum(rate(rollout_reconcile_error[5m])) or vector(0)",
               "legendFormat": "errors/s"
             },
             {
