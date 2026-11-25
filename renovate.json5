@@ -75,10 +75,10 @@
       datasourceTemplate: 'docker',
     },
     {
-      // The Trivy image scripts/scan-image.sh runs (TRIVY_IMAGE in app.yml).
+      // The Trivy image scripts/scan-image.sh runs (TRIVY_IMAGE in app.yml and rescan.yml).
       customType: 'regex',
-      description: 'Trivy image in the app workflow',
-      managerFilePatterns: ['/^\\.github/workflows/app\\.yml$/'],
+      description: 'Trivy image in the app and rescan workflows',
+      managerFilePatterns: ['/^\\.github/workflows/(app|rescan)\\.yml$/'],
       matchStrings: [
         '(?<depName>ghcr\\.io/aquasecurity/trivy):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]+)',
       ],
