@@ -148,8 +148,8 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/images
-          key: images-v1-${{ runner.arch }}-${{ github.run_id }}
-          restore-keys: images-v1-${{ runner.arch }}-
+          key: images-v2-${{ runner.arch }}-${{ github.run_id }}
+          restore-keys: images-v2-${{ runner.arch }}-
       - run: ./platform up
         env:
           PRELOAD_IMAGES: .cache/images
@@ -206,7 +206,7 @@ jobs:
           # The same list scripts/images.sh save writes (tagged images, kind's
           # own left out), so the key changes exactly when the cache would.
           ./platform shell scripts/images.sh list >"$RUNNER_TEMP/images.txt"
-          key="images-v1-${RUNNER_ARCH}-$(sha256sum "$RUNNER_TEMP/images.txt" | cut -c1-16)"
+          key="images-v2-${RUNNER_ARCH}-$(sha256sum "$RUNNER_TEMP/images.txt" | cut -c1-16)"
           echo "key=$key" >>"$GITHUB_OUTPUT"
           if [ "$key" = "${{ steps.images.outputs.cache-matched-key }}" ]; then
             echo "the restored cache ($key) already has these images"

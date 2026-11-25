@@ -61,8 +61,12 @@ case "$cmd" in
     done < <(cat "$dir/images.txt")
     # One archive per image, so one that won't import doesn't take the rest
     # with it (shared base layers are stored more than once; that's the cost).
+    # Only the Docker host's own platform: with Docker's containerd image
+    # store (GitHub's runners), save otherwise writes every platform of a
+    # multi-arch image (5.2 GB instead of about 1.2).
+    case "$(docker info --format '{{.Architecture}}')" in aarch64|arm64) platform=linux/arm64 ;; *) platform=linux/amd64 ;; esac
     while read -r img; do
-      docker save -o "$dir/$(tr '/:' '__' <<<"$img").tar" "$img"
+      docker save --platform "$platform" -o "$dir/$(tr '/:' '__' <<<"$img").tar" "$img"
     done <"$dir/images.txt"
     ok "saved $(grep -c . "$dir/images.txt") images ($(du -cm "$dir"/*.tar | tail -1 | cut -f1) MiB) to $dir"
     [ "$failed" -eq 0 ] || warn "some images were left out (above); they'll be pulled on the next run"
