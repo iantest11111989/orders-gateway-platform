@@ -43,12 +43,18 @@ timing() { echo "(appeared +${seen_at[$1]:-?}s, healthy +${healthy_at[$1]:-never
 # up this wait (until Argo CD's next refresh, ~3 min). Name the drifting
 # resources once, so a slow `up` points at what needs an ignoreDifferences.
 # An app that stays Progressing or Missing, or whose sync operation stays
-# Running, for a minute is the other way to hold up `up`: name its unhealthy
-# resources and its sync operation (the message names a hook it waits for,
-# such as a PostSync Job). Once per app.
+# Running, for a minute is the other way to hold up `up`. Print its sync
+# operation (the message names what it waits for, such as a CRD or a PostSync
+# Job) and the not-ready pods in its namespace (Argo CD 3 no longer keeps
+# per-resource health in the Application status). Once per app.
 slow_report() {
-  warn "$1: $2 for ${3}s; resources not Healthy, then the sync operation:"
-  kubectl -n argocd get applications.argoproj.io "$1" -o jsonpath='{range .status.resources[?(@.health.status!="Healthy")]}    {.kind} {.namespace}/{.name}: {.health.status} {.health.message}{"\n"}{end}    operation: {.status.operationState.phase} {.status.operationState.message}{"\n"}' 2>/dev/null || true
+  local ns
+  warn "$1: $2 for ${3}s; sync operation, then pods not ready in its namespace:"
+  kubectl -n argocd get applications.argoproj.io "$1" -o jsonpath='    operation: {.status.operationState.phase} {.status.operationState.message}{"\n"}' 2>/dev/null || true
+  ns=$(kubectl -n argocd get applications.argoproj.io "$1" -o jsonpath='{.spec.destination.namespace}' 2>/dev/null || true)
+  [ -n "$ns" ] || return 0
+  kubectl -n "$ns" get pods --no-headers 2>/dev/null |
+    awk -v ns="$ns" '{ split($2, r, "/"); if ($3 != "Completed" && ($3 != "Running" || r[1] != r[2])) printf "    pod %s/%s %s %s\n", ns, $1, $2, $3 }' || true
 }
 drift_report() {
   warn "$1: Healthy but not Synced for ${2}s; OutOfSync resources:"
