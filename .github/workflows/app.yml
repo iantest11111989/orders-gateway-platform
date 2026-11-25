@@ -351,6 +351,15 @@ jobs:
             -m "Image $IMAGE@$DIGEST, published and signed by $RUN_URL (commit $GITHUB_SHA)."
           # The branch belongs to this job: each run rebuilds it from main, so
           # the PR always shows exactly one change against the newest image.
+          # Refuse if someone else committed to it, so a hand-made commit is
+          # never overwritten.
+          if git fetch -q origin "refs/heads/$branch" 2>/dev/null; then
+            author=$(git log -1 --format=%an FETCH_HEAD)
+            if [ "$author" != "github-actions[bot]" ]; then
+              echo "::error::$branch was last committed by '$author', not CI; not overwriting it. Merge or delete it first."
+              exit 1
+            fi
+          fi
           git push -q --force origin "HEAD:refs/heads/$branch"
           title="Promote $ENV to $tag"
           body="Moves **$ENV** to \`$tag\` (\`$DIGEST\`), the image dev runs now.
@@ -363,9 +372,14 @@ jobs:
           pr=$(gh pr list --head "$branch" --base main --state open --json number --jq '.[0].number')
           if [ -n "$pr" ]; then
             gh pr edit "$pr" --title "$title" --body "$body" >/dev/null
-          elif ! pr=$(gh pr create --head "$branch" --base main --title "$title" --body "$body"); then
-            echo "::warning::could not open the $ENV promotion PR. Turn on Settings → Actions → General → 'Allow GitHub Actions to create and approve pull requests'. Branch $branch is pushed."
-            exit 0
+          elif ! pr=$(gh pr create --head "$branch" --base main --title "$title" --body "$body" 2>err.txt); then
+            cat err.txt >&2
+            # Only the missing repository setting is expected; anything else fails.
+            if grep -q 'not permitted to create or approve pull requests' err.txt; then
+              echo "::warning::could not open the $ENV promotion PR. Turn on Settings → Actions → General → 'Allow GitHub Actions to create and approve pull requests'. Branch $branch is pushed."
+              exit 0
+            fi
+            exit 1
           fi
           gh workflow run platform.yml --ref "$branch"
           echo "$ENV: $pr ($tag)" >>"$GITHUB_STEP_SUMMARY"
