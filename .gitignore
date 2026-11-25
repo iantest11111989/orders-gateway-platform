@@ -1,9 +1,3 @@
-# Go
-/app/bin/
-*.test
-*.out
-coverage.*
-
 # Local tooling
 .kube/
 *.kubeconfig
