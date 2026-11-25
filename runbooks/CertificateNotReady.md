@@ -23,8 +23,8 @@ kubectl -n cert-manager logs deploy/cert-manager --tail=50
 
 ## Fix
 
-- **Issuer not Ready** (`ErrGetKeyPair`, `ErrInitIssuer`): the demo CA's secret `cert-manager/ogp-demo-ca` is missing or invalid. Deleting the `ogp-demo-ca` Certificate's secret makes cert-manager issue a new CA. Then re-trust it in your browser (`./platform urls`).
+- **Issuer not Ready** (`ErrGetKeyPair`, `ErrInitIssuer`): the demo CA's secret `cert-manager/ogp-demo-ca` is missing or invalid. Deleting the `ogp-demo-ca` Certificate's secret makes cert-manager issue a new CA (**destructive: ask the owner first**). Then re-trust it in your browser (`./platform urls`).
 - **Request waiting for approval:** cert-manager's approver is down; check its pods in `cert-manager`.
-- After a fix, `kubectl cert-manager renew -n <namespace> <name>` (in the toolbox) or deleting the certificate's secret forces a new one.
+- After a fix, cert-manager retries on its own. To force a new certificate at once, delete the certificate's secret (`kubectl -n <namespace> delete secret <secretName>`, the name is in the Certificate's `spec.secretName`). **That's destructive: ask the owner first.** (The toolbox has no `cmctl` or cert-manager kubectl plugin.)
 
 In production the issuer would be a public CA (ACME) or the company PKI; see the README's production differences.
