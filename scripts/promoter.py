@@ -307,6 +307,9 @@ def trickle():
     ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE  # the platform's own local CA
     body = json.dumps({"customer_id": "cust-trickle", "items": [{"sku": "SKU-PEN-5", "quantity": 1}]})
     counts, conns = {}, {}
+    # A line at once, then a summary every 5 minutes (not a line per request).
+    # The first line also gives Loki this namespace right away (./platform verify checks it).
+    log(f"trickle: one round to {', '.join(hosts)} every {interval:g} s, via {gateway}")
     last = time.time()
 
     def connect(host):  # TLS to the gateway Service, with the environment's hostname as SNI
@@ -327,7 +330,7 @@ def trickle():
             except (OSError, http.client.HTTPException):
                 conns.pop(host, None)
             counts[(host, code)] = counts.get((host, code), 0) + 1
-        if time.time() - last >= 300:  # a summary every 5 minutes, not a line per request
+        if time.time() - last >= 300:
             log("trickle: " + ", ".join(f"{h} {c}: {n}" for (h, c), n in sorted(counts.items(), key=str)))
             counts, last = {}, time.time()
         with open("/tmp/alive", "w") as f:  # liveness probe
