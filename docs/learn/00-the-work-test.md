@@ -60,7 +60,7 @@ docker ps --filter name=control-plane --filter name=worker    # the nodes are Do
 ./platform kubectl -n argocd get applications
 ```
 
-**Understand:** the bootstrap installs exactly two things by hand: Argo CD and one root Application. Everything else is an Application in Git, applied in **sync waves** (CRDs, then controllers, then observability, policies and the gateway, then the apps). Argo CD even manages itself.
+**Understand:** the bootstrap applies only what has to exist before Argo CD can work: the demo Sealed Secrets key, the in-stack Git server (with Kustomize, since Argo CD reads from it), Argo CD itself (with Helm) and one root Application. Everything else is an Application in Git, applied in **sync waves** (CRDs, then controllers, then observability, policies and the gateway, then the apps). Argo CD even manages itself.
 
 **Check yourself:** open `gitops/apps/templates/` and compare the `sync-wave` annotations of `cert-manager.yaml` and `platform-gateway.yaml`. Why must cert-manager be running before the Gateway and its certificate are created?
 
@@ -180,7 +180,7 @@ kubectl -n dev get deploy app -w            # back to 1 within seconds: self-hea
 
 **See it:** the repo's **Actions** tab on GitHub. The `platform` workflow's cluster job runs `docker compose up -d --wait` on a fresh runner, ships and rolls back under traffic, and fails on a single non-200.
 
-**Check yourself:** what stops an unsigned image from running in prod? (Find the Kyverno policy in `policies/`.)
+**Check yourself:** what stops an unsigned image from running in prod? (Find the Kyverno policy in `policies/`.) Then explain why `./platform ship`'s unsigned `localhost/orders-gateway:` builds are still admitted: look at `policies/restrict-image-registries.yaml` and [decision 0030](../decisions/0030-ship-and-rollback.md).
 
 ### C4. Observability [core]
 
