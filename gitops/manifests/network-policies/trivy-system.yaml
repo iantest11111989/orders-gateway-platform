@@ -1,0 +1,53 @@
+# Baseline for trivy-system: deny ingress by default; allow its own pods (scan
+# Jobs reach the built-in Trivy server) and the nodes (decision 0017).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: trivy-system
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: trivy-system
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-nodes
+  namespace: trivy-system
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        # Everything outside the pod network (kind's default 10.244.0.0/16):
+        # on kind that's the nodes and the API server on the control plane.
+        - ipBlock: {cidr: 0.0.0.0/0, except: [10.244.0.0/16]}
+---
+# Prometheus scrapes the operator.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-metrics
+  namespace: trivy-system
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - {port: 8080, protocol: TCP}
