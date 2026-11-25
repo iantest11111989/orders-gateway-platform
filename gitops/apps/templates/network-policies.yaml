@@ -13,6 +13,9 @@ metadata:
     app.kubernetes.io/part-of: orders-gateway-platform
   annotations:
     argocd.argoproj.io/sync-wave: "30"
+  # Pruning or deleting this Application also deletes what it created
+  # (decision 0031); without it, a rename orphaned the old resources (#77).
+  finalizers: [resources-finalizer.argocd.argoproj.io]
 spec:
   project: default
   source:
