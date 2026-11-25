@@ -129,6 +129,31 @@ def image_tag(message):
     return m.group(1) if m else None
 
 
+def is_paused(gh_raw):
+    """promotion/PAUSED on main. Fails closed: anything but a clear 404 or 200
+    (a 5xx, a rate limit) raises, and the pass promotes nothing."""
+    status, _ = gh_raw("GET", "/contents/promotion/PAUSED?ref=main")
+    if status == 404:
+        return False
+    if status == 200:
+        return True
+    raise RuntimeError(f"can't tell whether promotion is paused (HTTP {status}); promoting nothing this pass")
+
+
+def pushed_by_ci(activity, sha):
+    """The newest push to the promotion branch is the PR's head and came from
+    app.yml's promote-prs job (actor github-actions[bot]). The bots share one
+    GitHub account, so a commit's author and its trailers could be written by
+    anyone; who pushed it can't be."""
+    if not activity:
+        return False, "no push to the branch found"
+    last = activity[0]
+    actor = (last.get("actor") or {}).get("login", "?")
+    if last.get("after") != sha:
+        return False, f"the newest push ({last.get('after', '?')[:12]}) isn't the PR's head ({sha[:12]})"
+    return actor == "github-actions[bot]", f"pushed by {actor}"
+
+
 def checks_gate(check_runs):
     runs = check_runs.get("check_runs", [])
     if not runs:
@@ -225,7 +250,9 @@ def evaluate(env, pr, paused, gh=github_ok, prom=prometheus, kube_get=kube):
     message = gh("GET", f"/commits/{sha}")["commit"]["message"]
     tag = image_tag(message) or "?"
     kind = trailer(message, "Promotion-Kind") or "missing"
+    activity = gh("GET", f"/activity?ref=refs/heads/{pr['head']['ref']}&per_page=1")
     gates = [("automatic promotion not paused", not paused, "promotion/PAUSED is on main" if paused else "not paused"),
+             ("the PR's commit was pushed by CI", *pushed_by_ci(activity, sha)),
              ("ships only patches", kind == "patch",
               f"Promotion-Kind: {kind}" + ("" if kind == "patch" else "; needs the owner's approval"))]
     gates.append(("PR checks passed", *checks_gate(gh("GET", f"/commits/{sha}/check-runs?per_page=100"))))
@@ -240,8 +267,7 @@ def evaluate(env, pr, paused, gh=github_ok, prom=prometheus, kube_get=kube):
 
 def run():
     owner = REPO.split("/")[0]
-    status, _ = github("GET", "/contents/promotion/PAUSED?ref=main")
-    paused = status == 200
+    paused = is_paused(github)
     log(f"repo {REPO}, {'live' if TOKEN else 'dry run (no token)'}, soak {SOAK_MINUTES} min"
         + (", PAUSED" if paused else ""))
     for env in ("staging", "prod"):

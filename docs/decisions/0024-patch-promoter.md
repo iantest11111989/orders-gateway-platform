@@ -26,6 +26,7 @@ For staging the environment before is dev, and for prod it's staging. All of the
 | Gate | Why |
 | --- | --- |
 | `promotion/PAUSED` isn't on main | the pause switch |
+| the newest push to the PR's branch is its head and came from `github-actions[bot]` (GitHub's repository activity) | the bots share one GitHub account, so a commit's author and its `Promotion-Kind` trailer could be written by anyone; who pushed it can't be |
 | `Promotion-Kind: patch` | features need the owner |
 | the PR's checks all finished and passed | the PR's own CI, on the branch head |
 | the environment before ran **only** that image for 60 minutes (58 of the last 60 one-minute samples of `app_build_info`) | a newer image, or a rollback, starts the soak again |
@@ -38,11 +39,13 @@ It does at most one promotion per pass. After staging is promoted, prod's PR wai
 
 ## The pause switch
 
-A file, **`promotion/PAUSED`**, on main. Commit it to stop all automatic promotion and delete it to resume. It's a file because a file is visible in Git, works the same in a fork, and leaves its own record. Promotion PRs stay open while paused, and their comment says why.
+A file, **`promotion/PAUSED`**, on main. Commit it to stop all automatic promotion and delete it to resume. It **fails closed**: only a clear 404 counts as "not paused". Any other answer, such as a 5xx or a rate limit, ends the pass without promoting anything. It's a file because a file is visible in Git, works the same in a fork, and leaves its own record. Promotion PRs stay open while paused, and their comment says why.
 
 ## The order trickle
 
-dev and staging get no traffic unless someone runs k6, so an hour's SLO would be vacuous. The `trickle` Deployment in the same namespace sends about 2 orders a second to each environment, including prod, through the gateway with each environment's hostname, the way a client would. They use `customer_id` `cust-trickle`, so they're easy to filter. Prod gets traffic too because its canary analysis needs requests at the 10% step, or it pauses (decision 0011). It costs about 10m CPU and 15 MiB.
+dev and staging get no traffic unless someone runs k6, so an hour's SLO would be vacuous. The `trickle` Deployment in the same namespace sends a steady trickle of orders to each environment, including prod. It sends one round to all three every `TRICKLE_INTERVAL` (0.5 s), plus the time the requests take, over kept-alive connections through the gateway with each environment's hostname, the way a client would. The orders use `customer_id` `cust-trickle`, so they're easy to filter. Prod gets traffic too because its canary analysis needs requests at the 10% step, or it pauses (decision 0011). The pod uses about 10m CPU and 15 MiB.
+
+The trickle is always on, so **dev's rates read higher than k6 alone**, and the `docs/learn` exercises' expected numbers come out higher by the trickle's rate (`docs/learn/README.md` says so).
 
 ## Setup: a GitHub token, which only the owner can create
 

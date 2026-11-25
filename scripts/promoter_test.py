@@ -12,14 +12,16 @@ TAG = "sha-0123456789ab"
 
 
 def pr():
-    return {"number": 7, "title": f"Promote staging to {TAG}", "head": {"sha": "abc"}}
+    return {"number": 7, "title": f"Promote staging to {TAG}", "head": {"sha": "abc", "ref": "promote/staging"}}
 
 
-def fake_github(kind="patch", runs=None, subject=f"staging: orders-gateway {TAG}"):
+def fake_github(kind="patch", runs=None, subject=f"staging: orders-gateway {TAG}", pusher="github-actions[bot]", pushed="abc"):
     if runs is None:
         runs = [{"name": "full-up", "status": "completed", "conclusion": "success"}]
 
     def gh(method, path, body=None):
+        if path.startswith("/activity?ref=refs/heads/promote/staging"):
+            return [{"after": pushed, "actor": {"login": pusher}}]
         if path.endswith("/check-runs?per_page=100"):
             return {"check_runs": runs}
         if path.startswith("/commits/"):
@@ -69,12 +71,12 @@ class Gates(unittest.TestCase):
         tag, gates = evaluate()
         self.assertEqual(tag, TAG)
         self.assertEqual(failing(gates), [])
-        self.assertEqual(len(gates), 10)
+        self.assertEqual(len(gates), 11)
 
     def test_paused(self):
         _, gates = evaluate(paused=True)
         self.assertEqual(failing(gates), ["automatic promotion not paused"])
-        self.assertEqual(len(gates), 3, "cluster gates are skipped when a cheap gate fails")
+        self.assertEqual(len(gates), 4, "cluster gates are skipped when a cheap gate fails")
 
     def test_feature_needs_the_owner(self):
         for kind in ("feature", "unknown"):
@@ -83,8 +85,22 @@ class Gates(unittest.TestCase):
 
     def test_missing_trailer_is_not_a_patch(self):
         gh = fake_github()
-        _, gates = evaluate(gh=lambda m, p, b=None: {"commit": {"message": f"staging: orders-gateway {TAG}\n\nno trailers"}} if not p.endswith("per_page=100") else gh(m, p))
+        _, gates = evaluate(gh=lambda m, p, b=None: {"commit": {"message": f"staging: orders-gateway {TAG}\n\nno trailers"}} if p == "/commits/abc" else gh(m, p))
         self.assertEqual(failing(gates), ["ships only patches"])
+
+    def test_pause_fails_closed(self):
+        self.assertFalse(promoter.is_paused(lambda m, p: (404, None)))
+        self.assertTrue(promoter.is_paused(lambda m, p: (200, {})))
+        for status in (403, 429, 500, 502):
+            with self.assertRaises(RuntimeError):
+                promoter.is_paused(lambda m, p, s=status: (s, None))
+
+    def test_only_ci_pushes_count(self):
+        _, gates = evaluate(gh=fake_github(pusher="iantest11111989"))
+        self.assertEqual(failing(gates), ["the PR's commit was pushed by CI"], "a bot pushing a 'patch' trailer by hand")
+        _, gates = evaluate(gh=fake_github(pushed="def"))
+        self.assertEqual(failing(gates), ["the PR's commit was pushed by CI"], "the branch moved after CI's push")
+        self.assertEqual(promoter.pushed_by_ci([], "abc")[0], False)
 
     def test_checks(self):
         self.assertEqual(promoter.checks_gate({"check_runs": []})[0], False)
