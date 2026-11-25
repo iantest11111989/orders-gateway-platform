@@ -5,8 +5,8 @@
 #   2. every Prometheus scrape target is up
 #   3. Loki has logs from every namespace that runs pods
 #   4. HTTPS answers on every hostname (scripts/check-https.sh)
-#   5. Kyverno flags a bad manifest at admission (Audit mode: a server-side
-#      dry run of a :latest pod must count as a disallow-latest-tag failure)
+#   5. Kyverno rejects a bad manifest at admission (a server-side dry run of
+#      a :latest pod in orders-dev must be denied by disallow-latest-tag)
 # Prometheus, Loki and Kyverno are reached through the API server's service
 # proxy, so nothing needs a port-forward. Runs in the toolbox.
 # shellcheck source=scripts/lib.sh
@@ -78,20 +78,15 @@ else
   miss "HTTPS check failed (output above)"
 fi
 
-step "Kyverno flags a bad manifest at admission"
-fails() {
-  proxy kyverno kyverno-svc-metrics:8000 /metrics 2>/dev/null |
-    awk '/^kyverno_validating_policy_results_total\{/ && /policy_name="disallow-latest-tag"/ && /result="fail"/ && /resource_namespace="default"/ { s += $NF } END { print s + 0 }'
-}
-before=$(fails)
-kubectl -n default run verify-latest-tag --image=docker.io/library/busybox:latest \
-  --restart=Never --dry-run=server -o name >/dev/null 2>&1 || true
-after=$before
-for _ in 1 2 3 4 5; do after=$(fails); [ "$after" -gt "$before" ] && break; sleep 2; done
-if [ "$after" -gt "$before" ]; then
-  pass "a :latest pod (server-side dry run) counted as a disallow-latest-tag failure"
+step "Kyverno rejects a bad manifest at admission"
+# Server-side dry run: Kyverno sees the request, nothing is created.
+if out=$(kubectl -n orders-dev run verify-latest-tag --image=docker.io/library/busybox:latest \
+    --restart=Never --dry-run=server -o name 2>&1); then
+  miss "Kyverno let a :latest pod into orders-dev (is it running? disallow-latest-tag is Deny there)"
+elif grep -q 'disallow-latest-tag' <<<"$out"; then
+  pass "a :latest pod in orders-dev was rejected by disallow-latest-tag"
 else
-  miss "Kyverno didn't flag a :latest pod (disallow-latest-tag fails stayed at $before)"
+  miss "a :latest pod in orders-dev failed for another reason: $out"
 fi
 
 echo
