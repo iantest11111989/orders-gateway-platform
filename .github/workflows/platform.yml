@@ -6,6 +6,10 @@ on:
   push:
     branches: [main]
     paths: ["platform", "scripts/**", "toolbox/**", "cluster/**", "gitops/**", "charts/**", "environments/**", "alerts/**", ".github/workflows/**", ".shellcheckrc"]
+  # The promotion PRs (app.yml, job promote-prs) are opened with GITHUB_TOKEN,
+  # which starts no pull_request workflows; that job dispatches this one on
+  # the PR's branch instead, and the results show on the PR's head commit.
+  workflow_dispatch:
 
 permissions:
   contents: read

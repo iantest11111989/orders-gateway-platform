@@ -11,7 +11,8 @@ on:
 
 # Least privilege: jobs read the repo; only `publish` and `sign` may write
 # packages, only `sign` and the PR `image` job (signing rehearsal) may
-# request an OIDC token, and only `promote-dev` may push (to dev's values).
+# request an OIDC token, `promote-dev` may push dev's values to main, and
+# `promote-prs` may push promote/<env> branches and open PRs from them.
 permissions:
   contents: read
 
@@ -267,7 +268,7 @@ jobs:
   # github-actions[bot]; a push made with GITHUB_TOKEN starts no workflows, so
   # it can't loop. Runs on main are serialized by the workflow's concurrency
   # group, so the newest commit's image wins. Staging and prod move by
-  # promotion PRs (decision 0014).
+  # promotion PRs (job promote-prs, decision 0015).
   promote-dev:
     name: promote to dev
     needs: [publish, sign]
@@ -302,3 +303,69 @@ jobs:
             git pull -q --rebase origin main
           done
           echo "dev now runs \`$tag\` (\`$DIGEST\`): $(git rev-parse --short HEAD)" >>"$GITHUB_STEP_SUMMARY"
+
+  # Opens (or refreshes) one promotion PR per environment for the image dev
+  # just got: branch promote/<env>, rebuilt from main with only that env's
+  # image line changed (scripts/set-image.sh). The owner approves and merges
+  # them (brief, section 7); prod then goes through the Argo Rollouts canary.
+  # Needs the repository setting "Allow GitHub Actions to create and approve
+  # pull requests"; without it the job warns and main stays green. PRs opened
+  # with GITHUB_TOKEN start no workflows, so it dispatches the platform checks
+  # on each branch (decision 0015).
+  promote-prs:
+    name: open staging/prod promotion PRs
+    needs: [publish, promote-dev]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # push promote/<env> branches
+      pull-requests: write # open or update the PRs
+      actions: write # dispatch the platform checks on those branches
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [staging, prod]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: true # this job pushes its branch
+      - name: Rebuild promote/${{ matrix.env }} and open or update its PR
+        working-directory: .
+        env:
+          ENV: ${{ matrix.env }}
+          DIGEST: ${{ needs.publish.outputs.digest-main }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="sha-${GITHUB_SHA::12}"
+          branch="promote/$ENV"
+          scripts/set-image.sh "$ENV" "$tag" "$DIGEST"
+          if git diff --quiet; then
+            echo "$ENV already runs $tag" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q -b "$branch"
+          git commit -q -am "$ENV: orders-gateway $tag" \
+            -m "Image $IMAGE@$DIGEST, published and signed by $RUN_URL (commit $GITHUB_SHA)."
+          # The branch belongs to this job: each run rebuilds it from main, so
+          # the PR always shows exactly one change against the newest image.
+          git push -q --force origin "HEAD:refs/heads/$branch"
+          title="Promote $ENV to $tag"
+          body="Moves **$ENV** to \`$tag\` (\`$DIGEST\`), the image dev runs now.
+          It was published and signed by $RUN_URL. **Needs the owner's approval** (brief, section 7)."
+          [ "$ENV" = prod ] && body="$body
+          Merging starts the Argo Rollouts canary in orders-prod. Without traffic it pauses at 10% (decision 0011)."
+          body="$body
+
+          Opened by CI (decision 0015); a newer image replaces this PR's commit. Checks run through workflow_dispatch."
+          pr=$(gh pr list --head "$branch" --base main --state open --json number --jq '.[0].number')
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --title "$title" --body "$body" >/dev/null
+          elif ! pr=$(gh pr create --head "$branch" --base main --title "$title" --body "$body"); then
+            echo "::warning::could not open the $ENV promotion PR. Turn on Settings → Actions → General → 'Allow GitHub Actions to create and approve pull requests'. Branch $branch is pushed."
+            exit 0
+          fi
+          gh workflow run platform.yml --ref "$branch"
+          echo "$ENV: $pr ($tag)" >>"$GITHUB_STEP_SUMMARY"
