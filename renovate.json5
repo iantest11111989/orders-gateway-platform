@@ -91,6 +91,19 @@
       datasourceTemplate: 'docker',
     },
     {
+      // Images pinned in Helm values files. Renovate's helm-values manager only
+      // reads files named values.yaml; ours are gitops/values/<chart>.yaml, so
+      // an explicit image there (the argo-rollouts plugin fetcher's alpine) was
+      // never updated.
+      customType: 'regex',
+      description: 'Images pinned in gitops/values',
+      managerFilePatterns: ['/^gitops/values/.+\\.yaml$/'],
+      matchStrings: [
+        'image:\\s*(?<depName>[a-z0-9.-]+\\.[a-z]+/[^:@\\s]+):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})',
+      ],
+      datasourceTemplate: 'docker',
+    },
+    {
       // kind node image, pinned by tag and digest in cluster/kind.yaml.
       customType: 'regex',
       description: 'kind node image',
