@@ -36,8 +36,16 @@ start=$(date +%s)
 deadline=$(( start + APPS_TIMEOUT ))
 # Seconds after the root was applied when each Application first appeared and
 # first became Synced+Healthy, so slow sync waves show up in the output.
-declare -A seen_at healthy_at
+declare -A seen_at healthy_at drift_since drift_logged
 timing() { echo "(appeared +${seen_at[$1]:-?}s, healthy +${healthy_at[$1]:-never}s)"; }
+# The root app's sync waves wait only for each child's health, so an app that
+# is Healthy but stays OutOfSync doesn't hold up later waves, but it does hold
+# up this wait (until Argo CD's next refresh, ~3 min). Name the drifting
+# resources once, so a slow `up` points at what needs an ignoreDifferences.
+drift_report() {
+  warn "$1: Healthy but not Synced for ${2}s; OutOfSync resources:"
+  kubectl -n argocd get applications.argoproj.io "$1" -o jsonpath='{range .status.resources[?(@.status=="OutOfSync")]}    {.group}/{.kind} {.namespace}/{.name}{"\n"}{end}' 2>/dev/null || true
+}
 while :; do
   # name sync health, one line per Application
   status=$(kubectl -n argocd get applications.argoproj.io \
@@ -47,6 +55,15 @@ while :; do
     [ -n "$name" ] || continue
     [ -n "${seen_at[$name]:-}" ] || seen_at[$name]=$now
     if [ "$sync" = Synced ] && [ "$health" = Healthy ] && [ -z "${healthy_at[$name]:-}" ]; then healthy_at[$name]=$now; fi
+    if [ "$health" = Healthy ] && [ "$sync" != Synced ]; then
+      [ -n "${drift_since[$name]:-}" ] || drift_since[$name]=$now
+      if [ -z "${drift_logged[$name]:-}" ] && [ $(( now - drift_since[$name] )) -ge 30 ]; then
+        drift_logged[$name]=1
+        drift_report "$name" $(( now - drift_since[$name] ))
+      fi
+    else
+      unset 'drift_since[$name]'
+    fi
   done <<<"$status"
   total=$(grep -c . <<<"$status" || true)
   ready=$(awk '$2 == "Synced" && $3 == "Healthy"' <<<"$status" | grep -c . || true)
