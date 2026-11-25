@@ -79,9 +79,10 @@ All hostnames use `*.localtest.me`, which resolves to `127.0.0.1`.
 | `canary` | v1 → v2: Rollouts moves traffic 10% → 25% → 50% → 100% and the SLO analysis passes at each step | ~8 min |
 | `canary-fail` | v2 → v2-bad: the first analysis fails the SLO, Rollouts aborts and sends all traffic back to v2 | ~3 min |
 | `autoscale` | in a copy of prod whose pods request 10m CPU (prod: 50m, so a laptop-sized load is enough). The HPA is prod's own (3–6 pods, 70% CPU target); only the request it measures against changes: k6 sends a fixed rate (`AUTOSCALE_RATE`, default 180 requests/s), CPU goes past the HPA's 70% target and it scales the Rollout from 3 to 6 pods; when k6 stops it scales back to 3 after the HPA's 5-minute scale-down window. Fails if it doesn't scale up, or isn't back at 3 within 10 minutes | ~8 min |
+| `policy` | Kyverno refuses two pods created for real in `orders-demo`: an orders-gateway image without main's signature (the unsigned image staging and prod ran until 2026-11-25) and a `:latest` image. Each prints the policy that refused it and why. A signed image is admitted (dry run). Nothing is left running ([decision 0022](docs/decisions/0022-enforce-in-orders.md)) | <1 min |
 | `clean` | deletes the demo copy (after an interrupted demo, or `--keep`) | |
 
-Add `--keep` to leave `orders-demo` running afterwards. Watch in the Rollouts dashboard (`https://rollouts.localtest.me/rollouts/orders-demo`), Argo CD, or Grafana. Run `./platform budget --watch 600` in a second terminal to see the peak. Still to come: `policy`.
+Add `--keep` to leave `orders-demo` running afterwards. Watch in the Rollouts dashboard (`https://rollouts.localtest.me/rollouts/orders-demo`), Argo CD, or Grafana. Run `./platform budget --watch 600` in a second terminal to see the peak.
 
 ## Repository layout
 
