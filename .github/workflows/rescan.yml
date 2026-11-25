@@ -1,0 +1,80 @@
+name: rescan
+
+# Daily: scans the images dev, staging and prod run now against today's
+# vulnerability DB (decision 0019). The app workflow scans an image only when
+# it's built; a CVE published later shows up here. Findings open (or update)
+# one tracking issue; a clean run closes it.
+on:
+  schedule:
+    - cron: "17 9 * * *" # 09:17 UTC, after Trivy's DB refresh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write # the tracking issue
+
+concurrency:
+  group: rescan
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/orders-gateway
+  # Same pin as app.yml; a regex manager in renovate.json5 keeps both current.
+  TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
+  TITLE: Vulnerabilities in running images
+
+jobs:
+  scan:
+    name: scan the images the environments run (Trivy)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: scan
+        name: Scan each environment's digest
+        run: |
+          status=0
+          declare -A result
+          : >report.md
+          for env in dev staging prod; do
+            # image.digest from environments/<env>/values.yaml
+            d=$(awk '/^image:[[:space:]]*$/{f=1;next} f&&/^[^ #]/{f=0} f&&/^  digest:/{print $2}' "environments/$env/values.yaml")
+            [[ $d =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::no image.digest in environments/$env/values.yaml"; status=1; continue; }
+            # staging and prod often run the same digest: scan it once.
+            if [ -z "${result[$d]:-}" ]; then
+              rc=0; out=$(scripts/scan-image.sh "$IMAGE@$d" 2>&1) || rc=$?
+              # scan-image.sh: 0 clean, 3 findings, else a scanner error.
+              case $rc in 0) result[$d]=clean ;; 3) result[$d]=findings ;; *) result[$d]="scan error (exit $rc)" ;; esac
+              # shellcheck disable=SC2016 # literal backticks: Markdown
+              printf '### `%s`\n\n```\n%s\n```\n\n' "$d" "$out" >>details.md
+            fi
+            echo "- **$env** runs \`$d\`: ${result[$d]}" >>report.md
+            case ${result[$d]} in clean) ;; findings) status=1 ;; *) [ "$status" -eq 1 ] || status=2 ;; esac
+          done
+          { cat report.md; echo; cat details.md 2>/dev/null; } >>"$GITHUB_STEP_SUMMARY"
+          # 0 clean, 1 findings, 2 only scanner errors (no issue change).
+          echo "status=$status" >>"$GITHUB_OUTPUT"
+      - name: Open, update or close the tracking issue
+        if: always() && steps.scan.outputs.status != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATUS: ${{ steps.scan.outputs.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh label create security --color B60205 --description "Security findings" --force >/dev/null
+          issue=$(gh issue list --label security --state open --search "\"$TITLE\" in:title" --json number --jq '.[0].number')
+          if [ "$STATUS" = 1 ]; then
+            body="$(cat report.md)
+
+          Fixable HIGH/CRITICAL findings (details: $RUN_URL). Fix with a dependency bump; the app workflow then publishes, scans and promotes a new image (decision 0016)."
+            if [ -n "$issue" ]; then gh issue comment "$issue" --body "$body"
+            else gh issue create --title "$TITLE" --label security --body "$body"; fi
+          elif [ "$STATUS" = 0 ] && [ -n "$issue" ]; then
+            gh issue close "$issue" --comment "Clean again: $RUN_URL
+          $(cat report.md)"
+          fi
+      - name: Fail on findings or scanner errors
+        if: steps.scan.outputs.status != '0'
+        run: exit 1

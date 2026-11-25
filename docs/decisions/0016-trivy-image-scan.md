@@ -8,7 +8,7 @@ The brief (section 9.3) asks for Trivy image scanning in CI. Decision 0002 also 
 
 ## Choices
 
-- **Gate on fixable HIGH and CRITICAL only** (`--severity HIGH,CRITICAL --ignore-unfixed --exit-code 1`). A finding with no fix can't be acted on, and failing on it would only teach people to ignore the check. Lower severities show up in Renovate's normal update flow.
+- **Gate on fixable HIGH and CRITICAL only** (`--severity HIGH,CRITICAL --ignore-unfixed`; findings exit 3 and scanner errors exit with another non-zero code, see decision 0019). A finding with no fix can't be acted on, and failing on it would only teach people to ignore the check. Lower severities show up in Renovate's normal update flow.
 - **Scan in two places with one script.** `scripts/scan-image.sh` runs:
   - in the pull request `image` job, against the image the PR just pushed to its localhost registry;
   - in a `scan` job on main, against the published `main` digest.
