@@ -1,0 +1,10 @@
+# A child that has synced but is Degraded: the root must see Degraded.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: {name: degraded, namespace: argocd}
+status:
+  health: {status: Degraded, message: "Deployment has not progressed"}
+  sync: {status: Synced}
+  history:
+    - id: 0
+      revision: 0123456789abcdef0123456789abcdef01234567

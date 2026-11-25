@@ -1,0 +1,10 @@
+# A child that has synced (history) and is Healthy: its own health counts.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: {name: synced, namespace: argocd}
+status:
+  health: {status: Healthy}
+  sync: {status: Synced}
+  history:
+    - id: 0
+      revision: 0123456789abcdef0123456789abcdef01234567
