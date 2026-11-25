@@ -68,6 +68,9 @@ case "$cmd" in
     while read -r img; do
       docker save --platform "$platform" -o "$dir/$(tr '/:' '__' <<<"$img").tar" "$img"
     done <"$dir/images.txt"
+    # docker save writes 0600 files, and the toolbox runs as root: let CI's
+    # runner user read them, or actions/cache can't upload them.
+    chmod a+rx "$dir"; chmod a+r "$dir"/*
     ok "saved $(grep -c . "$dir/images.txt") images ($(du -cm "$dir"/*.tar | tail -1 | cut -f1) MiB) to $dir"
     [ "$failed" -eq 0 ] || warn "some images were left out (above); they'll be pulled on the next run"
     ;;
