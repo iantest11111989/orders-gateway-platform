@@ -12,10 +12,11 @@
 # or orders-dev (rolling-update) Argo CD Application: same chart, same values
 # file, same ignoreDifferences and sync options. Only the name, namespace,
 # hostname (orders-demo.localtest.me), the image under test and, for
-# rolling-update, the replica count (3, so there's something to roll) differ. Real prod only
-# ever changes through Git, and reviewers can't push to this repo (decision
-# 0020). k6 sends ~10 requests/s through the gateway the whole time, so the
-# analysis has traffic to judge. --keep leaves the copy running afterwards.
+# rolling-update, the replica count (3, so there's something to roll)
+# differ. The real environments only ever change through Git, and reviewers
+# can't push to this repo (decision 0020). k6 sends ~10 requests/s through
+# the gateway the whole time, so the analysis has traffic to judge. --keep
+# leaves the copy running afterwards.
 # Runs in the toolbox.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -211,7 +212,6 @@ demo_rolling_update() {
     die "requests failed during the rolling update: only ${SLO_PCT:-?}% met the SLO (want >= 99.5%)"
   fi
 }
-
 
 demo_canary() {
   step "Demo: canary v1 -> v2 in a copy of prod"
