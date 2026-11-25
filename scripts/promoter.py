@@ -320,7 +320,18 @@ def trickle():
         conn.sock = ctx.wrap_socket(socket.create_connection((gateway, 443), timeout=5), server_hostname=host)
         return conn
 
+    # The script is a mounted ConfigMap: when Argo CD updates it, the kubelet
+    # swaps the file in place (within about a minute), but this process would
+    # keep running the old code. Restart in place when it changes.
+    def version():
+        st = os.stat(__file__)
+        return st.st_ino, st.st_mtime_ns
+    started = version()
+
     while True:
+        if version() != started:
+            log("trickle: the script changed; restarting with the new one")
+            os.execv(sys.executable, [sys.executable, __file__, "trickle"])
         for host, (method, path, payload) in ((h, c) for h in hosts for c in calls):
             code = "error"
             try:

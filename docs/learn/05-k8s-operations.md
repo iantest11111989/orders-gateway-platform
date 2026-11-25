@@ -7,12 +7,12 @@ By the end you will be able to read the three controllers that run this platform
 - **Argo Rollouts** runs prod's canary.
 - **Kyverno** decides what's allowed to run.
 
-Logins are printed by `./platform urls`.
+Grafana is <http://localhost:3000> (`admin` / `admin12345`); the other logins are printed by `./platform urls`.
 
 ## 1. Argo CD: Git is the truth (5 min)
 
 1. Open <https://argocd.localtest.me> and log in as `admin`. Each tile is an **Application**: a folder or chart in Git, deployed to one namespace. Open `dev` to see the tree of everything it created (Deployment, ReplicaSet, Pods, Service, HTTPRoute...).
-2. In Grafana, open the **Argo CD** dashboard (<https://grafana.localtest.me/d/argocd>). **Out of sync** and **Not healthy** should both be 0, and **Every Application** lists the same apps as the tiles, from the `argocd_app_info` metric.
+2. In Grafana, open the **Argo CD** dashboard (<http://localhost:3000/d/argocd>). **Out of sync** and **Not healthy** should both be 0, and **Every Application** lists the same apps as the tiles, from the `argocd_app_info` metric.
 3. Now change something behind Argo CD's back:
 
    ```sh
@@ -43,7 +43,7 @@ prod runs a plain Deployment named `app` (the assignment's contract, [decision 0
    ```
 
    Two Prometheus queries, `error-ratio` (at most 0.5%) and `p99-latency` (at most 0.3 s), run only against the **canary's** pods (`rollouts_pod_template_hash`). They're measured 4 times, 30 seconds apart, after a 60-second warm-up. `failureLimit: 1` allows one failed measurement, so a second one fails the analysis: Rollouts aborts the canary and sends all traffic back to the stable version. `inconclusiveLimit: 1` does the same for missing data (no canary traffic): a second inconclusive result pauses the canary instead of guessing. They're the same SLO thresholds as exercise 4, applied to the new version alone.
-3. In Grafana, open the **Argo Rollouts** dashboard (<https://grafana.localtest.me/d/argo-rollouts>). **Rollouts now** shows `app` in `demo` as `Completed`. **Recent analysis runs** and **Analysis metrics** list the runs from the last canary, each `Successful`. The live, step-by-step view is the Rollouts dashboard at <https://rollouts.localtest.me>. It's read-only: promote or abort with `kubectl argo rollouts promote|abort`.
+3. In Grafana, open the **Argo Rollouts** dashboard (<http://localhost:3000/d/argo-rollouts>). **Rollouts now** shows `app` in `demo` as `Completed`. **Recent analysis runs** and **Analysis metrics** list the runs from the last canary, each `Successful`. The live, step-by-step view is the Rollouts dashboard at <https://rollouts.localtest.me>. It's read-only: promote or abort with `kubectl argo rollouts promote|abort`.
 
 To see a canary abort, run `./platform demo canary-fail` next (about 5 minutes), with both dashboards open.
 
@@ -77,7 +77,7 @@ Kyverno checks every pod at admission ([decisions 0012](../decisions/0012-kyvern
    ```
 
    For example, Grafana's sidecars have no probes (`require-probes`). Those are third-party charts that would need an exception before that policy could move to Enforce.
-4. In Grafana, open the **Kyverno** dashboard (<https://grafana.localtest.me/d/kyverno>). **Pods refused (24 h)** went up by one from step 2. **Failures by policy and namespace** is the table to read when deciding which policy is clean enough to enforce next: a policy that stays at 0 outside the test namespaces is ready.
+4. In Grafana, open the **Kyverno** dashboard (<http://localhost:3000/d/kyverno>). **Pods refused (24 h)** went up by one from step 2. **Failures by policy and namespace** is the table to read when deciding which policy is clean enough to enforce next: a policy that stays at 0 outside the test namespaces is ready.
 
 ## Check yourself
 
