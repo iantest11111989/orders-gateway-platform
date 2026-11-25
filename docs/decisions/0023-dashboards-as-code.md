@@ -29,8 +29,16 @@ One `environment` variable (`orders-dev`, `orders-staging`, `orders-prod`, `orde
 
 An annotation marks when a new version starts.
 
+## Platform dashboards
+
+`argocd`, `argo-rollouts` and `kyverno`, built from the components' own metrics, which are already scraped. These are small on purpose: the questions you'd ask during a demo, not every metric. The stock kube-prometheus-stack dashboards cover Kubernetes itself (nodes, namespaces, pods, the API server).
+- **Argo CD:** counts of out-of-sync and unhealthy Applications, failed syncs, a status table, syncs per app, reconcile time, Git requests.
+- **Argo Rollouts:** phase and replicas per Rollout, AnalysisRuns and their checks (the canary's SLO gates), events, controller errors.
+- **Kyverno:** refused requests (Deny policies), Audit findings, errors, admission latency, and failures by policy and namespace. That last table is the input decision 0012 uses to pick the next policy for Enforce. Kyverno labels results `policy_validation_mode="Deny"` or `"Audit"`.
+
 ## Tests
 
 - `scripts/dashboards.sh check`: passes. It fails as expected with an emptied description, a broken query, or a stale ConfigMap (tried each).
-- Every Prometheus query returns a result on the ogp cluster (`orders-prod`, after the #52 canary).
-- The JSON imports into the cluster's Grafana 13.3.1 (imported under a test uid via the API, then deleted).
+- Every Prometheus query returns a result on the ogp cluster (`orders-prod`, after the #52 canary). For the platform dashboards a few are empty because nothing happened in the window (no syncs or Rollout events in the last 5 minutes).
+- Every dashboard's JSON imports into the cluster's Grafana 13.3.1 (imported under a test uid via the API, then deleted).
+- The check caught a real mistake while these were written: a selector appended to a parenthesised `or` expression didn't parse.

@@ -1,0 +1,703 @@
+{
+  "uid": "kyverno",
+  "title": "Kyverno",
+  "description": "Admission policies: what Kyverno refused (Deny), what it found but let through (Audit), and how fast it answers. Hover the (i) on any panel.",
+  "tags": [
+    "kyverno",
+    "platform",
+    "security"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Admission",
+      "id": 1,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Pods refused (24 h)",
+      "description": "Requests Kyverno refused at admission over the last 24 hours, from the policies in Deny mode (disallow-latest-tag in orders-*, verify-image-signatures). ./platform verify adds one on purpose each run, and the policy demo two.",
+      "id": 2,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(increase(kyverno_admission_requests_total{request_allowed=\"false\"}[24h])) or vector(0)",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Audit findings (24 h)",
+      "description": "Checks that failed in Audit mode over the last 24 hours: reported, not blocked. These are what would be refused if the policy moved to Enforce (decision 0012).",
+      "id": 3,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(increase({__name__=~\"kyverno_(image_)?validating_policy_results_total\", result=\"fail\", policy_validation_mode=\"Audit\"}[24h])) or vector(0)",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Policy errors (24 h)",
+      "description": "Policy evaluations that errored instead of passing or failing (for example, a signature lookup that couldn't reach GHCR or Sigstore). An error in a Deny policy refuses the pod.",
+      "id": 4,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(increase({__name__=~\"kyverno_(image_)?validating_policy_results_total\", result=\"error\"}[24h])) or vector(0)",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Admission p95",
+      "description": "How long Kyverno takes to answer the API server (95th percentile, last 5 minutes). The webhooks time out at 10 s (15 s for signatures); past that, failurePolicy Ignore lets the pod in unchecked.",
+      "id": 5,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(kyverno_admission_review_duration_seconds_bucket[5m])))",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Results by policy",
+      "description": "Policy checks per 5 minutes, by policy and result (pass, fail, error, skip). Fails in Deny policies are refused requests; in Audit policies they're findings.",
+      "id": 6,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum by (policy_name, result) (increase({__name__=~\"kyverno_(image_)?validating_policy_results_total\"}[5m])) > 0",
+          "legendFormat": "{{policy_name}} {{result}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 40,
+            "lineWidth": 1,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Admission requests: allowed vs refused",
+      "description": "Every admission request Kyverno answers, per second, split by whether it allowed it.",
+      "id": 7,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum by (request_allowed) (rate(kyverno_admission_requests_total[5m]))",
+          "legendFormat": "allowed={{request_allowed}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Where the findings are",
+      "id": 8,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 13
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Failures by policy and namespace (24 h)",
+      "description": "Which policy failed in which namespace over the last 24 hours. Use it to decide the next policy to move to Enforce: one that stays at zero outside the test namespaces is ready (decision 0012).",
+      "id": 9,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 14
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sort_desc(sum by (policy_name, policy_validation_mode, resource_namespace) (increase({__name__=~\"kyverno_(image_)?validating_policy_results_total\", result=\"fail\"}[24h])) > 0)",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "policy_name": 0,
+              "policy_validation_mode": 1,
+              "resource_namespace": 2,
+              "Value": 3
+            },
+            "renameByName": {
+              "policy_name": "Policy",
+              "policy_validation_mode": "Mode",
+              "resource_namespace": "Namespace",
+              "Value": "Failures (24 h)"
+            }
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "policy_name",
+                "policy_validation_mode",
+                "resource_namespace",
+                "Value"
+              ]
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "cellOptions": {
+              "type": "color-text"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "policy_name"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Healthy": {
+                        "color": "green"
+                      },
+                      "Synced": {
+                        "color": "green"
+                      },
+                      "Successful": {
+                        "color": "green"
+                      },
+                      "Completed": {
+                        "color": "green"
+                      },
+                      "Healthy ": {
+                        "color": "green"
+                      },
+                      "Degraded": {
+                        "color": "red"
+                      },
+                      "OutOfSync": {
+                        "color": "orange"
+                      },
+                      "Failed": {
+                        "color": "red"
+                      },
+                      "Error": {
+                        "color": "red"
+                      },
+                      "Progressing": {
+                        "color": "blue"
+                      },
+                      "Running": {
+                        "color": "blue"
+                      },
+                      "Paused": {
+                        "color": "orange"
+                      },
+                      "Missing": {
+                        "color": "red"
+                      },
+                      "Inconclusive": {
+                        "color": "orange"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "policy_validation_mode"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Healthy": {
+                        "color": "green"
+                      },
+                      "Synced": {
+                        "color": "green"
+                      },
+                      "Successful": {
+                        "color": "green"
+                      },
+                      "Completed": {
+                        "color": "green"
+                      },
+                      "Healthy ": {
+                        "color": "green"
+                      },
+                      "Degraded": {
+                        "color": "red"
+                      },
+                      "OutOfSync": {
+                        "color": "orange"
+                      },
+                      "Failed": {
+                        "color": "red"
+                      },
+                      "Error": {
+                        "color": "red"
+                      },
+                      "Progressing": {
+                        "color": "blue"
+                      },
+                      "Running": {
+                        "color": "blue"
+                      },
+                      "Paused": {
+                        "color": "orange"
+                      },
+                      "Missing": {
+                        "color": "red"
+                      },
+                      "Inconclusive": {
+                        "color": "orange"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "resource_namespace"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Healthy": {
+                        "color": "green"
+                      },
+                      "Synced": {
+                        "color": "green"
+                      },
+                      "Successful": {
+                        "color": "green"
+                      },
+                      "Completed": {
+                        "color": "green"
+                      },
+                      "Healthy ": {
+                        "color": "green"
+                      },
+                      "Degraded": {
+                        "color": "red"
+                      },
+                      "OutOfSync": {
+                        "color": "orange"
+                      },
+                      "Failed": {
+                        "color": "red"
+                      },
+                      "Error": {
+                        "color": "red"
+                      },
+                      "Progressing": {
+                        "color": "blue"
+                      },
+                      "Running": {
+                        "color": "blue"
+                      },
+                      "Paused": {
+                        "color": "orange"
+                      },
+                      "Missing": {
+                        "color": "red"
+                      },
+                      "Inconclusive": {
+                        "color": "orange"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Healthy": {
+                        "color": "green"
+                      },
+                      "Synced": {
+                        "color": "green"
+                      },
+                      "Successful": {
+                        "color": "green"
+                      },
+                      "Completed": {
+                        "color": "green"
+                      },
+                      "Healthy ": {
+                        "color": "green"
+                      },
+                      "Degraded": {
+                        "color": "red"
+                      },
+                      "OutOfSync": {
+                        "color": "orange"
+                      },
+                      "Failed": {
+                        "color": "red"
+                      },
+                      "Error": {
+                        "color": "red"
+                      },
+                      "Progressing": {
+                        "color": "blue"
+                      },
+                      "Running": {
+                        "color": "blue"
+                      },
+                      "Paused": {
+                        "color": "orange"
+                      },
+                      "Missing": {
+                        "color": "red"
+                      },
+                      "Inconclusive": {
+                        "color": "orange"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      }
+    }
+  ]
+}
