@@ -42,9 +42,10 @@ timing() { echo "(appeared +${seen_at[$1]:-?}s, healthy +${healthy_at[$1]:-never
 # is Healthy but stays OutOfSync doesn't hold up later waves, but it does hold
 # up this wait (until Argo CD's next refresh, ~3 min). Name the drifting
 # resources once, so a slow `up` points at what needs an ignoreDifferences.
-# An app that stays Progressing or Missing for a minute is the other way to
-# hold up `up`: name its unhealthy resources and its sync operation (a
-# PostSync hook Job that's still running shows up there). Once per app.
+# An app that stays Progressing or Missing, or whose sync operation stays
+# Running, for a minute is the other way to hold up `up`: name its unhealthy
+# resources and its sync operation (the message names a hook it waits for,
+# such as a PostSync Job). Once per app.
 slow_report() {
   warn "$1: $2 for ${3}s; resources not Healthy, then the sync operation:"
   kubectl -n argocd get applications.argoproj.io "$1" -o jsonpath='{range .status.resources[?(@.health.status!="Healthy")]}    {.kind} {.namespace}/{.name}: {.health.status} {.health.message}{"\n"}{end}    operation: {.status.operationState.phase} {.status.operationState.message}{"\n"}' 2>/dev/null || true
@@ -72,11 +73,13 @@ while :; do
     else
       unset 'drift_since[$name]'
     fi
-    if [ "$health" = Progressing ] || [ "$health" = Missing ]; then
+    # A sync operation still Running with healthy resources is a hook (e.g.
+    # a PostSync Job) the app waits for; it counts as slow too.
+    if [ "$health" = Progressing ] || [ "$health" = Missing ] || [ "${phase:-}" = Running ]; then
       [ -n "${slow_since[$name]:-}" ] || slow_since[$name]=$now
       if [ -z "${slow_logged[$name]:-}" ] && [ $(( now - slow_since[$name] )) -ge 60 ]; then
         slow_logged[$name]=1
-        slow_report "$name" "$health" $(( now - slow_since[$name] ))
+        slow_report "$name" "$health, sync ${phase:-idle}" $(( now - slow_since[$name] ))
       fi
     else
       unset 'slow_since[$name]'
