@@ -164,6 +164,12 @@
       groupName: 'kyverno',
       matchDepNames: ['kyverno', 'ghcr.io/kyverno/kyverno-cli'],
     },
+    // Sealed Secrets: the chart and kubeseal in the toolbox move together, so
+    // kubeseal always matches the controller.
+    {
+      groupName: 'sealed-secrets',
+      matchPackageNames: ['sealed-secrets', 'bitnami-labs/sealed-secrets'],
+    },
     // Renovate itself releases almost daily. Its image only runs the config
     // validator, so check it monthly instead of opening a PR every day.
     {
