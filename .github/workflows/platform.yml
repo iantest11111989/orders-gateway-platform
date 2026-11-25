@@ -83,7 +83,16 @@ jobs:
       - run: ./platform up # idempotent
       - run: ./platform kubectl get nodes -L topology.kubernetes.io/zone
       - run: ./platform kubectl -n argocd get applications
-      - run: ./platform shell scripts/check-https.sh
+      # Apps, scrape targets, logs, HTTPS and policies (includes check-https).
+      # Right after `up` a target may not have been scraped yet: retry a bit.
+      - name: ./platform verify
+        run: |
+          for attempt in 1 2 3; do
+            ./platform verify && exit 0
+            echo "verify attempt $attempt failed; retrying in 30s"
+            sleep 30
+          done
+          exit 1
       # A fresh up only creates the prod route; this also checks an upgrade.
       - run: ./platform shell scripts/check-route-upgrade.sh
       # On failure, show why: pods that aren't ready, their descriptions
