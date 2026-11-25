@@ -97,7 +97,6 @@ rollout:
     maxErrorRatio: 0.005        # SLO: 99.5% of /work and /echo non-5xx (decision 0027)
     maxP99LatencySeconds: 0.25  # SLO: /echo and /version under 250 ms (the app has no 0.3 bucket)
 
-# The app's drain (5 s) + shutdown limit (20 s) fits inside this.
 # preStop sleep (5 s, so endpoints drop the pod before it stops accepting)
 # + the app's own 25 s hard exit after SIGTERM + margin.
 terminationGracePeriodSeconds: 35
