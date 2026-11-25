@@ -78,7 +78,7 @@ Now watch:
 - The 5xx share and the **5 m** burn rate drop to 0 within a few minutes, as the 5-minute window forgets the failures.
 - The **1 h** burn rate falls slowly. It still remembers the bad 10 minutes.
 - The alert resolves once the 5-minute rate drops below 14.4, even though the 1-hour rate is still high. That's the short window doing its job. On ogp it cleared about 3½ minutes after the fix, while the 1 h burn rate was still about 32.
-- The budget doesn't come back quickly. The failures stay in its 24-hour window. On a real 30-day budget, an incident like this one costs a large share, and that's what the budget is for: deciding whether to ship more risk this month.
+- The budget doesn't come back quickly: the failures stay in its 24-hour window. The panel is so far below 0 only because the copy is new, so those failures are measured against very little good traffic. Against a real 30-day budget, 20% failing for 10 minutes costs about 1% (0.2 × 10 min ÷ (0.005 × 43,200 min)). That's small, but the alert still paged, because at that pace the whole budget would be gone in about 2 days. The budget is what tells you whether you can afford more risk this month.
 
 ## 5. Clean up
 
@@ -95,7 +95,7 @@ Stop k6 (Ctrl-C), leave the shell, and delete the copy:
 ## Check yourself
 
 - Why does the fast-burn alert need both the 1 h and the 5 min window?
-- 20% of requests fail for 10 minutes, then it's fixed. Roughly how much of a 30-day budget did that cost? (Hint: 0.2 × 10 min against 0.005 × 30 days.)
+- 20% of requests fail for 10 minutes, then it's fixed. Roughly how much of a 30-day budget did that cost, and why did it still page?
 - Why change `FAULT_ERROR_RATE` through the Argo CD Application (or Git) instead of `kubectl edit`?
 
 Next: 5. Kubernetes operations _(coming)_.
