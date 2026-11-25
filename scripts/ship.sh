@@ -39,11 +39,13 @@ set_image() { # set_image <repository> <tag> <digest>
 }
 
 show() { # what prod serves now, and its 5-minute availability SLO
+  # Running pods only (from the API server): counting app_info series in
+  # Prometheus would include pods that just terminated, until they go stale.
+  echo "  Pods running in $env, by version:" >&2
+  kubectl -n "$env" get pods -l app.kubernetes.io/name=app -o json |
+    jq -r '[.items[] | select(.metadata.deletionTimestamp == null and .status.phase == "Running")
+            | .metadata.labels["app.kubernetes.io/version"] // "?"] | group_by(.) | .[] | "    \(.[0]): \(length) pod(s)"' >&2 || true
   local q
-  echo "  Pods by version in $env (app_info):" >&2
-  q="count by (version) (app_info{namespace=\"$env\"})"
-  curl -s --max-time 5 "http://localhost:9090/api/v1/query" --data-urlencode "query=$q" |
-    jq -r '.data.result[]? | "    \(.metric.version): \(.value[1]) pod(s)"' >&2 || true
   q="slo:orders_availability_errors:ratio_rate5m{namespace=\"$env\"}"
   curl -s --max-time 5 "http://localhost:9090/api/v1/query" --data-urlencode "query=$q" |
     jq -r '.data.result[0].value[1] // empty | tonumber * 100 | "  5xx share, last 5 min: \(. * 100 | round / 100)%"' >&2 || true
