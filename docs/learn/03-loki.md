@@ -107,4 +107,4 @@ There's one per pod: a handful. If `order_id` or `request_id` were a label, ever
 - You see a slow request in the latency panel. How do you find its log lines?
 - When would you use a LogQL metric query instead of a Prometheus metric, and when not?
 
-Next: 4. SLOs _(coming)_.
+Next: [4. SLOs](04-slos.md).

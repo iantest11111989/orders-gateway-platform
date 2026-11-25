@@ -50,7 +50,7 @@ The alert's `namespace` label tells you which environment it is. Use it for `<na
 3. **Did something just change?**
    ```sh
    ./platform kubectl -n <namespace> get deploy,rollout,pods -o wide
-   ./platform kubectl -n <namespace> describe deploy orders-gateway | grep -iE 'image|FAULT|PAYMENTS'
+   ./platform kubectl -n <namespace> get configmap orders-gateway -o yaml | grep -E 'FAULT|PAYMENTS'   # the app's settings (it reads them with envFrom)
    ./platform kubectl argo rollouts -n <namespace> get rollout orders-gateway   # prod (and staging)
    ```
    Check the Argo CD UI (`https://argocd.localtest.me`) for a recent sync of this environment.
