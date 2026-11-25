@@ -29,9 +29,9 @@ Each waits 60 s for data, then is checked every 30 s, 4 times per step. A second
 Watch or drive it from `./platform shell`, or read-only at https://rollouts.localtest.me:
 
 ```sh
-kubectl argo rollouts get rollout orders-gateway -n orders-prod --watch
-kubectl argo rollouts promote orders-gateway -n orders-prod   # skip the current step
-kubectl argo rollouts abort orders-gateway -n orders-prod
+kubectl argo rollouts get rollout app -n demo --watch
+kubectl argo rollouts promote app -n demo   # skip the current step
+kubectl argo rollouts abort app -n demo
 ```
 
 ## Image
