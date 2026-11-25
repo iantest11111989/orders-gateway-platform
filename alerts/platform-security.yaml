@@ -20,7 +20,7 @@ spec:
       rules:
         # Kyverno's webhooks use failurePolicy: Ignore (decision 0022), so while
         # Kyverno is down, pods are admitted unchecked: :latest and unsigned
-        # images get into orders-*. That's why this one pages.
+        # images get into the app namespaces. That's why this one pages.
         - alert: KyvernoDown
           expr: absent(up{job="kyverno-svc-metrics"} == 1)
           for: 5m
@@ -30,7 +30,7 @@ spec:
             summary: "Kyverno's admission controller is down: pods are admitted without policy checks"
             description: >-
               No Kyverno admission controller has answered a metrics scrape for 5 minutes. Its webhooks
-              fail open (failurePolicy: Ignore), so new pods, including in orders-*, skip the tag and
+              fail open (failurePolicy: Ignore), so new pods, including in the app namespaces, skip the tag and
               signature policies until it's back.
             runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/KyvernoDown.md
         # A policy that errors instead of passing or failing doesn't protect
@@ -91,7 +91,7 @@ spec:
         - alert: OrdersImageCriticalVulnerability
           expr: |
             sum by (namespace, image_repository, image_digest) (
-              trivy_image_vulnerabilities{namespace=~"orders-(dev|staging|prod)", severity="Critical"}
+              trivy_image_vulnerabilities{namespace=~"dev|staging|prod", severity="Critical"}
             ) > 0
           for: 30m
           labels:

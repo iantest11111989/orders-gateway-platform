@@ -50,7 +50,7 @@ data:
         {
           "type": "table",
           "title": "Rollouts now",
-          "description": "Every Argo Rollout and its phase: Completed (done, all traffic on the stable version), Progressing (a canary is stepping), Paused (waiting at a step), Abort (analysis failed or someone aborted, traffic back on stable), Error / Timeout (the controller can't make progress). orders-gateway in orders-prod is the canary; orders-demo appears while a demo runs.",
+          "description": "Every Argo Rollout and its phase: Completed (done, all traffic on the stable version), Progressing (a canary is stepping), Paused (waiting at a step), Abort (analysis failed or someone aborted, traffic back on stable), Error / Timeout (the controller can't make progress). prod is a plain Deployment (decision 0026), so Rollouts appear only in the demo namespace, while a demo runs. Empty otherwise.",
           "id": 2,
           "datasource": {
             "type": "prometheus",

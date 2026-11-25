@@ -1,9 +1,9 @@
-# A pod with no app/env/team labels in orders-staging: standard-labels adds them.
+# A pod with no app/env/team labels in staging: standard-labels adds them.
 apiVersion: v1
 kind: Pod
 metadata:
   name: unlabelled
-  namespace: orders-staging
+  namespace: staging
   labels:
     app.kubernetes.io/name: orders-gateway
 spec:

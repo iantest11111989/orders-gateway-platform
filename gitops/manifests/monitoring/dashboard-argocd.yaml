@@ -50,7 +50,7 @@ data:
         {
           "type": "stat",
           "title": "Applications",
-          "description": "How many Argo CD Applications exist (the platform's components, the three orders environments, and orders-demo while a demo runs).",
+          "description": "How many Argo CD Applications exist (the platform's components, the three environments dev, staging and prod, and demo while a demo runs).",
           "id": 2,
           "datasource": {
             "type": "prometheus",

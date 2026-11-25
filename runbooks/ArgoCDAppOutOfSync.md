@@ -8,7 +8,7 @@ The live state of an Argo CD Application has differed from Git for 15 minutes. E
 
 ## Likely causes
 
-- **A manifest the API server rejects:** invalid YAML after a merge, a field the CRD doesn't know, or a Kyverno Deny in an `orders-*` namespace (a `:latest` or unsigned image, [decision 0022](../docs/decisions/0022-enforce-in-orders.md)).
+- **A manifest the API server rejects:** invalid YAML after a merge, a field the CRD doesn't know, or a Kyverno Deny in an app namespace (`dev`, `staging`, `prod`, `demo`) (a `:latest` or unsigned image, [decision 0022](../docs/decisions/0022-enforce-in-orders.md)).
 - **A field something else keeps changing** (a controller or a mutating webhook) that isn't in the app's `ignoreDifferences`, so every sync is immediately out of date again.
 - **The repo can't be read:** GitHub is down, or the revision the app points at doesn't exist.
 

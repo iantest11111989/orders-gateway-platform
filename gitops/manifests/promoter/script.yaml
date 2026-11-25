@@ -181,7 +181,7 @@ data:
 
     def soak_gates(prev, env, tag, prom=prometheus, kube_get=kube):
         """The gates read from the cluster: [(name, passed, detail)]."""
-        ns, target = "orders-" + prev, "orders-" + env
+        ns, target = prev, env  # namespace = Argo CD Application = environment
         window = f"{SOAK_MINUTES}m"
         gates = []
 
@@ -212,7 +212,7 @@ data:
                       "; ".join(filter(None, [names and f"{prev}: " + ", ".join(names),
                                               names_now and f"{env}: " + ", ".join(names_now)]))))
 
-        pods = [p for p in kube_get(f"/api/v1/namespaces/{ns}/pods?labelSelector=app.kubernetes.io%2Fname%3Dorders-gateway")["items"]
+        pods = [p for p in kube_get(f"/api/v1/namespaces/{ns}/pods?labelSelector=app.kubernetes.io%2Fname%3Dapp")["items"]
                 if p["metadata"].get("deletionTimestamp") is None]
         ready = [p for p in pods if any(c["type"] == "Ready" and c["status"] == "True" for c in p["status"].get("conditions", []))]
         # The chart sets the version label from the image tag (pods run the image by digest).

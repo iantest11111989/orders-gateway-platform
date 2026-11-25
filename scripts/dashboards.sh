@@ -62,7 +62,7 @@ case "${1:-}" in
       jq -r --arg n "$name" '
         [.. | objects | select(has("expr")) | select((.datasource.type // "prometheus") == "prometheus") | .expr]
         | {groups: [{name: $n, rules: (to_entries | map({record: "dashboard:q\(.key)", expr: .value}))}]}' "$f" |
-        sed -e 's/\${namespace}/orders-prod/g' -e 's/\$__rate_interval/2m/g' -e 's/\$__interval/30s/g' -e 's/\$namespace/orders-prod/g' |
+        sed -e 's/\${namespace}/prod/g' -e 's/\$__rate_interval/2m/g' -e 's/\$__interval/30s/g' -e 's/\$namespace/prod/g' |
         docker run --rm -i --entrypoint promtool "$PROM_IMAGE" check rules || { echo "FAIL $f: a query doesn't parse (above)"; failed=1; }
     done
     [ "$failed" -eq 0 ] && echo "dashboards: all checks passed"

@@ -51,7 +51,7 @@ data:
         {
           "type": "stat",
           "title": "Pods refused (24 h)",
-          "description": "Requests Kyverno refused at admission over the last 24 hours, from the policies in Deny mode (disallow-latest-tag in orders-*, verify-image-signatures). ./platform verify adds one on purpose each run, and the policy demo two.",
+          "description": "Requests Kyverno refused at admission over the last 24 hours, from the policies in Deny mode (disallow-latest-tag in the app namespaces, verify-image-signatures). ./platform verify adds one on purpose each run, and the policy demo two.",
           "id": 2,
           "datasource": {
             "type": "prometheus",
