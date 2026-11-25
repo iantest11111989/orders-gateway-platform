@@ -8,6 +8,8 @@
 #   ./platform urls       print URLs and logins
 #   ./platform verify     check the running stack: apps, scrape targets, logs,
 #                         HTTPS and policies
+#   ./platform budget [--watch SECONDS]  measured CPU/memory vs the 6 CPU / 12 GiB
+#                         budget (peak over SECONDS with --watch)
 #   ./platform shell [script]  open a shell (or run a script) in the toolbox
 #   ./platform kubectl …  run kubectl in the toolbox
 #
@@ -24,7 +26,7 @@ TOOLBOX_REPO=ghcr.io/iantest11111989/orders-gateway-platform-toolbox
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -92,7 +94,7 @@ shift
 
 case "$cmd" in
   -h|--help|help) usage 0 ;;
-  doctor|up|down|urls|verify)
+  doctor|up|down|urls|verify|budget)
     check_docker
     run_toolbox bash "scripts/$cmd.sh" "$@" ;;
   shell)

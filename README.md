@@ -28,7 +28,7 @@ cd orders-gateway-platform
 ./platform down     # delete it all (safe to re-run)
 ```
 
-Today `up` creates the kind cluster (1 control plane + 2 workers), installs Argo CD and hands it the root Application, then waits until every Application is Synced and Healthy. That takes about 80 seconds from a clean machine with images cached. From then on Argo CD manages everything, including itself, from Git. `./platform urls` prints the Argo CD login. `./platform verify` then checks the running stack: every Application Synced and Healthy, every Prometheus target up, logs in Loki from every namespace, HTTPS on every hostname, and Kyverno flagging a bad manifest. `budget` and `demo` arrive in the next pull requests.
+Today `up` creates the kind cluster (1 control plane + 2 workers), installs Argo CD and hands it the root Application, then waits until every Application is Synced and Healthy. That takes about 80 seconds from a clean machine with images cached. From then on Argo CD manages everything, including itself, from Git. `./platform urls` prints the Argo CD login. `./platform verify` then checks the running stack: every Application Synced and Healthy, every Prometheus target up, logs in Loki from every namespace, HTTPS on every hostname, and Kyverno flagging a bad manifest. `./platform budget` measures what the cluster uses against the 6 CPU / 12 GiB budget (`--watch 120` reports the peak while something runs). `demo` arrives in the next pull requests.
 
 To run from your fork or a branch: `REPO_URL=https://github.com/<you>/orders-gateway-platform.git REVISION=my-branch ./platform up`.
 
