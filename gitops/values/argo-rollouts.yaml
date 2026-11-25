@@ -18,11 +18,12 @@ controller:
   resources:
     requests: {cpu: 25m, memory: 128Mi}
     limits: {memory: 512Mi}
-  # Go's GC works harder near this (~80% of the limit); the plugin process
-  # inherits the environment, so it applies to both.
+  # Go's GC works harder near this soft limit. It is per process, and the
+  # plugin inherits it, so each of the two gets 240MiB: together they stay
+  # under the 512Mi container limit (controller peak ~190Mi, plugin small).
   extraEnv:
     - name: GOMEMLIMIT
-      value: 400MiB
+      value: 240MiB
   logging:
     format: json
 
