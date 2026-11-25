@@ -30,8 +30,7 @@ spec:
   matchImageReferences:
     - glob: ghcr.io/iantest11111989/orders-gateway*
   validationConfigurations:
-    # Argo CD owns the pod specs; rewriting tags to digests would be drift.
-    # The environments already deploy by digest.
+    # The environments already deploy by digest, so there's no tag to pin.
     mutateDigest: false
     verifyDigest: false
     required: false
