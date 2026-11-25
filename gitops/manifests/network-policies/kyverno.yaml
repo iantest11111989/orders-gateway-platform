@@ -1,0 +1,54 @@
+# Baseline for kyverno: deny ingress by default; allow its own pods and the
+# nodes (kubelet, API server webhooks and service proxy; see
+# docs/decisions/0017-network-policies.md for why "nodes" is an ipBlock).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: kyverno
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: kyverno
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-nodes
+  namespace: kyverno
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        # Everything outside the pod network (kind's default 10.244.0.0/16):
+        # on kind that's the nodes and the API server on the control plane.
+        - ipBlock: {cidr: 0.0.0.0/0, except: [10.244.0.0/16]}
+---
+# Prometheus scrapes the admission controller.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-metrics
+  namespace: kyverno
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - {port: 8000, protocol: TCP}

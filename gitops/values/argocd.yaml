@@ -84,6 +84,18 @@ configs:
             hs.message = obj.status.health.message
           end
         end
+        -- A new child app that hasn't synced yet has no resources and
+        -- reports Healthy, so the next sync wave would start before this one
+        -- exists (CI on #31: wave 25 started 26 s after wave 20 appeared,
+        -- before monitoring existed). Hold it until it has synced once. An
+        -- app whose resources already match Git is Synced without ever
+        -- running a sync (no history), so that one passes.
+        local synced = obj.status.sync ~= nil and obj.status.sync.status == "Synced"
+        local never = obj.status.history == nil or #obj.status.history == 0
+        if never and not synced then
+          hs.status = "Progressing"
+          hs.message = "waiting for the first sync"
+        end
       end
       return hs
   rbac:
@@ -94,8 +106,20 @@ controller:
     # The first sync of every app fills the cluster cache at once: peak use is
     # well above the ~275Mi steady state. With 512Mi it was OOMKilled on ogp,
     # and on CI it restarted 4 times in 10 min, losing sync progress each time.
-    requests: {cpu: 100m, memory: 384Mi}
-    limits: {memory: 1Gi}
+    # At 1Gi it was still OOMKilled once during a fresh CI bootstrap
+    # (`./platform budget`, PR #29), after Kyverno, NetworkPolicies and Sealed
+    # Secrets added more resources to watch; on ogp its peak was 856Mi.
+    # The request is ~2x steady state (~400Mi): under node memory pressure the
+    # kubelet evicts by usage above request, and an eviction loses sync
+    # progress just like an OOM kill.
+    requests: {cpu: 100m, memory: 768Mi}
+    limits: {memory: 1536Mi}
+  # Go's GC works harder as the heap nears this soft limit (~80% of the hard
+  # limit), so a bootstrap spike slows the controller down instead of getting
+  # it OOMKilled (losing its sync progress).
+  env:
+    - name: GOMEMLIMIT
+      value: 1200MiB
   metrics:
     enabled: true
     # Scraped by Prometheus (CRDs from prometheus-operator-crds, wave -10).

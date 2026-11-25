@@ -71,6 +71,12 @@ step "Waiting for system pods"
 kubectl -n kube-system wait --for=condition=Ready pods --all --timeout=180s >/dev/null
 ok "kube-system healthy"
 
+# Before Argo CD installs the Sealed Secrets controller, so it finds this key
+# on first start instead of generating its own. DEMO ONLY key (decision 0018).
+step "Loading the Sealed Secrets demo key"
+kubectl apply -f "$(dirname "$0")/../gitops/manifests/sealed-secrets/demo-key.yaml" >/dev/null
+ok "kube-system/sealed-secrets-demo-key"
+
 echo
 bash "$(dirname "$0")/argocd-bootstrap.sh"
 

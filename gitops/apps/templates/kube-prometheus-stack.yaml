@@ -28,6 +28,10 @@ spec:
     - repoURL: {{ .Values.repo.url }}
       targetRevision: {{ .Values.repo.revision }}
       ref: values
+    # SealedSecrets for this namespace (Grafana's admin login).
+    - repoURL: {{ .Values.repo.url }}
+      targetRevision: {{ .Values.repo.revision }}
+      path: gitops/manifests/monitoring
   destination:
     server: https://kubernetes.default.svc
     namespace: monitoring
