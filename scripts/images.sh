@@ -78,8 +78,10 @@ case "$cmd" in
     shopt -s nullglob; tars=("$dir"/*.tar)
     [ "${#tars[@]}" -gt 0 ] || { warn "no image cache in $dir; every image will be pulled"; exit 0; }
     start=$(date +%s)
-    for n in $(workers); do
-      a=$(arch "$n") loaded=0 skipped=0
+    # One import loop per worker, in parallel (about half the time).
+    import_into() { # import_into <node>
+      local n=$1 a loaded=0 skipped=0 t
+      a=$(arch "$n")
       for t in "${tars[@]}"; do
         if docker exec -i "$n" ctr -n k8s.io images import --platform "linux/$a" \
             --snapshotter overlayfs - <"$t" >/dev/null 2>&1; then loaded=$((loaded + 1))
@@ -87,7 +89,10 @@ case "$cmd" in
       done
       if [ "$skipped" -eq 0 ]; then ok "$n: imported all ${#tars[@]} images"
       else warn "$n: imported $loaded of ${#tars[@]} images; $skipped will be pulled instead"; fi
-    done
+    }
+    pids=()
+    for n in $(workers); do import_into "$n" & pids+=("$!"); done
+    wait "${pids[@]}"
     ok "image cache loaded in $(( $(date +%s) - start ))s"
     ;;
   *) die "usage: scripts/images.sh save|load <dir>" ;;
