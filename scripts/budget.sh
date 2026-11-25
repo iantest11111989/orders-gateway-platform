@@ -107,12 +107,15 @@ step "Out-of-memory kills (a cap that's too small shows up here)"
 oom=$(kubectl get pods -A -o jsonpath='{range .items[*]}{range .status.initContainerStatuses[*]}{.lastState.terminated.reason}{" "}{end}{range .status.containerStatuses[*]}{.lastState.terminated.reason}{" "}{end}{"|"}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' 2>/dev/null |
   awk -F'|' '$1 ~ /OOMKilled/ {print $2}')
 # A node container at its cap can lose kubelet or containerd itself, with
-# nothing in any pod's status. memory.events.local counts only the node's own
-# cgroup hitting its cap (cgroup v2), unlike docker inspect's OOMKilled, which
-# a pod's OOM kill inside the node also sets.
+# nothing in any pod's status. The `oom` field of memory.events.local counts
+# OOMs triggered by the node cgroup's own limit (cgroup v2), whichever process
+# in it was killed. Not docker inspect's OOMKilled, which a pod's OOM kill
+# inside the node also sets, and not .local's oom_kill, which only counts
+# processes directly in the node's root cgroup (kubelet and pods are in
+# child slices).
 for n in "${nodes[@]}"; do
-  kills=$(docker exec "$n" sh -c 'awk "\$1 == \"oom_kill\" {print \$2}" /sys/fs/cgroup/memory.events.local 2>/dev/null')
-  [ -n "$kills" ] && [ "$kills" -gt 0 ] && oom+=$'\n'"node container $n hit its memory cap ($kills kills)"
+  hits=$(docker exec "$n" sh -c 'awk "\$1 == \"oom\" {print \$2}" /sys/fs/cgroup/memory.events.local 2>/dev/null')
+  [ -n "$hits" ] && [ "$hits" -gt 0 ] && oom+=$'\n'"node container $n hit its memory cap ($hits OOM events)"
 done
 oom=$(sed '/^$/d' <<<"$oom")
 if [ -z "$oom" ]; then ok "no OOM kills (containers, init containers, node containers)"
