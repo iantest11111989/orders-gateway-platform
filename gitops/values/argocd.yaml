@@ -137,8 +137,17 @@ server:
 
 repoServer:
   resources:
-    requests: {cpu: 50m, memory: 128Mi}
-    limits: {memory: 512Mi}
+    # A fresh bootstrap renders every chart at once (kube-prometheus-stack is
+    # the big one; Kyverno and Trivy added more). At 512Mi `./platform budget`
+    # caught it OOMKilled in CI (PR #40's run), and on ogp its cgroup peak sat
+    # at the 512Mi limit. Steady state is ~120Mi.
+    requests: {cpu: 50m, memory: 256Mi}
+    limits: {memory: 1Gi}
+  # Go's GC works harder as the heap nears this (~80% of the limit), so a
+  # bootstrap spike slows rendering down instead of getting it killed.
+  env:
+    - name: GOMEMLIMIT
+      value: 800MiB
   metrics:
     enabled: true
     serviceMonitor:
