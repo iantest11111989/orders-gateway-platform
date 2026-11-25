@@ -18,7 +18,7 @@
 # Environment:
 #   TOOLBOX_IMAGE   use this toolbox image instead of the pinned one
 #   REPO_URL        Git repo Argo CD syncs from (default: this repo on GitHub)
-#   REVISION        branch or tag Argo CD syncs (default: main)
+#   REVISION        branch, tag or commit SHA Argo CD syncs (default: main)
 #   GITHUB_TOKEN    only for `demo gitops-revert`, which pushes a demo branch
 #                   to the repo Argo CD syncs from (e.g. GITHUB_TOKEN=$(gh auth token))
 set -eu
