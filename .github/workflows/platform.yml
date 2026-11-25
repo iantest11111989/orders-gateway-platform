@@ -83,19 +83,28 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
+      # Published AND signed by this workflow on main: nothing to do. Published
+      # but not (verifiably) signed, e.g. a sign step that failed after the
+      # push: sign that digest now instead of leaving it unsigned for good.
       - id: exists
-        name: Skip if this toolbox is already published
+        name: Already published and signed?
         env:
           TAG: ${{ steps.tag.outputs.tag }}
+          IDENTITY: ${{ github.server_url }}/${{ github.workflow_ref }}
         run: |
-          if docker buildx imagetools inspect "$IMAGE:$TAG" >/dev/null 2>&1; then
-            echo "already=true" >>"$GITHUB_OUTPUT"
-            echo "\`$IMAGE:$TAG\` is already published" >>"$GITHUB_STEP_SUMMARY"
+          if digest=$(docker buildx imagetools inspect "$IMAGE:$TAG" --format '{{json .Manifest}}' 2>/dev/null | jq -r .digest) && [ -n "$digest" ]; then
+            echo "digest=$digest" >>"$GITHUB_OUTPUT"
+            if cosign verify "$IMAGE@$digest" --certificate-identity "$IDENTITY" \
+                 --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null 2>&1; then
+              echo "signed=true" >>"$GITHUB_OUTPUT"
+              echo "\`$IMAGE:$TAG\` is already published and signed" >>"$GITHUB_STEP_SUMMARY"
+            fi
           fi
-      - if: steps.exists.outputs.already != 'true'
+      - if: steps.exists.outputs.digest == ''
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - id: build
-        if: steps.exists.outputs.already != 'true'
+        if: steps.exists.outputs.digest == ''
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: toolbox
@@ -104,14 +113,13 @@ jobs:
           sbom: true
           tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.tag }}
           labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-      - if: steps.exists.outputs.already != 'true'
-        uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
       - name: Sign, then verify signature and SBOMs
-        if: steps.exists.outputs.already != 'true'
+        if: steps.exists.outputs.signed != 'true'
         env:
           # e.g. https://github.com/<owner>/<repo>/.github/workflows/platform.yml@refs/heads/main
           IDENTITY: ${{ github.server_url }}/${{ github.workflow_ref }}
-          DIGEST: ${{ steps.build.outputs.digest }}
+          # The new build's digest, or the published-but-unsigned one.
+          DIGEST: ${{ steps.build.outputs.digest || steps.exists.outputs.digest }}
         run: scripts/sign-images.sh "$DIGEST" | tee -a "$GITHUB_STEP_SUMMARY"
 
   cluster:
