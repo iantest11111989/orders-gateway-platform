@@ -40,18 +40,21 @@ jobs:
           : >report.md
           for env in dev staging prod; do
             # image.digest from environments/<env>/values.yaml
-            d=$(awk '/^image:/{f=1;next} f&&/^[^ #]/{f=0} f&&/^  digest:/{print $2}' "environments/$env/values.yaml")
+            d=$(awk '/^image:[[:space:]]*$/{f=1;next} f&&/^[^ #]/{f=0} f&&/^  digest:/{print $2}' "environments/$env/values.yaml")
             [[ $d =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::no image.digest in environments/$env/values.yaml"; status=1; continue; }
             # staging and prod often run the same digest: scan it once.
             if [ -z "${result[$d]:-}" ]; then
-              if out=$(scripts/scan-image.sh "$IMAGE@$d" 2>&1); then result[$d]=clean; else result[$d]=findings; fi
+              rc=0; out=$(scripts/scan-image.sh "$IMAGE@$d" 2>&1) || rc=$?
+              # scan-image.sh: 0 clean, 3 findings, else a scanner error.
+              case $rc in 0) result[$d]=clean ;; 3) result[$d]=findings ;; *) result[$d]="scan error (exit $rc)" ;; esac
               # shellcheck disable=SC2016 # literal backticks: Markdown
               printf '### `%s`\n\n```\n%s\n```\n\n' "$d" "$out" >>details.md
             fi
             echo "- **$env** runs \`$d\`: ${result[$d]}" >>report.md
-            [ "${result[$d]}" = clean ] || status=1
+            case ${result[$d]} in clean) ;; findings) status=1 ;; *) [ "$status" -eq 1 ] || status=2 ;; esac
           done
           { cat report.md; echo; cat details.md 2>/dev/null; } >>"$GITHUB_STEP_SUMMARY"
+          # 0 clean, 1 findings, 2 only scanner errors (no issue change).
           echo "status=$status" >>"$GITHUB_OUTPUT"
       - name: Open, update or close the tracking issue
         if: always() && steps.scan.outputs.status != ''
@@ -68,10 +71,10 @@ jobs:
           Fixable HIGH/CRITICAL findings (details: $RUN_URL). Fix with a dependency bump; the app workflow then publishes, scans and promotes a new image (decision 0016)."
             if [ -n "$issue" ]; then gh issue comment "$issue" --body "$body"
             else gh issue create --title "$TITLE" --label security --body "$body"; fi
-          elif [ -n "$issue" ]; then
+          elif [ "$STATUS" = 0 ] && [ -n "$issue" ]; then
             gh issue close "$issue" --comment "Clean again: $RUN_URL
           $(cat report.md)"
           fi
-      - name: Fail on findings
-        if: steps.scan.outputs.status == '1'
+      - name: Fail on findings or scanner errors
+        if: steps.scan.outputs.status != '0'
         run: exit 1

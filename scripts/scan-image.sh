@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Scans an app image for known vulnerabilities with Trivy and fails on any
-# HIGH or CRITICAL one that has a fix available (decision 0016). CI runs it in
+# HIGH or CRITICAL one that has a fix available (decision 0016).
+# Exit status: 0 clean, 3 findings, anything else a scanner error (registry
+# or DB download), so callers can tell an outage from a real finding. CI runs it in
 # the app workflow: on pull requests against the image the PR builds, and on
 # main against the published image before dev gets it.
 #   TRIVY_IMAGE=ghcr.io/aquasecurity/trivy:<v>@sha256:... \
@@ -28,8 +30,13 @@ for platform in linux/amd64 linux/arm64; do
     --skip-java-db-update \
     --severity HIGH,CRITICAL \
     --ignore-unfixed \
-    --exit-code 1 \
+    --exit-code 3 \
     --format table \
-    "$1" || status=1
+    "$1" || rc=$?
+  # Keep the worst: an error (anything but 3) outranks findings.
+  if [ "${rc:-0}" -ne 0 ]; then
+    if [ "$rc" -ne 3 ] || [ "$status" -eq 0 ]; then status=$rc; fi
+  fi
+  rc=0
 done
 exit "$status"
