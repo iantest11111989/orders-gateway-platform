@@ -1,7 +1,12 @@
 # The shared HTTPS entry point: demo CA and *.localtest.me certificate
 # (cert-manager), the Envoy GatewayClass and Gateway, the HTTP -> HTTPS
 # redirect, and HTTPRoutes for the platform UIs. Plain manifests in
-# gitops/manifests/gateway/. Wave 15: after cert-manager and Envoy Gateway.
+# gitops/manifests/gateway/. Wave 25: after cert-manager and Envoy Gateway
+# (10) and after observability (20), whose `monitoring` namespace the
+# Grafana/Prometheus/Alertmanager routes live in. At wave 15 the first sync
+# failed with 'namespaces "monitoring" not found' and only got through on
+# retries that happened to outlast wave 20's start. Nothing before wave 40
+# (the apps) needs the Gateway.
 # See decision 0008.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -11,7 +16,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: orders-gateway-platform
   annotations:
-    argocd.argoproj.io/sync-wave: "15"
+    argocd.argoproj.io/sync-wave: "25"
 spec:
   project: default
   source:
@@ -31,6 +36,6 @@ spec:
       limit: 5
       backoff: {duration: 5s, factor: 2, maxDuration: 1m}
     syncOptions:
-      # HTTPRoutes for Grafana/Prometheus (wave 20) may sync before their
-      # backends exist; that's fine, the route resolves once they appear.
+      # A route may still apply before its backend Service is ready; that's
+      # fine, it resolves once the Service appears.
       - SkipDryRunOnMissingResource=true
