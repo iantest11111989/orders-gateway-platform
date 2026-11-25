@@ -1,4 +1,4 @@
-# A steady order a second to each environment, through the gateway like a real
+# About two orders a second to each environment, through the gateway like a real
 # client (scripts/promoter.py trickle), so the soak gates and prod's canary
 # analysis have traffic to judge. Orders use customer_id "cust-trickle".
 apiVersion: apps/v1
@@ -27,7 +27,7 @@ spec:
           command: [python, /app/promoter.py, trickle]
           env:
             - {name: PYTHONDONTWRITEBYTECODE, value: "1"}
-            - {name: TRICKLE_INTERVAL, value: "1"}
+            - {name: TRICKLE_INTERVAL, value: "0.5"} # about 2 orders a second per environment
           resources:
             requests: {cpu: 10m, memory: 24Mi}
             limits: {memory: 64Mi}

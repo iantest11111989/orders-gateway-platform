@@ -280,20 +280,26 @@ def trickle():
     ctx = ssl.create_default_context()
     ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE  # the platform's own local CA
     body = json.dumps({"customer_id": "cust-trickle", "items": [{"sku": "SKU-PEN-5", "quantity": 1}]})
-    counts = {}
+    counts, conns = {}, {}
     last = time.time()
+
+    def connect(host):  # TLS to the gateway Service, with the environment's hostname as SNI
+        conn = http.client.HTTPSConnection(host, 443, timeout=5, context=ctx)
+        conn.sock = ctx.wrap_socket(socket.create_connection((gateway, 443), timeout=5), server_hostname=host)
+        return conn
+
     while True:
         for host in hosts:
             code = "error"
             try:
-                sock = socket.create_connection((gateway, 443), timeout=5)
-                conn = http.client.HTTPSConnection(host, 443, timeout=5, context=ctx)
-                conn.sock = ctx.wrap_socket(sock, server_hostname=host)
+                conn = conns.get(host) or connect(host)
                 conn.request("POST", "/orders", body, {"Content-Type": "application/json"})
-                code = conn.getresponse().status
-                conn.close()
-            except OSError:
-                pass
+                resp = conn.getresponse()
+                resp.read()
+                code = resp.status
+                conns[host] = conn  # keep-alive: Envoy still balances (and splits a canary) per request
+            except (OSError, http.client.HTTPException):
+                conns.pop(host, None)
             counts[(host, code)] = counts.get((host, code), 0) + 1
         if time.time() - last >= 300:  # a summary every 5 minutes, not a line per request
             log("trickle: " + ", ".join(f"{h} {c}: {n}" for (h, c), n in sorted(counts.items(), key=str)))
