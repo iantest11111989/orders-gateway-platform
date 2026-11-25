@@ -32,36 +32,28 @@ defaults:
     working-directory: app
 
 jobs:
+  # The app (server.js) has no dependencies, so its own tests run in the same
+  # pinned Node image the Dockerfile builds from: no setup action to pin.
   test:
-    name: build, vet, test
+    name: node --test, node --check
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
-        with:
-          go-version-file: app/go.mod
-          cache-dependency-path: app/go.sum
-      - run: go build ./...
-      - run: go vet ./...
-      - run: go test -race -count=1 -cover ./...
+      - name: Tests and syntax check (npm test, npm run lint)
+        run: |
+          node_image=$(sed -n 's/^FROM \(node:[^ ]*\) AS app$/\1/p' Dockerfile)
+          docker run --rm -v "$PWD":/app -w /app "$node_image" sh -c 'npm test && npm run lint'
 
   lint:
-    name: golangci-lint
+    name: Dockerfile lint (hadolint)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
-        with:
-          go-version-file: app/go.mod
-          cache-dependency-path: app/go.sum
-      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
-        with:
-          version: v2.15.0
-          working-directory: app
+      - run: docker run --rm -i hadolint/hadolint:v2.14.0@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e < Dockerfile
 
   # Pull requests build the image without pushing: only main publishes, so
   # every published image comes from reviewed code (and, with signing,

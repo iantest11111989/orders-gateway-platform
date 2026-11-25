@@ -30,8 +30,8 @@ spec:
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       securityContext:
         runAsNonRoot: true
-        runAsUser: 65532
-        runAsGroup: 65532
+        runAsUser: 1000   # the node image's user, by number (app/Dockerfile)
+        runAsGroup: 1000
         seccompProfile: {type: RuntimeDefault}
       {{- if .Values.topologySpread.enabled }}
       topologySpreadConstraints:
@@ -60,26 +60,40 @@ spec:
           env:
             - name: PORT
               value: "8080"
-            - name: APP_VERSION
+            - name: VERSION   # app_info{version} and /version
               value: {{ .Values.image.tag | quote }}
           envFrom:
             - configMapRef:
                 name: {{ include "orders-gateway.name" . }}
-          # Startup: up to 30 s to pass /healthz before liveness takes over.
+          # Startup: up to 30 s for the process to answer before liveness
+          # takes over (/readyz is 503 for STARTUP_DELAY_MS, 3 s, on purpose).
           startupProbe:
             httpGet: {path: /healthz, port: http}
             periodSeconds: 1
             failureThreshold: 30
+          # Lenient on purpose: /work burns CPU on Node's single event loop
+          # for up to 2 s, which blocks /healthz too. A strict liveness probe
+          # would restart pods exactly when they're busiest; this one waits
+          # for 60 s of an unresponsive process.
           livenessProbe:
             httpGet: {path: /healthz, port: http}
+            timeoutSeconds: 3
             periodSeconds: 10
-            failureThreshold: 3
-          # Fails during warm-up and from the moment SIGTERM arrives, so the
-          # pod leaves the Service before it stops serving.
+            failureThreshold: 6
+          # /readyz is 503 during warm-up and from SIGTERM on. Three misses
+          # (6 s), not one: under a spike every pod is slow, and pulling busy
+          # pods out one by one would pile the load on the rest.
           readinessProbe:
             httpGet: {path: /readyz, port: http}
+            timeoutSeconds: 2
             periodSeconds: 2
-            failureThreshold: 1
+            failureThreshold: 3
+          # Give kube-proxy and the gateway time to drop this pod from the
+          # endpoints before SIGTERM makes the app stop accepting
+          # connections (the app itself has no delay).
+          lifecycle:
+            preStop:
+              sleep: {seconds: 5}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           securityContext:

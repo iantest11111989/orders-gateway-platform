@@ -17,18 +17,20 @@ image:
 
 replicas: 1
 
-# App settings (app/README.md). FAULT_* are left unset unless given here,
-# so an image's own defaults (the v2-bad demo) still apply.
+# App settings: the environment variables server.js reads. FAULT_* are left
+# unset unless given here, so an image's own defaults (the v2-bad demo)
+# still apply; startupDelayMs unset keeps the app's 3 s warm-up.
 config:
-  logLevel: info
-  paymentsLatencyMs: 40
-  paymentsErrorRate: 0
   faultErrorRate: null
   faultLatencyMs: null
+  startupDelayMs: null
 
+# Node with no dependencies idles at about 45 MiB. /work burns CPU on the
+# single event loop, so the CPU request is what the HPA's 70% is measured
+# against: 100m. No CPU limit (it would only throttle; decision 0012).
 resources:
-  requests: {cpu: 25m, memory: 32Mi}
-  limits: {memory: 64Mi}
+  requests: {cpu: 100m, memory: 48Mi}
+  limits: {memory: 128Mi}
 
 # Shared Gateway from gitops/manifests/gateway/ (decision 0008).
 route:
@@ -96,4 +98,6 @@ rollout:
     maxP99LatencySeconds: 0.3  # SLO: under 300 ms
 
 # The app's drain (5 s) + shutdown limit (20 s) fits inside this.
-terminationGracePeriodSeconds: 30
+# preStop sleep (5 s, so endpoints drop the pod before it stops accepting)
+# + the app's own 25 s hard exit after SIGTERM + margin.
+terminationGracePeriodSeconds: 35
