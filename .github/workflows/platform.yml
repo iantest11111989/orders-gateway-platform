@@ -95,6 +95,8 @@ jobs:
           exit 1
       # A fresh up only creates the prod route; this also checks an upgrade.
       - run: ./platform shell scripts/check-route-upgrade.sh
+      # Measured CPU/memory against the 6 CPU / 12 GiB budget, plus OOM kills.
+      - run: ./platform budget --watch 30
       # On failure, show why: pods that aren't ready, their descriptions
       # (image pulls, probes, OOM) and recent events. Best effort: the cluster
       # may not exist if `up` failed early.
