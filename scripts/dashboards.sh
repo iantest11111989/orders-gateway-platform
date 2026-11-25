@@ -55,13 +55,14 @@ case "${1:-}" in
       fi
       # 3. Every Prometheus query parses: wrap them as recording rules (with
       #    Grafana's variables filled in) and let promtool check them. This
-      #    also covers annotation queries, which carry an "expr" too. Piped
+      #    also covers annotation queries, which carry an "expr" too. This
+      #    checks that queries parse, not that they return data. Piped
       #    in on stdin: no bind mount, so it works the same under Colima.
       # shellcheck disable=SC2016 # $n and $namespace etc. are jq/Grafana's
       jq -r --arg n "$name" '
         [.. | objects | select(has("expr")) | select((.datasource.type // "prometheus") == "prometheus") | .expr]
         | {groups: [{name: $n, rules: (to_entries | map({record: "dashboard:q\(.key)", expr: .value}))}]}' "$f" |
-        sed -e 's/\$__rate_interval/2m/g' -e 's/\$__interval/30s/g' -e 's/\$namespace/orders-prod/g' |
+        sed -e 's/\${namespace}/orders-prod/g' -e 's/\$__rate_interval/2m/g' -e 's/\$__interval/30s/g' -e 's/\$namespace/orders-prod/g' |
         docker run --rm -i --entrypoint promtool "$PROM_IMAGE" check rules || { echo "FAIL $f: a query doesn't parse (above)"; failed=1; }
     done
     [ "$failed" -eq 0 ] && echo "dashboards: all checks passed"
