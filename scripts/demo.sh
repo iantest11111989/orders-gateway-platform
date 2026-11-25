@@ -263,15 +263,30 @@ gitauth() {
   git -c http.extraHeader="Authorization: Basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')" "$@"
 }
 
+# Deletes a branch on <repo> without needing the checkout to be a usable git
+# repository (in a worktree checkout /work/.git points outside the mount):
+# the push runs from an empty throwaway repository. DRY_RUN=1 only checks
+# access (git push --dry-run) and changes nothing.
+delete_branch() { # delete_branch <repo url> <branch>
+  local tmp rc=0
+  tmp=$(mktemp -d)
+  git -C "$tmp" init -q && gitauth -C "$tmp" push -q ${DRY_RUN:+--dry-run} "$1" --delete "$2" || rc=$?
+  rm -rf "$tmp"
+  return "$rc"
+}
+
 # Deletes leftover demo branches (an interrupted run, or --keep). Only with
 # GITHUB_TOKEN; otherwise prints how to.
 clean_branches() {
   local repo b
   repo=$(kubectl -n argocd get applications.argoproj.io root -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || true)
   [ -n "$repo" ] || return 0
-  for b in $(git ls-remote --heads "$repo" 'demo/gitops-revert-*' 2>/dev/null | awk '{sub("refs/heads/", "", $2); print $2}'); do
+  # Run outside /work: in a git worktree checkout, /work/.git points outside
+  # the container's mount and git would refuse to start. ls-remote on a URL
+  # needs no repository.
+  for b in $(git -C / ls-remote --heads "$repo" 'demo/gitops-revert-*' 2>/dev/null | awk '{sub("refs/heads/", "", $2); print $2}'); do
     if [ -n "${GITHUB_TOKEN:-}" ]; then
-      gitauth push -q "$repo" --delete "$b" && ok "deleted the leftover demo branch $b"
+      delete_branch "$repo" "$b" && ok "deleted the leftover demo branch $b"
     else
       warn "leftover demo branch $b: delete it with GITHUB_TOKEN=\$(gh auth token) ./platform demo clean, or git push origin --delete $b"
     fi
@@ -479,6 +494,6 @@ if [ -n "$keep" ]; then
 else
   delete_app
   if [ -n "${DEMO_BRANCH:-}" ]; then
-    gitauth push -q "$DEMO_REPO" --delete "$DEMO_BRANCH" && ok "deleted the demo branch $DEMO_BRANCH"
+    delete_branch "$DEMO_REPO" "$DEMO_BRANCH" && ok "deleted the demo branch $DEMO_BRANCH"
   fi
 fi
