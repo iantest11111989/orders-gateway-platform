@@ -68,6 +68,16 @@ else
   miss "Loki not reachable (logging/loki)"
 fi
 
+step "Alerts reach the local receiver (Watchdog heartbeat in Loki)"
+# Alertmanager sends the always-firing Watchdog to alert-receiver every
+# 5 minutes, which logs it (decision 0025): one line proves Prometheus ->
+# Alertmanager -> receiver -> Loki works end to end.
+q=$(jq -rn '"{namespace=\"monitoring\", app=\"alert-receiver\"} |= \"Watchdog\"" | @uri')
+n=$(proxy logging loki:3100 "/loki/api/v1/query_range?query=$q&since=1h&limit=20" 2>/dev/null |
+  jq '[.data.result[]?.values[]] | length' 2>/dev/null || echo 0)
+if [ "${n:-0}" -gt 0 ]; then pass "Watchdog notifications delivered ($n in the last hour)"
+else miss "no Watchdog notification in Loki from monitoring/alert-receiver in the last hour"; fi
+
 step "HTTPS on every hostname"
 https_log=$(mktemp)
 trap 'rm -f "$https_log"' EXIT

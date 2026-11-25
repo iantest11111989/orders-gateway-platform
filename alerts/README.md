@@ -5,6 +5,7 @@ PrometheusRules, loaded by Prometheus through Argo CD (the observability PR wire
 | File | What it holds |
 | --- | --- |
 | `orders-gateway-slo.yaml` | SLI recording rules and multi-window burn-rate alerts for the orders-gateway SLO ([decision 0006](../docs/decisions/0006-slo-rules.md)) |
+| `platform-security.yaml` | Kyverno, Sealed Secrets and Trivy Operator alerts ([decision 0025](../docs/decisions/0025-security-alerts-and-routing.md)) |
 | `tests/` | promtool unit tests, one file per rule file |
 
 Test locally (needs only Docker):

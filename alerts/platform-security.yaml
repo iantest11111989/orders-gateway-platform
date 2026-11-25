@@ -1,0 +1,103 @@
+# Alerts for the security components (brief section 8): Kyverno (admission),
+# Sealed Secrets (secrets in Git) and Trivy Operator (vulnerability scans).
+# Argo CD, Rollouts and cert-manager alerts live in their own file.
+#
+# Severities follow the SLO alerts: "page" for something that weakens a
+# security control right now, "ticket" for something to fix today.
+# Alertmanager routes them (gitops/values/kube-prometheus-stack.yaml).
+#
+# Tests: alerts/tests/platform-security.test.yaml (promtool, run in CI).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-security
+  labels:
+    app.kubernetes.io/part-of: orders-gateway-platform
+    app.kubernetes.io/component: security
+spec:
+  groups:
+    - name: platform-security
+      rules:
+        # Kyverno's webhooks use failurePolicy: Ignore (decision 0022), so while
+        # Kyverno is down, pods are admitted unchecked: :latest and unsigned
+        # images get into orders-*. That's why this one pages.
+        - alert: KyvernoDown
+          expr: absent(up{job="kyverno-svc-metrics"} == 1)
+          for: 5m
+          labels:
+            severity: page
+          annotations:
+            summary: "Kyverno's admission controller is down: pods are admitted without policy checks"
+            description: >-
+              No Kyverno admission controller has answered a metrics scrape for 5 minutes. Its webhooks
+              fail open (failurePolicy: Ignore), so new pods, including in orders-*, skip the tag and
+              signature policies until it's back.
+            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/KyvernoDown.md
+        # A policy that errors instead of passing or failing doesn't protect
+        # anything (for example a CEL expression that breaks on a new field,
+        # or a signature check that can't reach the registry).
+        - alert: KyvernoPolicyErrors
+          expr: |
+            sum by (policy_name) (
+              increase({__name__=~"kyverno_(image_)?validating_policy_results_total", result="error"}[15m])
+            ) > 0
+          for: 5m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "Kyverno policy {{ $labels.policy_name }} is returning errors"
+            description: >-
+              {{ $value | humanize }} evaluations of {{ $labels.policy_name }} ended in an error in the last
+              15 minutes. An erroring policy neither admits nor refuses on its merits.
+            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/KyvernoPolicyErrors.md
+        - alert: SealedSecretsControllerDown
+          expr: absent(up{job="sealed-secrets-controller-metrics"} == 1)
+          for: 10m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "The Sealed Secrets controller is down: new or changed SealedSecrets aren't unsealed"
+            description: >-
+              No Sealed Secrets controller has answered a metrics scrape for 10 minutes. Existing Secrets
+              keep working; new or changed SealedSecrets in Git won't become Secrets until it's back.
+            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/SealedSecretsControllerDown.md
+        # condition_info is 1 when a SealedSecret's Synced condition is True,
+        # 0 when it's False (it couldn't be decrypted or written).
+        - alert: SealedSecretUnsealFailed
+          expr: sealed_secrets_controller_condition_info{condition="Synced"} == 0
+          for: 5m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "SealedSecret {{ $labels.namespace }}/{{ $labels.name }} can't be unsealed"
+            description: >-
+              The controller couldn't turn SealedSecret {{ $labels.namespace }}/{{ $labels.name }} into a
+              Secret. Anything that reads that Secret has the old value, or none.
+            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/SealedSecretUnsealFailed.md
+        - alert: TrivyOperatorDown
+          expr: absent(up{job="trivy-operator"} == 1)
+          for: 15m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "Trivy Operator is down: running images aren't being scanned"
+            description: >-
+              Trivy Operator hasn't answered a metrics scrape for 15 minutes. New vulnerabilities in the
+              images that run in the cluster won't be found until it's back (CI's daily rescan still runs).
+            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/TrivyOperatorDown.md
+        # Our own app's images only: the platform's third-party images carry
+        # known findings (decision 0021), which would keep this firing.
+        - alert: OrdersImageCriticalVulnerability
+          expr: |
+            sum by (namespace, image_repository, image_tag) (
+              trivy_image_vulnerabilities{namespace=~"orders-(dev|staging|prod)", severity="Critical"}
+            ) > 0
+          for: 30m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "{{ $labels.namespace }} runs an image with critical vulnerabilities"
+            description: >-
+              Trivy Operator found {{ $value }} critical vulnerabilities in
+              {{ $labels.image_repository }}:{{ $labels.image_tag }}, running in {{ $labels.namespace }}.
+            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/OrdersImageCriticalVulnerability.md
