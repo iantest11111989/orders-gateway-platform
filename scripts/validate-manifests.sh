@@ -33,11 +33,16 @@ mkdir -p out/policy-input
 cat "$OUT"/app-dev.yaml "$OUT"/app-staging.yaml "$OUT"/app-prod.yaml "$OUT"/app-canary.yaml >out/policy-input/apps.yaml
 ok "canary (demo): $(grep -c '^kind:' "$OUT/app-canary.yaml") objects"
 
-step "The app-of-apps (gitops/apps)"
-helm lint gitops/apps --set repo.url=https://example.invalid/repo.git --set repo.revision=main --quiet >/dev/null ||
-  die "helm lint failed for gitops/apps"
-helm template root gitops/apps --set repo.url=https://example.invalid/repo.git --set repo.revision=main >"$OUT/apps.yaml"
-ok "$(grep -c '^kind:' "$OUT/apps.yaml") Applications"
+step "The app-of-apps (gitops/apps), in both modes"
+# The in-stack Git server (default) and GitHub mode: some templates (the
+# promoter) render differently when repo.url is on github.com.
+for mode in in-stack:http://git.git.svc.cluster.local:23232/platform.git github:https://github.com/example/repo.git; do
+  name=${mode%%:*} url=${mode#*:}
+  helm lint gitops/apps --set repo.url="$url" --set repo.revision=main --quiet >/dev/null ||
+    die "helm lint failed for gitops/apps ($name)"
+  helm template root gitops/apps --set repo.url="$url" --set repo.revision=main >"$OUT/apps-$name.yaml"
+  ok "$name: $(grep -c '^kind:' "$OUT/apps-$name.yaml") Applications"
+done
 
 step "gitops/manifests"
 for d in gitops/manifests/*/; do
