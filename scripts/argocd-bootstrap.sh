@@ -7,8 +7,9 @@
 source "$(dirname "$0")/lib.sh"
 
 ARGOCD_CHART_VERSION=$(yq '.spec.sources[0].targetRevision' bootstrap/apps/templates/argocd.yaml)
-REPO_URL=${REPO_URL:-https://github.com/iantest11111989/orders-gateway-platform.git}
-REVISION=${REVISION:-main}
+# The in-stack Git server, which git-sync.sh fills with this checkout.
+REPO_URL=http://git.git.svc.cluster.local:23232/platform.git
+REVISION=main
 APPS_TIMEOUT=${APPS_TIMEOUT:-600}
 
 if kubectl -n argocd get deploy argocd-server >/dev/null 2>&1; then

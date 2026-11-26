@@ -63,10 +63,7 @@ run_toolbox() {
     -v ogp-kube:/root/.kube \
     -w /work \
     -e TOOLBOX_IMAGE="$img" \
-    -e REPO_URL="${REPO_URL:-}" \
-    -e REVISION="${REVISION:-}" \
     -e PRELOAD_IMAGES="${PRELOAD_IMAGES:-}" \
-    -e GITHUB_TOKEN="${GITHUB_TOKEN:-}" \
     -e ARGOCD_OPTS="--port-forward --port-forward-namespace argocd --plaintext" \
     "$img" "$@"
 }

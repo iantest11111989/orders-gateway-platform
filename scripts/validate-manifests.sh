@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Renders everything Argo CD applies, so CI can validate it in seconds,
-# without a cluster (CI · platform, "Validate manifests"):
+# without a cluster (CI · infra, "Validate manifests"):
 #   - helm lint, then helm template of helm/orders-gateway for dev, staging
 #     and prod with their values files
 #   - the app-of-apps chart (bootstrap/apps)
@@ -31,16 +31,10 @@ done
 mkdir -p out/policy-input
 cat "$OUT"/app-dev.yaml "$OUT"/app-staging.yaml "$OUT"/app-prod.yaml >out/policy-input/apps.yaml
 
-step "The app-of-apps (bootstrap/apps), in both modes"
-# The in-stack Git server (default) and GitHub mode: both must render
-# (repo.url feeds every Application's source).
-for mode in in-stack:http://git.git.svc.cluster.local:23232/platform.git github:https://github.com/example/repo.git; do
-  name=${mode%%:*} url=${mode#*:}
-  helm lint bootstrap/apps --set repo.url="$url" --set repo.revision=main --quiet >/dev/null ||
-    die "helm lint failed for bootstrap/apps ($name)"
-  helm template root bootstrap/apps --set repo.url="$url" --set repo.revision=main >"$OUT/apps-$name.yaml"
-  ok "$name: $(grep -c '^kind:' "$OUT/apps-$name.yaml") Applications"
-done
+step "The app-of-apps (bootstrap/apps)"
+helm lint bootstrap/apps --quiet >/dev/null || die "helm lint failed for bootstrap/apps"
+helm template root bootstrap/apps >"$OUT/apps-in-stack.yaml"
+ok "$(grep -c '^kind:' "$OUT/apps-in-stack.yaml") Applications"
 
 step "system/<component> manifests"
 for c in system/*/; do

@@ -17,15 +17,8 @@
 #
 # Environment:
 #   TOOLBOX_IMAGE   use this toolbox image instead of the pinned one
-#   REPO_URL        Git repo Argo CD syncs from. Default: none, which means
-#                   the in-stack Git server holding this checkout. Set it
-#                   (e.g. this repo on GitHub) for GitHub mode:
-#                   ./pipeline cd and rollback then refuse, since
-#                   Argo CD follows GitHub
-#   REVISION        GitHub mode only: branch, tag or commit SHA to sync
-#                   (default: main)
-#   GITHUB_TOKEN    only for `demo gitops-revert` (GitHub mode), which pushes
-#                   a demo branch to REPO_URL (e.g. GITHUB_TOKEN=$(gh auth token))
+#
+# Argo CD syncs from the in-stack Git server, which holds this checkout.
 set -eu
 
 cd "$(dirname "$0")"
@@ -34,7 +27,7 @@ REPO_ROOT=$(pwd)
 . scripts/lib/host.sh
 
 usage() {
-  sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 

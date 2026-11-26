@@ -21,8 +21,8 @@
 # Each edits cd/$APP/ENV.yaml in this checkout: the change is a normal file
 # change you can see, commit or revert. Not `kubectl rollout undo` or
 # `kubectl set image`: Argo CD's self-heal would put Git's version back
-# within seconds. Needs the cluster's in-stack Git server (./platform up).
-# Runs in the toolbox.
+# within seconds.
+# Argo CD follows the in-stack Git server (./platform up). Runs in the toolbox.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 ROOT=$(cd "$(dirname "$0")/.." && pwd)

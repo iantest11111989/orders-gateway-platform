@@ -74,7 +74,7 @@ if [ "$over" -ne 0 ]; then
   die "nodes advertise more than their cap, so pods could be OOM-killed. This cluster was created before reservations were added; recreate it: ./platform down && ./platform up"
 fi
 
-# CI only (PRELOAD_IMAGES, set by .github/workflows/platform.yml): import the
+# CI only (PRELOAD_IMAGES, set by .github/workflows/e2e.yml): import the
 # cached images before Argo CD starts pulling, so a cold start doesn't hinge
 # on every registry answering. Best effort; scripts/images.sh explains.
 if [ -n "${PRELOAD_IMAGES:-}" ]; then
@@ -105,16 +105,10 @@ bash "$(dirname "$0")/registry.sh" install
 bash "$(dirname "$0")/registry.sh" seed
 hand_over_app_applications
 
-# Argo CD syncs from the in-stack Git server by default: the cluster runs this
-# checkout. REPO_URL (e.g. this repo on GitHub) switches to
-# GitHub mode, where CI's promotion PRs apply.
-if [ -z "${REPO_URL:-}" ]; then
-  bash "$(dirname "$0")/git-sync.sh"
-  export REPO_URL=http://git.git.svc.cluster.local:23232/platform.git REVISION=main
-  ok "Argo CD syncs from the in-stack Git server (this checkout)"
-else
-  ok "GitHub mode: Argo CD syncs from $REPO_URL @ ${REVISION:-main}"
-fi
+# Argo CD syncs from the in-stack Git server: the cluster runs this checkout.
+# CI/CD is local (./pipeline); GitHub only runs checks on pull requests.
+bash "$(dirname "$0")/git-sync.sh"
+ok "Argo CD syncs from the in-stack Git server (this checkout)"
 
 echo
 bash "$(dirname "$0")/argocd-bootstrap.sh"

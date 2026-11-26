@@ -1,8 +1,8 @@
-# Git source every child Application reads its values and manifests from.
-# ./platform up overrides these (from REPO_URL / REVISION) in the root
-# Application, so forks and branches work without editing files.
+# Git source every child Application reads its values and manifests from:
+# the in-stack Git server, which ./platform up fills with this checkout. (A
+# cluster per environment, docs/production-on-aws.md, sets its own repo.)
 repo:
-  url: https://github.com/iantest11111989/orders-gateway-platform.git
+  url: http://git.git.svc.cluster.local:23232/platform.git
   revision: main
 
 # Which environment this cluster runs. Empty (local): dev, staging and prod
