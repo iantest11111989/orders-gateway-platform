@@ -4,3 +4,7 @@
 repo:
   url: https://github.com/iantest11111989/orders-gateway-platform.git
   revision: main
+
+# Which environment this cluster runs. Empty (local): dev, staging and prod
+# all run here. With one cluster per environment, each sets its own.
+env: ""
