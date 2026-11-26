@@ -63,14 +63,16 @@ drift_report() {
 }
 # staging and prod don't sync by themselves (someone clicks Sync, or
 # ./pipeline cd --sync). One that has never synced, as on a new cluster, gets
-# its first sync here. After that, Synced isn't required of them: a change
+# its first sync here (again, if that one failed). After that, Synced isn't required of them: a change
 # may be waiting for its click, so ready means Healthy and synced once.
 while :; do
   # name sync health operation-phase, one line per Application; a manual app
   # that has synced before reads as Synced.
   status=$(kubectl -n argocd get applications.argoproj.io -o json 2>/dev/null |
     jq -r '.items[] | (.spec.syncPolicy.automated == null) as $manual
-      | if $manual and .status.operationState == null and .operation == null then "SYNC \(.metadata.name)" else empty end,
+      | if $manual and .operation == null and ((.status.history // []) | length) == 0
+           and (.status.operationState == null or (.status.operationState.phase | IN("Failed", "Error")))
+        then "SYNC \(.metadata.name)" else empty end,
         "\(.metadata.name) \(if $manual and .status.operationState.phase == "Succeeded" then "Synced" else (.status.sync.status // "") end) \(.status.health.status // "") \(.status.operationState.phase // "")"' || true)
   while read -r name; do
     [ -z "$name" ] || { sync_app "$name" bootstrap && ok "$name: first sync started (staging and prod sync on demand)"; }
