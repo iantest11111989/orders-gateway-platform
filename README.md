@@ -200,13 +200,12 @@ This is a local practice setup, so some things differ from a real platform:
 - The Sealed Secrets key is public. Anything sealed with it is public too.
 - Alerts go to a local receiver, not a pager.
 
-See [docs/deviations-from-test.md](docs/deviations-from-test.md) for where the repo departs from the original brief.
+[docs/production.md](docs/production.md) covers what would change and why. See [docs/deviations-from-test.md](docs/deviations-from-test.md) for where the repo departs from the original brief.
 
 ## Further reading
 
 - [docs/learn/](docs/learn/README.md): hands-on exercises on the running stack, starting with [a tour of the repo](docs/learn/00-repo-tour.md).
-- [docs/production-on-aws.md](docs/production-on-aws.md): how this would run on AWS: accounts, EKS, ECR, an Argo CD per cluster, Datadog, promotion and canaries, DR, cost.
-- [docs/ci-cd-in-production.md](docs/ci-cd-in-production.md): how CI/CD would run in production: the stages, build once and promote the digest, promotion by pull request, rollback.
+- [docs/production.md](docs/production.md): what would change in a real cloud deployment, and how shipping and rollback would work there.
 - [docs/terraform-sketch/](docs/terraform-sketch/README.md): the EKS part in Terraform, never applied.
 
 ## Repository layout

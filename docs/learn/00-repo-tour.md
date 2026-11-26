@@ -104,7 +104,7 @@ Files: [`system/git-server/`](../../system/git-server/), [`.github/workflows/`](
 ./platform kubectl -n dev get deploy orders-gateway -w    # back to 1 within seconds
 ```
 
-Argo CD reads from a Git server inside the cluster that holds a snapshot of your checkout. CI/CD runs locally through `./pipeline`; GitHub only checks pull requests. [`docs/ci-cd-in-production.md`](../ci-cd-in-production.md) describes what a real pipeline adds.
+Argo CD reads from a Git server inside the cluster that holds a snapshot of your checkout. CI/CD runs locally through `./pipeline`; GitHub only checks pull requests. [`docs/production.md`](../production.md) describes how it would run in production.
 
 Check yourself: which policy in [`policies/`](../../policies/) stops an unsigned image in prod? Why are `./pipeline`'s unsigned `localhost:30500/` images still admitted? (Read `verify-image-signatures.yaml`.)
 
@@ -156,4 +156,4 @@ Tool versions are in [`toolbox/versions.env`](../../toolbox/versions.env) and ch
 
 - Exercises [1](01-prometheus.md) to [5](05-k8s-operations.md), if you skipped them.
 - [`runbooks/`](../../runbooks/README.md): one per alert.
-- [`docs/production-on-aws.md`](../production-on-aws.md): how this would run on AWS.
+- [`docs/production.md`](../production.md): what would change in production.
