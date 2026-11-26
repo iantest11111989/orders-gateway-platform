@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # The toolbox carries every pinned tool the platform needs, so Docker is the
-# only thing you install. ./platform runs commands inside it.
+# only thing a reviewer installs. ./platform runs commands inside it.
 
 # docker:29-cli (multi-arch index digest): Alpine with the Docker CLI, which
 # kind needs to create its node containers through the mounted socket.

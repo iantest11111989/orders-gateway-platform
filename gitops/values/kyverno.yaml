@@ -1,6 +1,6 @@
 # Kyverno chart values (gitops/apps/templates/kyverno.yaml). Admission
 # controller only: it validates and mutates at admission time, which is all
-# the policies in policies/ need. Decision 0012.
+# the policies in policies/ need.
 
 # Background scans, cleanup policies and policy reports are off to save
 # memory. Audit results still show up as metrics

@@ -1,5 +1,5 @@
 # Trivy Operator chart values (gitops/apps/templates/trivy-operator.yaml).
-# Decision 0021. Sized for the 6 CPU / 12 GiB budget: the vulnerability DB
+# Sized for the 6 CPU / 12 GiB budget: the vulnerability DB
 # lives once in the built-in Trivy server, and only one scan Job runs at a time.
 
 operator:
