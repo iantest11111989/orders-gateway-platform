@@ -43,11 +43,13 @@ workers() { node_containers | grep -v control-plane; }
 arch() { case "$(docker exec "$1" uname -m)" in aarch64|arm64) echo arm64 ;; *) echo amd64 ;; esac; }
 refs() { docker exec "$1" ctr -n k8s.io images ls -q | grep -v '^sha256:' | sort -u; }
 
-# The images to cache: every image the pods use by tag, minus kind's own.
+# The images to cache: every image the pods use by tag, minus kind's own and
+# the apps' images in the in-stack registry (localhost:30500/, built and
+# published on each cluster, not pullable from the Docker host).
 list_images() {
   kubectl get pods -A -o json |
     jq -r '[.items[].spec | (.containers + (.initContainers // []))[] | .image] | unique | .[] | select(contains("@") | not)' |
-    grep -v -E "$KIND_PRELOADED"
+    grep -v -E "$KIND_PRELOADED" | grep -v '^localhost:30500/' || true
 }
 
 [ "$cmd" = list ] && { list_images; exit 0; }

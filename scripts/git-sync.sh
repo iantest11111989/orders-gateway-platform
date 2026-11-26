@@ -62,6 +62,7 @@ remote="ssh://127.0.0.1:$port/platform.git"
 export GIT_SSH_COMMAND="ssh -i $KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
 
 step "Snapshot of this checkout → in-stack main"
+hand_over_app_applications
 git init -q "$tmp/g"
 g() { git -c safe.directory='*' --git-dir="$tmp/g/.git" --work-tree="$ROOT" "$@"; }
 parent=''

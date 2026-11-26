@@ -27,6 +27,15 @@ configs:
   secret:
     argocdServerAdminPassword: "$2a$10$XEl/Kynful4ORRtkDtt9H.n7GglQet9YoTAnqiQNHj3Jxq7BgDimG"
     argocdServerAdminPasswordMtime: "2026-11-25T23:00:00Z"
+  # The in-stack registry (system/registry/): Helm charts that ./pipeline
+  # publishes, as OCI artifacts over plain HTTP inside the cluster.
+  repositories:
+    registry:
+      name: registry
+      type: helm
+      url: registry.registry.svc.cluster.local:5000/charts
+      enableOCI: "true"
+      insecureOCIForceHttp: "true"
   params:
     # Plain HTTP end to end: Traefik serves it on http://localhost:8081.
     server.insecure: true

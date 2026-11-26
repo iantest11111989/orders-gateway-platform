@@ -1,11 +1,10 @@
 # Images may come only from this repo's GHCR namespace and the upstream
 # registries the platform's pinned charts use. The list comes from every
 # image running on a full cluster.
-# localhost/orders-gateway:<tag> is the app built on the host and loaded
-# into kind by the README's "ship a new version" (no registry involved). Only
-# that one name, with a tag: not all of localhost/. verify-image-signatures
-# doesn't match it, deliberately: production would admit only CI's signed
-# ghcr.io images.
+# localhost:30500/ is the in-stack registry (system/registry/), where
+# ./pipeline publishes each app's images; the nodes pull them through its
+# NodePort on localhost. verify-image-signatures doesn't match it,
+# deliberately: production would admit only CI's signed images.
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -15,7 +14,7 @@ metadata:
     policies.kyverno.io/description: >-
       Images must be fully qualified and come from ghcr.io/iantest11111989,
       quay.io, registry.k8s.io, docker.io, ecr-public.aws.com or
-      reg.kyverno.io. A bare name like "alpine:3" fails: write
+      reg.kyverno.io, or the in-stack registry localhost:30500. A bare name like "alpine:3" fails: write
       docker.io/library/alpine:3 so the registry is explicit.
 spec:
   validationActions: [Audit]
@@ -39,7 +38,7 @@ spec:
     - name: allowed
       expression: >-
         ['ghcr.io/iantest11111989/', 'quay.io/', 'registry.k8s.io/', 'docker.io/',
-         'ecr-public.aws.com/', 'reg.kyverno.io/', 'localhost/orders-gateway:']
+         'ecr-public.aws.com/', 'reg.kyverno.io/', 'localhost:30500/']
   validations:
     - expression: >-
         variables.images.all(i, variables.allowed.exists(p, i.startsWith(p)))

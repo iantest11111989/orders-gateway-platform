@@ -204,7 +204,7 @@ spec:
       resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 32Mi}}
       securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
 ---
-# The README's local build, loaded into kind: allowed by name and tag.
+# An image ./pipeline published to the in-stack registry: allowed.
 apiVersion: v1
 kind: Pod
 metadata:
@@ -215,11 +215,11 @@ spec:
   securityContext: {runAsNonRoot: true}
   containers:
     - name: app
-      image: localhost/orders-gateway:local-20261125-1
+      image: localhost:30500/orders-gateway:1.2.0
       resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 32Mi}}
       securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
 ---
-# Any other local image is still refused.
+# Any other local registry or image is refused.
 apiVersion: v1
 kind: Pod
 metadata:
