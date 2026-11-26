@@ -74,7 +74,9 @@ c rev-parse --git-dir >/dev/null 2>&1 && has_history=true
 # and a tag for each chart's current version. Tags there are never moved or
 # deleted: a version means one chart.
 step "Chart versions (tags <app>-chart-<version>)"
-g ls-remote --tags "$remote" '*-chart-*' 2>/dev/null | sed -n 's|.*refs/tags/\([^^]*\)$|\1|p' | sort -u >"$tmp/tags.stack"
+# A new server has no platform.git yet (the first push creates it): no tags.
+{ g ls-remote --tags "$remote" '*-chart-*' 2>/dev/null || true; } |
+  sed -n 's|.*refs/tags/\([^^]*\)$|\1|p' | sort -u >"$tmp/tags.stack"
 : >"$tmp/tags.local"
 $has_history && c tag -l '*-chart-*' | sort -u >"$tmp/tags.local"
 : >"$tmp/tags.new" # tags to create on the snapshot
