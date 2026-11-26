@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# ./platform budget [--watch SECONDS]: proves the stack fits the brief's
-# 6 CPU / 12 GiB budget (section 3), measured, not estimated.
+# ./platform budget [--watch SECONDS]: proves the stack fits its
+# 6 CPU / 12 GiB budget, measured, not estimated.
 #   1. The kind node containers' hard caps (docker update in up.sh) add up
 #      to no more than 6 CPU / 12 GiB, so the cluster can't use more.
 #   2. What the nodes actually use now (docker stats), per node and in total.

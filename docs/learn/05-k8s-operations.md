@@ -27,7 +27,7 @@ That's the rule for this whole platform: **change Git, not the cluster.** A manu
 
 ## 2. Argo Rollouts: the canary (5 min)
 
-prod runs a plain Deployment named `app` (the assignment's contract, [decision 0026](../decisions/0026-compose-entrypoint.md)). The canary lives in the **demo** copy of prod: a **Rollout** moves traffic to a new version in steps and checks the SLO at each one ([decision 0011](../decisions/0011-canary-rollouts.md)).
+prod runs a plain Deployment named `app`. The canary lives in the **demo** copy of prod: a **Rollout** moves traffic to a new version in steps and checks the SLO at each one.
 
 1. Start the canary demo (`./platform demo canary`, about 6 minutes), then in the shell:
 
@@ -49,7 +49,7 @@ To see a canary abort, run `./platform demo canary-fail` next (about 5 minutes),
 
 ## 3. Kyverno: what's allowed to run (5 min)
 
-Kyverno checks every pod at admission ([decisions 0012](../decisions/0012-kyverno-policies.md) and [0022](../decisions/0022-enforce-in-orders.md)). In the app namespaces (`dev`, `staging`, `prod`, `demo`), `:latest` images and unsigned app images are **refused**. Everywhere, the other policies only **audit**: they report, they don't block.
+Kyverno checks every pod at admission. In the app namespaces (`dev`, `staging`, `prod`, `demo`), `:latest` images and unsigned app images are **refused**. Everywhere, the other policies only **audit**: they report, they don't block.
 
 1. Ask the API server to create a `:latest` pod without actually creating it (`--dry-run=server` still runs admission):
 

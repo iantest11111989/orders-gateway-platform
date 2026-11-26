@@ -37,7 +37,7 @@
     {
       "type": "stat",
       "title": "Pages firing",
-      "description": "Alerts with severity page (ours) or critical (the chart's) firing now. Alertmanager sends these to the page receiver (decision 0025). Should be 0.",
+      "description": "Alerts with severity page (ours) or critical (the chart's) firing now. Alertmanager sends these to the page receiver. Should be 0.",
       "id": 2,
       "datasource": {
         "type": "prometheus",
@@ -967,7 +967,7 @@
     {
       "type": "timeseries",
       "title": "Availability burn rate (1 h)",
-      "description": "How fast each environment spends its availability error budget: 1 is exactly on budget, 14.4 is the fast-burn page threshold (decision 0006). Details on the orders-gateway dashboard.",
+      "description": "How fast each environment spends its availability error budget: 1 is exactly on budget, 14.4 is the fast-burn page threshold. Details on the orders-gateway dashboard.",
       "id": 11,
       "datasource": {
         "type": "prometheus",
@@ -1014,7 +1014,7 @@
     {
       "type": "timeseries",
       "title": "Requests per second",
-      "description": "/work and /echo requests per second in each environment, all statuses. Each gets the patch promoter's trickle (decision 0024); prod also any load you send to http://localhost:8080.",
+      "description": "/work and /echo requests per second in each environment, all statuses. Each gets the patch promoter's trickle; prod also any load you send to http://localhost:8080.",
       "id": 12,
       "datasource": {
         "type": "prometheus",
@@ -1256,7 +1256,7 @@
     {
       "type": "stat",
       "title": "Requests per second, all environments",
-      "description": "/work and /echo per second across dev, staging and prod. Without load this is the patch promoter's trickle (decision 0024), about four requests a second per environment; 0 means the trickle or the gateway is down.",
+      "description": "/work and /echo per second across dev, staging and prod. Without load this is the patch promoter's trickle, about four requests a second per environment; 0 means the trickle or the gateway is down.",
       "id": 17,
       "datasource": {
         "type": "prometheus",

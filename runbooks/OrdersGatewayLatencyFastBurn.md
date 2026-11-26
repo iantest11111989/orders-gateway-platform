@@ -4,7 +4,7 @@
 
 ## What it means
 
-The orders-gateway latency SLO says 99.5% of `/echo` and `/version` requests must finish within 250 ms (the histogram's `le="0.25"` bucket), over 30 days. That leaves an **error budget of 0.5%**. `/work` is left out: its latency is whatever the caller asks for with `?ms=` ([decision 0027](../docs/decisions/0027-slis-for-the-node-app.md)). This alert covers the **latency** SLI.
+The orders-gateway latency SLO says 99.5% of `/echo` and `/version` requests must finish within 250 ms (the histogram's `le="0.25"` bucket), over 30 days. That leaves an **error budget of 0.5%**. `/work` is left out: its latency is whatever the caller asks for with `?ms=`. This alert covers the **latency** SLI.
 
 It fires when more than **7.2%** of `/echo` and `/version` requests in one namespace (environment) take longer than 250 ms. That's **14.4x** the rate the budget allows, measured over the last **1 hour** and also over the last **5 minutes**, for 2 minutes. At that rate the whole 30-day error budget would be gone in about 2 days.
 

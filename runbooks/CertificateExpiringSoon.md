@@ -4,7 +4,7 @@
 
 ## What it means
 
-cert-manager renews the gateway's `localtest-me` certificate 30 days before it expires (90-day lifetime), and the `ogp-demo-ca` CA at two thirds of its one-year life ([decision 0008](../docs/decisions/0008-gateway-and-tls.md)). Under 14 days left means renewal has been failing for weeks. When it expires, every `https://*.localtest.me` URL fails TLS.
+cert-manager renews the gateway's `localtest-me` certificate 30 days before it expires (90-day lifetime), and the `ogp-demo-ca` CA at two thirds of its one-year life. Under 14 days left means renewal has been failing for weeks. When it expires, every `https://*.localtest.me` URL fails TLS.
 
 The labels `exported_namespace` and `name` say which certificate.
 

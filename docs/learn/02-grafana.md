@@ -83,7 +83,7 @@ Leave without saving. If Grafana asks, **Discard**.
 
 ## 6. Where dashboards really live
 
-Grafana here has no persistent storage: **dashboards you save in the UI are gone when the Grafana pod restarts.** The provided dashboards come from Git. Each is a JSON file in [`dashboards/`](../../dashboards/), turned into a ConfigMap that Argo CD applies and Grafana's sidecar loads ([decision 0023](../decisions/0023-dashboards-as-code.md)).
+Grafana here has no persistent storage: **dashboards you save in the UI are gone when the Grafana pod restarts.** The provided dashboards come from Git. Each is a JSON file in [`dashboards/`](../../dashboards/), turned into a ConfigMap that Argo CD applies and Grafana's sidecar loads.
 
 To keep yours, use **Export → Export as JSON** on your dashboard, save it as `dashboards/my-first.json`, and follow the steps in [`dashboards/README.md`](../../dashboards/README.md). `scripts/dashboards.sh check` would then refuse it if you skipped a description.
 

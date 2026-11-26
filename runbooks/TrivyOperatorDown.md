@@ -4,11 +4,11 @@
 
 ## What it means
 
-Trivy Operator hasn't answered a Prometheus scrape for 15 minutes. While it's down, images that start running aren't scanned, and existing reports aren't refreshed. CI's daily rescan of the environments' images ([decision 0019](../docs/decisions/0019-rescan-running-images.md)) still runs, so the app image is still covered.
+Trivy Operator hasn't answered a Prometheus scrape for 15 minutes. While it's down, images that start running aren't scanned, and existing reports aren't refreshed. CI's daily rescan of the environments' images still runs, so the app image is still covered.
 
 ## Likely causes
 
-- The operator or its built-in Trivy server is OOM-killed. Loading the vulnerability DB is its biggest memory use ([decision 0021](../docs/decisions/0021-trivy-operator.md)).
+- The operator or its built-in Trivy server is OOM-killed. Loading the vulnerability DB is its biggest memory use.
 - It can't download the vulnerability DB (registry rate limits) and is restarting.
 - Only the scrape is broken.
 

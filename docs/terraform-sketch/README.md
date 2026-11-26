@@ -1,6 +1,6 @@
 # Terraform sketch: the platform on EKS
 
-**A sketch, never applied or validated.** It answers the assignment's stretch item: what changes between the local kind cluster and a real cloud deployment. It shows the shape and the choices, not a tested module.
+**A sketch, never applied or validated.** It sketches what changes between the local kind cluster and a real cloud deployment: the shape and the choices, not a tested module.
 
 What Terraform does here, and what it deliberately doesn't:
 

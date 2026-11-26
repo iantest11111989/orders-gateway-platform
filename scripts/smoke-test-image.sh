@@ -5,7 +5,7 @@
 #   - /healthz answers at once; /readyz is 503 during the 3 s warm-up, then 200
 #     (the startupProbe and readinessProbe, charts/orders-gateway)
 #   - /version, /work, POST /echo serve; unknown paths are 404
-#   - /metrics has the series the SLOs and dashboards read (decision 0027)
+#   - /metrics has the series the SLOs and dashboards read
 #   - SIGTERM drains: an in-flight request finishes with 200, /readyz turns
 #     503, and the process exits 0 well inside the 35 s grace period
 # Usage: scripts/smoke-test-image.sh <image>   (expects VERSION=ci baked in)

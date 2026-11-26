@@ -1,7 +1,7 @@
-// Renovate keeps every pin in this repo current (brief section 10).
+// Renovate keeps every pin in this repo current.
 // It runs as the Renovate GitHub App on a daily schedule. Patch updates
 // auto-merge after all checks pass; minor and major updates wait for the
-// owner. See docs/decisions/0010-renovate.md.
+// owner.
 {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: [
@@ -22,8 +22,8 @@
   // native auto-merge would merge at once, since main has no required checks.
   platformAutomerge: false,
 
-  // Plain manifests with an image (the python image of the patch promoter,
-  // decision 0024, and the alert receiver, decision 0025). The kubernetes
+  // Plain manifests with an image (the python image of the patch promoter
+  // and the alert receiver). The kubernetes
   // manager has no default file patterns.
   kubernetes: {
     managerFilePatterns: ['/^gitops/manifests/promoter/.+\\.yaml$/', '/^gitops/manifests/monitoring/alert-receiver\\.yaml$/'],

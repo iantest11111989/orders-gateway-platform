@@ -73,7 +73,7 @@
     {
       "type": "stat",
       "title": "Availability budget left (last 24 h)",
-      "description": "Share of the availability error budget still unspent over the last 24 hours, the window Prometheus keeps here. The SLO allows 0.5% of /work and /echo requests to fail with a 5xx (4xx are the caller's mistake and don't count; decision 0027). 100% means none failed, 0% means exactly 0.5% failed, negative means the SLO is broken for this window. Production would compute this over 30 days (see README, Production differences).",
+      "description": "Share of the availability error budget still unspent over the last 24 hours, the window Prometheus keeps here. The SLO allows 0.5% of /work and /echo requests to fail with a 5xx (4xx are the caller's mistake and don't count). 100% means none failed, 0% means exactly 0.5% failed, negative means the SLO is broken for this window. Production would compute this over 30 days (see the README, Local vs a real cloud).",
       "id": 2,
       "datasource": {
         "type": "prometheus",
@@ -140,7 +140,7 @@
     {
       "type": "stat",
       "title": "Latency budget left (last 24 h)",
-      "description": "Share of the latency error budget still unspent over the last 24 hours. The SLO allows 0.5% of /echo and /version requests to take longer than 250 ms (counted from the histogram's le=\"0.25\" bucket, so it's exact, not estimated). /work is left out: its latency is whatever the caller asks for with ?ms= (decision 0027). Negative means the SLO is broken for this window.",
+      "description": "Share of the latency error budget still unspent over the last 24 hours. The SLO allows 0.5% of /echo and /version requests to take longer than 250 ms (counted from the histogram's le=\"0.25\" bucket, so it's exact, not estimated). /work is left out: its latency is whatever the caller asks for with ?ms=. Negative means the SLO is broken for this window.",
       "id": 3,
       "datasource": {
         "type": "prometheus",
@@ -641,7 +641,7 @@
     {
       "type": "timeseries",
       "title": "/work: duration and CPU",
-      "description": "How long /work calls take (p50 and p99, left axis) and the CPU the app uses per pod against its 100m request (right axis). /work's duration is chosen by the caller (?ms=, up to 2 s), so it isn't an SLO (decision 0027); watch it with CPU: when pods run near their request, the HPA adds pods, and if it can't, /echo latency (the SLO) suffers next.",
+      "description": "How long /work calls take (p50 and p99, left axis) and the CPU the app uses per pod against its 100m request (right axis). /work's duration is chosen by the caller (?ms=, up to 2 s), so it isn't an SLO; watch it with CPU: when pods run near their request, the HPA adds pods, and if it can't, /echo latency (the SLO) suffers next.",
       "id": 12,
       "datasource": {
         "type": "prometheus",

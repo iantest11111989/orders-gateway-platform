@@ -1,5 +1,4 @@
-# orders-gateway: the assignment's app (server.js, unchanged). A better
-# Dockerfile than the one it came with, as the rules allow:
+# orders-gateway (server.js). A hardened Dockerfile:
 # - the base image pinned by version and digest (Renovate keeps it current),
 # - a numeric user, so Kubernetes can check runAsNonRoot (USER node is a
 #   name it can't),

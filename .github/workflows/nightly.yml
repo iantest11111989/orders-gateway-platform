@@ -1,8 +1,8 @@
 name: Scheduled · nightly E2E
 
-# The full end-to-end test (brief, section 10): on fresh GitHub-hosted runners
+# The full end-to-end test: on fresh GitHub-hosted runners
 # with only Docker, `./platform up`, `verify`, a canary demo with `budget`
-# measuring alongside, gitops-revert, then `down`. It proves a reviewer can start the repo
+# measuring alongside, gitops-revert, then `down`. It proves anyone can start the repo
 # from scratch, on x86-64 and on arm64. Separate from real deploys: the
 # cluster lives only for this job and syncs from main.
 on:
@@ -44,7 +44,7 @@ jobs:
             sleep 30
           done
           exit 1
-      # The brief's budget has to hold during the demos too: measure the peak
+      # The 6 CPU / 12 GiB budget has to hold during the demos too: measure the peak
       # while the canary runs (a second prod-sized copy plus k6).
       - name: ./platform demo canary, with ./platform budget --watch alongside
         run: |

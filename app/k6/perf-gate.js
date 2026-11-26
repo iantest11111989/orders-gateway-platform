@@ -1,5 +1,5 @@
 // CI's performance gate (CI · app, "4 · Performance gate"): the same traffic
-// mix as load.js, held to the SLOs (decision 0027) instead of the demos'
+// mix as load.js, held to the SLOs instead of the demos'
 // looser checks:
 //   - 99.5% of requests "good" (not 5xx; /echo and /version also < 250 ms)
 //   - p99 of POST /echo and of GET /version under 250 ms

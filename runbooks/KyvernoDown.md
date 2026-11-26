@@ -4,7 +4,7 @@
 
 ## What it means
 
-No Kyverno admission controller has answered a Prometheus scrape for 5 minutes. Kyverno's webhooks use `failurePolicy: Ignore` ([decision 0022](../docs/decisions/0022-enforce-in-orders.md)), so the API server admits pods **without** Kyverno's checks while it's down. `:latest` and unsigned images can get into the app namespaces (`dev`, `staging`, `prod`, `demo`). Pod Security `restricted` still applies, because it's built into the API server.
+No Kyverno admission controller has answered a Prometheus scrape for 5 minutes. Kyverno's webhooks use `failurePolicy: Ignore`, so the API server admits pods **without** Kyverno's checks while it's down. `:latest` and unsigned images can get into the app namespaces (`dev`, `staging`, `prod`, `demo`). Pod Security `restricted` still applies, because it's built into the API server.
 
 ## Likely causes
 

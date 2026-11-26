@@ -59,7 +59,7 @@ jobs:
 
   # Publishes multi-arch images to GHCR from main, after the tests pass:
   #   sha-<12 chars>, main   this commit (what environments/dev deploys)
-  #   v1, v2, v2-bad         the demo images (brief, section 5), rebuilt from
+  #   v1, v2, v2-bad         the demo images, rebuilt from
   #                          the same commit so they stay in step with the code
   # No :latest (policy rejects it). Each push exposes its digest as a job
   # output; `sign` signs those digests.
@@ -198,7 +198,7 @@ jobs:
           scripts/sign-images.sh "$D_MAIN" "$D_V1" "$D_V2" "$D_V2_BAD" |
             tee -a "$GITHUB_STEP_SUMMARY"
 
-  # Scans the published image before dev gets it (decision 0016). The PR
+  # Scans the published image before dev gets it. The PR
   # already scanned the same code; this catches vulnerabilities published
   # since. The demo tags are built from the same code and dependencies, so
   # the main image stands in for them.
@@ -216,15 +216,14 @@ jobs:
           DIGEST: ${{ needs.publish.outputs.digest-main }}
         run: scripts/scan-image.sh "$IMAGE@$DIGEST"
 
-  # Points dev at the image this commit just published and signed (brief,
-  # section 10: "bump the image tag in environments/dev/values.yaml
-  # automatically; Argo deploys it to dev"). It runs only after `sign` and
+  # Points dev at the image this commit just published and signed: it bumps
+  # the image in environments/dev/values.yaml and Argo CD deploys it. It runs only after `sign` and
   # `scan`, so dev never runs an unsigned digest or one with a fixable
   # HIGH/CRITICAL vulnerability. The commit goes straight to main as
   # github-actions[bot]; a push made with GITHUB_TOKEN starts no workflows, so
   # it can't loop. Runs on main are serialized by the workflow's concurrency
   # group, so the newest commit's image wins. Staging and prod move by
-  # promotion PRs (job promote-prs, decision 0015).
+  # promotion PRs (job promote-prs).
   promote-dev:
     name: "4 · Deploy dev"
     needs: [publish, sign, scan]
@@ -263,11 +262,11 @@ jobs:
   # Opens (or refreshes) one promotion PR per environment for the image dev
   # just got: branch promote/<env>, rebuilt from main with only that env's
   # image line changed (scripts/set-image.sh). The owner approves and merges
-  # them (brief, section 7); prod then goes through the Argo Rollouts canary.
+  # them; prod then goes through the Argo Rollouts canary.
   # Needs the repository setting "Allow GitHub Actions to create and approve
   # pull requests"; without it the job warns and main stays green. PRs opened
   # with GITHUB_TOKEN start no workflows, so it dispatches the platform checks
-  # on each branch (decision 0015).
+  # on each branch.
   promote-prs:
     name: "5 · Promote (staging and prod PRs)"
     needs: [publish, promote-dev]
@@ -326,9 +325,9 @@ jobs:
           title="Promote $ENV to $tag"
           if [ "$kind" = patch ]; then
             prev=dev; [ "$ENV" = prod ] && prev=staging
-            approval="**Patches only:** the patch promoter merges it once $prev has run this image for an hour with its SLO met (decision 0024). To stop it, commit promotion/PAUSED."
+            approval="**Patches only:** the patch promoter merges it once $prev has run this image for an hour with its SLO met. To stop it, commit promotion/PAUSED."
           else
-            approval="**Needs the owner's approval** (brief, section 7)."
+            approval="**Needs the owner's approval**."
           fi
           body="Moves **$ENV** to \`$tag\` (\`$DIGEST\`), the image dev runs now.
           It was published and signed by $RUN_URL.
@@ -339,10 +338,10 @@ jobs:
           $trailers
           \`\`\`"
           [ "$ENV" = prod ] && body="$body
-          Merging starts a rolling update of prod's Deployment (maxUnavailable 0; decision 0026)."
+          Merging starts a rolling update of prod's Deployment (maxUnavailable 0)."
           body="$body
 
-          Opened by CI (decision 0015); a newer image replaces this PR's commit. Checks run through workflow_dispatch."
+          Opened by CI; a newer image replaces this PR's commit. Checks run through workflow_dispatch."
           pr=$(gh pr list --head "$branch" --base main --state open --json number --jq '.[0].number')
           if [ -n "$pr" ]; then
             gh pr edit "$pr" --title "$title" --body "$body" >/dev/null

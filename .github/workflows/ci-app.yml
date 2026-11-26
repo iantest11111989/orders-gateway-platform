@@ -112,7 +112,7 @@ jobs:
           IDENTITY: ${{ github.server_url }}/${{ github.workflow_ref }}
           DIGEST: ${{ steps.build.outputs.digest }}
         run: scripts/sign-images.sh "$DIGEST"
-      # Fixable HIGH/CRITICAL vulnerabilities fail the PR (decision 0016).
+      # Fixable HIGH/CRITICAL vulnerabilities fail the PR.
       - name: Vulnerability scan (Trivy)
         working-directory: .
         env:

@@ -4,11 +4,11 @@
 
 ## What it means
 
-The live state of an Argo CD Application has differed from Git for 15 minutes. Every Application here has self-heal on, so a manual change is put back within seconds ([decision 0005](../docs/decisions/0005-gitops-layout.md)). An app that *stays* OutOfSync means Argo CD keeps trying and failing to apply what's in Git. The `name` label says which one.
+The live state of an Argo CD Application has differed from Git for 15 minutes. Every Application here has self-heal on, so a manual change is put back within seconds. An app that *stays* OutOfSync means Argo CD keeps trying and failing to apply what's in Git. The `name` label says which one.
 
 ## Likely causes
 
-- **A manifest the API server rejects:** invalid YAML after a merge, a field the CRD doesn't know, or a Kyverno Deny in an app namespace (`dev`, `staging`, `prod`, `demo`) (a `:latest` or unsigned image, [decision 0022](../docs/decisions/0022-enforce-in-orders.md)).
+- **A manifest the API server rejects:** invalid YAML after a merge, a field the CRD doesn't know, or a Kyverno Deny in an app namespace (`dev`, `staging`, `prod`, `demo`) (a `:latest` or unsigned image).
 - **A field something else keeps changing** (a controller or a mutating webhook) that isn't in the app's `ignoreDifferences`, so every sync is immediately out of date again.
 - **The repo can't be read:** GitHub is down, or the revision the app points at doesn't exist.
 

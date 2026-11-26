@@ -13,7 +13,7 @@ data:
     {
       "uid": "budget",
       "title": "Budget",
-      "description": "CPU and memory of the whole stack against its 6 CPU / 12 GiB budget, by namespace and per node (brief, section 8). The same numbers as ./platform budget, over time.",
+      "description": "CPU and memory of the whole stack against its 6 CPU / 12 GiB budget, by namespace and per node. The same numbers as ./platform budget, over time.",
       "tags": [
         "platform",
         "budget"
