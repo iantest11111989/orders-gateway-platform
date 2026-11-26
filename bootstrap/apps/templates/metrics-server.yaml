@@ -1,6 +1,4 @@
-# metrics-server: CPU and memory usage for HorizontalPodAutoscalers (the
-# prod orders-gateway HPA) and `kubectl top`. kind doesn't ship it.
-# Values: system/metrics-server/values.yaml. Wave 10 (controllers).
+# metrics-server (kind doesn't ship it): for the HPA and `kubectl top`. Wave 10.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -31,8 +29,6 @@ spec:
     automated:
       prune: true
       selfHeal: true
-    # Auto-sync does not retry a failed sync of the same revision on its own;
-    # this covers transient failures such as a CRD not yet Established.
     retry:
       limit: 5
       backoff: {duration: 5s, factor: 2, maxDuration: 1m}

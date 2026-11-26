@@ -1,6 +1,4 @@
-# CI · security: static analysis of the app's code, and secret scanning of the
-# whole Git history. On pull requests, on main, and weekly (new CodeQL
-# queries, new gitleaks rules).
+# CodeQL on the app and gitleaks over the whole history; weekly too, for new rules.
 name: CI · security
 
 on:
@@ -24,7 +22,6 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      # Upload the findings to the repo's Security tab (code scanning).
       security-events: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -33,9 +30,7 @@ jobs:
       - uses: github/codeql-action/init@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
         with:
           languages: javascript-typescript
-          # The app is plain Node with no build step.
           build-mode: none
-          # Default queries plus the security-and-quality suite.
           queries: security-and-quality
       - uses: github/codeql-action/analyze@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
         with:
@@ -49,8 +44,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0  # every commit, not just the last
-      # Default rules plus .gitleaks.toml's two intended exceptions (the demo
-      # Sealed Secrets key, and SealedSecret ciphertext).
+      # .gitleaks.toml allows the demo Sealed Secrets key and SealedSecret ciphertext.
       - name: gitleaks
         run: |
           docker run --rm -v "$PWD:/repo:ro" \

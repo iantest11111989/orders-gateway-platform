@@ -4,20 +4,10 @@
 {{- end }}
 {{- /* One cluster per environment (the AWS design) sets env; locally it's
      unset, so every environment renders. */}}
-# The apps: one Application per app and environment, <app>-<env> (e.g.
-# orders-gateway-staging), generated from each env file cd/<app>/<env>.yaml.
-# The app runs in the namespace of the same name as the environment, as Helm
-# release <app>, so every object it makes is named <app>.
-# - The env file pins a published version (version: X, by ./pipeline cd):
-#   the chart <app> X from the in-stack registry, with
-#   cd/<app>/values.yaml + <env>.yaml from Git.
-# - No version (a dev-only build, ./pipeline cd <app> dev with a local
-#   build): the chart helm/<app> as it is in Git, with the same values.
-# autoSync: true in the env file syncs automatically (with prune and
-# self-heal); false waits for someone to click Sync in Argo CD
-# (http://localhost:8081) or ./pipeline cd --sync. Without the key: dev
-# true, staging and prod false.
-# Wave 40 (apps), after the edge and monitoring.
+# One Application <app>-<env> per env file cd/<app>/<env>.yaml, in namespace
+# <env>, Helm release <app>. With `version: X` it uses chart X from the
+# in-stack registry; without, helm/<app> from Git (dev-only builds).
+# autoSync defaults to true for dev, false for staging and prod. Wave 40.
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -31,8 +21,7 @@ spec:
   goTemplate: true
   goTemplateOptions: ["missingkey=error"]
   generators:
-    # One set of parameters per env file: its keys (.env, .version, .image,
-    # ...) plus .path.basename (the app) and .path.filename.
+    # Parameters: the env file's keys plus .path.basename (the app).
     - git:
         repoURL: {{ .Values.repo.url }}
         revision: {{ .Values.repo.revision }}
@@ -47,21 +36,14 @@ spec:
       labels:
         app.kubernetes.io/part-of: platform-demo
         app.kubernetes.io/name: {{ `'{{ .path.basename }}'` }}
-      # Pruning or deleting this Application also deletes what it created.
       finalizers: [resources-finalizer.argocd.argoproj.io]
     spec:
       project: default
-      # Set by templatePatch below: one of the two sources.
       sources: []
       destination:
         server: https://kubernetes.default.svc
         namespace: {{ `'{{ .env }}'` }}
-      # autoSync in the env file (default: dev true, staging and prod false):
-      # true syncs by itself (templatePatch below), false waits for someone
-      # to click Sync in Argo CD (or ./pipeline cd --sync).
       syncPolicy:
-        # Auto-sync does not retry a failed sync of the same revision on its own;
-        # this covers transient failures such as a CRD not yet Established.
         retry:
           limit: 5
           backoff: {duration: 5s, factor: 2, maxDuration: 1m}
@@ -72,9 +54,7 @@ spec:
             pod-security.kubernetes.io/audit: restricted
         syncOptions:
           - CreateNamespace=true
-          # Remove what Git no longer has only after everything else is
-          # synced and healthy: renaming an object (app -> orders-gateway)
-          # never leaves the environment without one.
+          # Prune last, so a renamed object never leaves the env without one.
           - PruneLast=true
   templatePatch: |
     {{`{{- $app := .path.basename }}

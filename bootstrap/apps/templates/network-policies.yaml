@@ -1,8 +1,5 @@
-# NetworkPolicies for the platform namespaces (system/network-policies/):
-# deny ingress by default, then allow each namespace's own pods, the nodes,
-# and the cross-namespace flows the platform uses. The app namespaces get
-# theirs from the orders-gateway chart; Argo CD's come with its chart.
-# Wave 30: every namespace it covers exists by then (waves 10-25).
+# NetworkPolicies for the platform namespaces (system/network-policies/); the
+# app namespaces get theirs from the chart. Wave 30: after all namespaces exist.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -13,8 +10,6 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "30"
     argocd.argoproj.io/manifest-generate-paths: "/system/network-policies"
-  # Pruning or deleting this Application also deletes what it created;
-  # without it, a rename orphaned the old resources.
   finalizers: [resources-finalizer.argocd.argoproj.io]
 spec:
   project: default

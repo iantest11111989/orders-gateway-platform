@@ -1,5 +1,4 @@
-# Only Argo CD reads (HTTP). Pushes come through `kubectl port-forward`
-# (scripts/git-sync.sh), which the kubelet forwards to the pod directly.
+# Only Argo CD reads (HTTP). Port-forwarded pushes bypass NetworkPolicy.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

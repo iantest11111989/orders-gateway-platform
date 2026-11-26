@@ -1,17 +1,12 @@
-# CI for the app: every pull request that touches it. Tests, lints, builds
-# both architectures, scans and rehearses signing. Nothing is pushed or
-# deployed: CI/CD for this repo is local (./pipeline). This workflow is also
-# the reference for the pipeline stages production would run in CI
-# (docs/ci-cd-in-production.md).
+# App CI for pull requests: test, lint, multi-arch build, scan and a signing
+# rehearsal. Nothing is pushed; real CI/CD is local (./pipeline).
 name: CI · app
 
 on:
   pull_request:
     paths: ["apps/orders-gateway/**", "!apps/orders-gateway/k6/**", "!apps/orders-gateway/**/*.md", "apps/orders-gateway/k6/load.js", "apps/orders-gateway/k6/perf-gate.js", "scripts/smoke-test-image.sh", ".github/workflows/ci-app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh"]
 
-# Least privilege: jobs read the repo, and only the `image` job (the signing
-# rehearsal) may request an OIDC token. Nothing here writes packages or the
-# repo.
+# Only the `image` job (signing rehearsal) requests an OIDC token.
 permissions:
   contents: read
 
@@ -21,11 +16,8 @@ concurrency:
 
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/orders-gateway
-  # Vulnerability scanner for scripts/scan-image.sh, pinned by tag and digest;
-  # a regex manager in renovate.json5 keeps it current.
+  # Pinned by tag and digest; renovate.json5 regex managers keep these current.
   TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
-  # k6 for the performance gate, pinned by tag and digest (a regex manager in
-  # renovate.json5 keeps it current; the toolbox pins the same version).
   K6_IMAGE: grafana/k6:2.4.0@sha256:d41bb79cd8de5a7ad619b53570e3712633e8bff0937010a5c6c57a4747e7a276
 
 defaults:
@@ -33,8 +25,7 @@ defaults:
     working-directory: apps/orders-gateway
 
 jobs:
-  # The app (server.js) has no dependencies, so its own tests run in the same
-  # pinned Node image the Dockerfile builds from: no setup action to pin.
+  # server.js has no dependencies: test in the Dockerfile's own Node image.
   test:
     name: "1 · Test"
     runs-on: ubuntu-24.04
@@ -56,14 +47,9 @@ jobs:
           persist-credentials: false
       - run: docker run --rm -i hadolint/hadolint:v2.14.0@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e < Dockerfile
 
-  # Pull requests build the image without pushing: only main publishes, so
-  # every published image comes from reviewed code (and, with signing,
-  # verifies against this workflow on refs/heads/main).
-  # It also rehearses the signing on main: the image goes to a throwaway
-  # registry on localhost (nothing public), and scripts/sign-images.sh signs
-  # and checks it exactly as the `sign` job does, so a broken signing step
-  # fails here instead of after main has published. The keyless signature
-  # names this PR's ref and lands in the public Rekor log, like main's do.
+  # PRs build without pushing (only main publishes), but rehearse signing
+  # against a throwaway localhost registry so a broken signing step fails here.
+  # The keyless signature still lands in the public Rekor log.
   image:
     name: "2 · Build, scan and sign (rehearsal: nothing pushed)"
     runs-on: ubuntu-24.04
@@ -99,7 +85,6 @@ jobs:
         working-directory: .
         env:
           IMAGE: localhost:5000/orders-gateway
-          # .../.github/workflows/app.yml@refs/pull/<n>/merge
           IDENTITY: ${{ github.server_url }}/${{ github.workflow_ref }}
           DIGEST: ${{ steps.build.outputs.digest }}
         run: scripts/sign-images.sh "$DIGEST"
@@ -111,12 +96,8 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: scripts/scan-image.sh "localhost:5000/orders-gateway@$DIGEST"
 
-  # Runs the image the way Kubernetes will (uid 1000, read-only, no
-  # capabilities) and checks what the chart relies on: /healthz at once,
-  # /readyz 503 during the warm-up then 200, the endpoints, the metrics the
-  # SLOs read, and that SIGTERM drains an in-flight request and exits 0
-  # (scripts/smoke-test-image.sh). A plain single-platform build of the same
-  # Dockerfile, loaded into the runner's Docker.
+  # Runs the image as Kubernetes will (uid 1000, read-only, no caps) and checks
+  # what the chart relies on (scripts/smoke-test-image.sh).
   smoke:
     name: "3 · Smoke test the image"
     needs: [test, lint]
@@ -131,10 +112,7 @@ jobs:
         working-directory: .
         run: scripts/smoke-test-image.sh orders-gateway:ci
 
-  # The SLOs as a gate: 60 s of the demos' traffic mix (apps/orders-gateway/k6/load.js) at
-  # 20 requests/s against one container, failing on any SLO threshold
-  # (apps/orders-gateway/k6/perf-gate.js): 99.5% good, /echo and /version p99 under 250 ms,
-  # under 0.5% failed requests.
+  # SLO gate: 60 s of load.js traffic at 20 req/s, failing on perf-gate.js thresholds.
   perf:
     name: "4 · Performance gate (k6, 60 s)"
     needs: [test, lint]

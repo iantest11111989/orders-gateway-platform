@@ -1,6 +1,4 @@
-# Loki values (chart grafana/loki): single binary, filesystem storage on a
-# local volume, 2 days of retention, no caches or gateway. One pod, about
-# 256 Mi.
+# Loki: single binary, filesystem storage, 2 days retention, no caches or gateway.
 
 deploymentMode: SingleBinary
 
@@ -21,13 +19,12 @@ loki:
           period: 24h
   limits_config:
     retention_period: 48h
-    # Keep a misbehaving pod from flooding the small volume.
     ingestion_rate_mb: 8
     ingestion_burst_size_mb: 16
     max_query_lookback: 48h
     allow_structured_metadata: true
     volume_enabled: true
-    # No automatic service_name label: streams keep only namespace/app/env/pod.
+    # No automatic service_name label: keep streams to namespace/app/env/pod.
     discover_service_name: []
   compactor:
     retention_enabled: true
@@ -60,20 +57,16 @@ singleBinary:
     size: 5Gi
     storageClass: standard
 
-# Simple-scalable and distributed components: off.
 read: {replicas: 0}
 write: {replicas: 0}
 backend: {replicas: 0}
 
-# Memcached caches would cost more memory than this whole Loki; not needed at
-# this volume.
+# Memcached would cost more memory than this whole Loki.
 chunksCache: {enabled: false}
 resultsCache: {enabled: false}
 
-# Grafana talks to the loki service directly; no nginx gateway.
 gateway: {enabled: false}
 
-# Rules sidecar: no Loki ruler here.
 sidecar:
   rules: {enabled: false}
 

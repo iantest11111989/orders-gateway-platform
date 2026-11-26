@@ -1,9 +1,5 @@
-# Trivy Operator: scans the running workloads' images and the cluster's
-# configuration continuously, and exports the results as Prometheus metrics
-# Values: system/trivy-operator/values.yaml.
-# Trimmed to fit the budget: one scan at a time against one shared Trivy
-# server. Wave 20, beside observability: its ServiceMonitor needs the
-# prometheus-operator CRDs (wave -10), and nothing before the apps needs it.
+# Trivy Operator: continuous image and config scans, exported as metrics
+# (system/trivy-operator/values.yaml). Wave 20.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

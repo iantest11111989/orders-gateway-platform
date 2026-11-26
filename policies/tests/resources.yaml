@@ -1,4 +1,3 @@
-# Test resources for policies/tests/kyverno-test.yaml.
 # good-pod meets every policy; each bad-* pod breaks one thing.
 apiVersion: v1
 kind: Pod
@@ -189,8 +188,7 @@ spec:
           image: ghcr.io/iantest11111989/orders-gateway:v1
           readinessProbe: {httpGet: {path: /readyz, port: 8080}}
 ---
-# A :latest image outside the app namespaces: disallow-latest-tag-platform reports it
-# (Audit), disallow-latest-tag (Deny, app namespaces only) skips it.
+# :latest outside the app namespaces: only the platform (Audit) policy reports it.
 apiVersion: v1
 kind: Pod
 metadata:

@@ -1,22 +1,14 @@
 #!/usr/bin/env bash
 # scripts/persistence-check.sh record|check: does the data that matters
-# survive `docker compose stop` / `start`? The E2E runs `record` before the
-# stop and `check` after the platform is back.
-#
-#   registry     every version the env files pin is still published
-#   Git server   the in-stack main is the same commit (the history ./pipeline
-#                reads for promotion order)
-#   Prometheus   it still has samples from before the stop
-#
-# record writes what it saw to .build/persistence.txt; check compares.
-# Runs in the toolbox.
+# (registry versions, in-stack Git main, Prometheus samples) survive
+# `docker compose stop` / `start`? Used by the E2E. Runs in the toolbox.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 STATE=$ROOT/.build/persistence.txt
 PROM=/api/v1/namespaces/monitoring/services/kube-prometheus-stack-prometheus:9090/proxy/api/v1/query
 
-# The in-stack main's commit, read anonymously through a port-forward.
+# The in-stack main's commit (anonymous read).
 git_main() {
   local log pf port=''
   log=$(mktemp)
@@ -31,7 +23,6 @@ git_main() {
   rm -f "$log"
 }
 
-# Every app:version an env file pins.
 pinned() {
   local dir f
   for dir in "$ROOT"/cd/*/; do
@@ -43,7 +34,6 @@ pinned() {
   done | sort -u
 }
 
-# How many `up` series Prometheus has at a given Unix time.
 up_series_at() {
   kubectl get --raw "$PROM?query=count(up)&time=$1" | jq -r '.data.result[0].value[1] // "0"'
 }
@@ -56,8 +46,7 @@ case "${1:-}" in
     t=$(( $(date +%s) - 60 ))
     n=$(up_series_at "$t"); [ "$n" != 0 ] || die "Prometheus has no samples yet"
     { echo "main_rev=$rev"; echo "prom_time=$t"; echo "prom_up=$n"; } >"$STATE"
-    # The toolbox runs as root: give .build back to the checkout's owner, or
-    # ./pipeline on the host can't write there afterwards (Linux).
+    # The toolbox runs as root: hand .build back, or ./pipeline on a Linux host can't write it.
     chown "$(stat -c %u:%g "$ROOT")" "$(dirname "$STATE")" "$STATE" 2>/dev/null || true
     ok "in-stack main: ${rev:0:12}"
     ok "Prometheus: $n up series at $(date -u -d "@$t" +%H:%M:%S 2>/dev/null || echo "$t")"

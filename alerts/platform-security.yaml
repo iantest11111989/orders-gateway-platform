@@ -1,12 +1,6 @@
-# Alerts for the security components: Kyverno (admission),
-# Sealed Secrets (secrets in Git) and Trivy Operator (vulnerability scans).
-# Argo CD alerts live in their own file (platform-delivery.yaml).
-#
-# Severities follow the SLO alerts: "page" for something that weakens a
-# security control right now, "ticket" for something to fix today.
-# Alertmanager routes them (system/kube-prometheus-stack/values.yaml).
-#
-# Tests: alerts/tests/platform-security.test.yaml (promtool, run in CI).
+# Security alerts: Kyverno, Sealed Secrets and Trivy Operator. "page" when a
+# control is weakened now, "ticket" for something to fix today.
+# Tests: alerts/tests/platform-security.test.yaml.
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -18,9 +12,8 @@ spec:
   groups:
     - name: platform-security
       rules:
-        # Kyverno's webhooks use failurePolicy: Ignore, so while
-        # Kyverno is down, pods are admitted unchecked: :latest and unsigned
-        # images get into the app namespaces. That's why this one pages.
+        # Pages: the webhooks are failurePolicy Ignore, so while Kyverno is down
+        # pods are admitted unchecked.
         - alert: KyvernoDown
           expr: absent(up{job="kyverno-svc-metrics"} == 1)
           for: 5m
@@ -33,9 +26,7 @@ spec:
               fail open (failurePolicy: Ignore), so new pods, including in the app namespaces, skip the tag and
               signature policies until it's back.
             runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/KyvernoDown.md
-        # A policy that errors instead of passing or failing doesn't protect
-        # anything (for example a CEL expression that breaks on a new field,
-        # or a signature check that can't reach the registry).
+        # An erroring policy protects nothing (broken CEL, unreachable registry).
         - alert: KyvernoPolicyErrors
           expr: |
             sum by (policy_name) (
@@ -61,8 +52,7 @@ spec:
               No Sealed Secrets controller has answered a metrics scrape for 10 minutes. Existing Secrets
               keep working; new or changed SealedSecrets in Git won't become Secrets until it's back.
             runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/SealedSecretsControllerDown.md
-        # condition_info is 1 when a SealedSecret's Synced condition is True,
-        # 0 when it's False (it couldn't be decrypted or written).
+        # condition_info is 0 when the Synced condition is False.
         - alert: SealedSecretUnsealFailed
           expr: sealed_secrets_controller_condition_info{condition="Synced"} == 0
           for: 5m
@@ -85,9 +75,8 @@ spec:
               Trivy Operator hasn't answered a metrics scrape for 15 minutes. New vulnerabilities in the
               images that run in the cluster won't be found until it's back (CI's daily rescan still runs).
             runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/TrivyOperatorDown.md
-        # By digest: the environments run images by digest, so image_tag is empty.
-        # Our own app's images only: the platform's third-party images carry
-        # known findings, which would keep this firing.
+        # By digest (envs run digests, so image_tag is empty). Our app's images
+        # only: third-party platform images carry known findings.
         - alert: OrdersImageCriticalVulnerability
           expr: |
             sum by (namespace, image_repository, image_digest) (

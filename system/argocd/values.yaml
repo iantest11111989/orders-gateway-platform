@@ -1,14 +1,10 @@
-# Argo CD Helm values (chart argo/argo-cd). Used twice: by ./platform up for
-# the first install, and by bootstrap/apps/argocd.yaml once Argo CD manages
-# itself. Keep both in sync by editing only this file.
+# Argo CD values: used by ./platform up for the first install and by
+# bootstrap/apps once Argo CD manages itself. Edit only here.
 
 global:
-  # Served by Traefik at http://localhost:8081 (system/edge).
   domain: localhost:8081
-  # Every Argo CD pod on the control plane is fine to spread; nothing special.
 
-# Trimmed for the 6 CPU / 12 GB budget: no Dex (local admin only), no
-# notifications controller, single replicas, no Redis HA.
+# Trimmed for the 6 CPU / 12 GB budget.
 dex:
   enabled: false
 notifications:
@@ -17,18 +13,13 @@ redis-ha:
   enabled: false
 
 configs:
-  # The shared local login for every UI, admin / admin12345, for Argo CD too
-  # (not the random argocd-initial-admin-secret). A bcrypt hash, as the chart
-  # expects: it isn't the password, and the password is a documented demo login.
-  # Not a SealedSecret: Argo CD is installed before the Sealed Secrets
-  # controller exists, so a sealed argocd-secret couldn't be decrypted at
-  # bootstrap. Regenerate with: argocd account bcrypt --password <new>, and
-  # bump the mtime (it logs out existing sessions).
+  # admin / admin12345 (bcrypt), the shared demo login. Not a SealedSecret:
+  # Argo CD installs before the Sealed Secrets controller exists.
+  # Regenerate: argocd account bcrypt --password <new>, and bump the mtime.
   secret:
     argocdServerAdminPassword: "$2a$10$XEl/Kynful4ORRtkDtt9H.n7GglQet9YoTAnqiQNHj3Jxq7BgDimG"
     argocdServerAdminPasswordMtime: "2026-11-25T23:00:00Z"
-  # The in-stack registry (system/registry/): Helm charts that ./pipeline
-  # publishes, as OCI artifacts over plain HTTP inside the cluster.
+  # The in-stack OCI registry for charts ./pipeline publishes (plain HTTP).
   repositories:
     registry:
       name: registry
@@ -37,35 +28,26 @@ configs:
       enableOCI: "true"
       insecureOCIForceHttp: "true"
   params:
-    # Plain HTTP end to end: Traefik serves it on http://localhost:8081.
     server.insecure: true
-    # JSON logs, so Loki can parse them with `| json` like every other component.
+    # JSON logs, so Loki can parse them with `| json`.
     controller.log.format: json
     server.log.format: json
     reposerver.log.format: json
     applicationsetcontroller.log.format: json
     commitserver.log.format: json
   cm:
-    # The address users open (the chart would default to https://<domain>).
+    # The chart would default to https://<domain>.
     url: http://localhost:8081
-    # Poll Git every 3 minutes (default 120s) to save CPU. The controller
-    # reads this from argocd-cm, not argocd-cmd-params-cm.
+    # Poll Git every 3 min to save CPU (read from argocd-cm, not cmd-params-cm).
     timeout.reconciliation: 180s
-    # No web terminal into pods.
     exec.enabled: false
     admin.enabled: true
     statusbadge.enabled: false
-    # Give Application resources a health status again (removed in Argo CD
-    # 1.8), so sync waves in the app-of-apps wait for each child to be
-    # Healthy before starting the next wave. From the Argo CD docs.
-    # CRD health without the "not yet Established" wait. Argo CD records no
-    # tracking annotation on CRDs, so when a CRD turns Established a moment
-    # after apply, nothing tells its Application to re-check health: the app
-    # sat at Progressing until the next 3-minute resync and held back the
-    # sync waves behind it. Kubernetes establishes a CRD within seconds, so
-    # this check reports Healthy unless the CRD is actually broken; the
-    # failure cases are the same as Argo CD's built-in check
-    # (resource_customizations/apiextensions.k8s.io/CustomResourceDefinition).
+    # CRD health without waiting for "Established": Argo CD tracks no CRD
+    # annotation, so an app could sit Progressing until the next resync and
+    # hold back later sync waves. Failure cases match the built-in check.
+    # The Application health check (removed in Argo CD 1.8) makes sync waves
+    # in the app-of-apps wait for each child to be Healthy.
     resource.customizations.health.apiextensions.k8s.io_CustomResourceDefinition: |
       hs = {status = "Healthy", message = "CRD accepted"}
       if obj.metadata.deletionTimestamp ~= nil then
@@ -124,26 +106,17 @@ configs:
 
 controller:
   resources:
-    # The first sync of every app fills the cluster cache at once: peak use is
-    # well above the ~275Mi steady state. With 512Mi it was OOMKilled on the local cluster,
-    # and on CI it restarted 4 times in 10 min, losing sync progress each time.
-    # At 1Gi it was still OOMKilled once during a fresh CI bootstrap
-    # (`./platform budget`, PR #29), after Kyverno, NetworkPolicies and Sealed
-    # Secrets added more resources to watch; on the local cluster its peak was 856Mi.
-    # The request is ~2x steady state (~400Mi): under node memory pressure the
-    # kubelet evicts by usage above request, and an eviction loses sync
-    # progress just like an OOM kill.
+    # The first sync fills the cluster cache at once: peaks reached ~856Mi
+    # (OOMKilled at 512Mi and 1Gi) against ~275Mi steady. A high request avoids
+    # eviction under memory pressure, which loses sync progress like an OOM.
     requests: {cpu: 100m, memory: 768Mi}
     limits: {memory: 1536Mi}
-  # Go's GC works harder as the heap nears this soft limit (~80% of the hard
-  # limit), so a bootstrap spike slows the controller down instead of getting
-  # it OOMKilled (losing its sync progress).
+  # Soft limit (~80% of the hard limit): GC slows a spike down instead of an OOM kill.
   env:
     - name: GOMEMLIMIT
       value: 1200MiB
   metrics:
     enabled: true
-    # Scraped by Prometheus (CRDs from prometheus-operator-crds, wave -10).
     serviceMonitor:
       enabled: true
 
@@ -158,14 +131,10 @@ server:
 
 repoServer:
   resources:
-    # A fresh bootstrap renders every chart at once (kube-prometheus-stack is
-    # the big one; Kyverno and Trivy added more). At 512Mi `./platform budget`
-    # caught it OOMKilled in CI (PR #40's run), and on the local cluster its cgroup peak sat
-    # at the 512Mi limit. Steady state is ~120Mi.
+    # A fresh bootstrap renders every chart at once; OOMKilled at 512Mi. Steady ~120Mi.
     requests: {cpu: 50m, memory: 256Mi}
     limits: {memory: 1Gi}
-  # Go's GC works harder as the heap nears this (~80% of the limit), so a
-  # bootstrap spike slows rendering down instead of getting it killed.
+  # Soft limit (~80% of the hard limit), as for the controller.
   env:
     - name: GOMEMLIMIT
       value: 800MiB

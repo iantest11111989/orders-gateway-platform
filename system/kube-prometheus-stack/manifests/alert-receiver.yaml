@@ -1,9 +1,5 @@
-# The local alert receiver: Alertmanager posts every
-# notification here, and it writes each alert as one JSON line to stdout.
-# Alloy ships that to Loki, so alerts are searchable next to the logs:
-#   {namespace="monitoring", app="alert-receiver"} | json | route="page"
-# Production would point the page and ticket receivers at an on-call tool
-# and a chat channel instead (README, "Local vs a real cloud").
+# Local alert receiver: logs each Alertmanager notification as one JSON line,
+# so alerts are searchable in Loki: {app="alert-receiver"} | json | route="page"
 apiVersion: v1
 kind: ConfigMap
 metadata:

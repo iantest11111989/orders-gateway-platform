@@ -1,16 +1,9 @@
 #!/usr/bin/env bash
-# scripts/promotion-gate.sh <app> <env>: may <app> be promoted INTO <env>?
-# `./pipeline cd <app> <env> --version X` asks this before it changes
-# cd/<app>/<env>.yaml. Promotion goes dev → staging → prod, so the gate looks
-# at the environment the version comes from (staging ← dev, prod ← staging):
-#   1. its Argo CD Application, <app>-<previous env>, is Synced and Healthy;
-#   2. no alert is firing there for this app (ALERTS with namespace=<previous
-#      env> and service=<app>: the app's SLO and delivery alerts carry both).
-# dev has no gate. Whether the version itself already ran in the previous env
-# is ./pipeline's check (the env files' Git history), not this one.
-# Exit 0: open. Exit 1: refused, with the reasons on stderr. Prometheus not
-# answering also refuses: a gate that can't see is closed.
-# Runs in the toolbox; Prometheus through the API server's service proxy.
+# scripts/promotion-gate.sh <app> <env>: may <app> be promoted into <env>?
+# Checks the previous env (staging <- dev, prod <- staging): its Application
+# is Synced and Healthy, and no alert fires for the app there. dev has no
+# gate. Prometheus not answering refuses: a gate that can't see is closed.
+# Runs in the toolbox.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
@@ -27,7 +20,6 @@ step "Promotion gate: $app into $env (checks $app in $from)"
 refused=0
 no() { fail "$*" >&2; refused=$((refused + 1)); }
 
-# 1. Argo CD: the previous environment runs what Git says, and it's healthy.
 name="$app-$from"
 if st=$(kubectl -n argocd get applications.argoproj.io "$name" \
     -o jsonpath='{.status.sync.status} {.status.health.status}' 2>/dev/null); then
@@ -38,7 +30,6 @@ else
   no "Argo CD: no Application $name (is $app deployed to $from?)"
 fi
 
-# 2. Alerts firing for this app in the previous environment.
 q="ALERTS{alertstate=\"firing\",namespace=\"$from\",service=\"$app\"}"
 url="/api/v1/namespaces/monitoring/services/kube-prometheus-stack-prometheus:9090/proxy/api/v1/query?query=$(jq -rn --arg q "$q" '$q|@uri')"
 if res=$(kubectl get --raw "$url" 2>/dev/null) && [ "$(jq -r '.status' <<<"$res")" = success ]; then

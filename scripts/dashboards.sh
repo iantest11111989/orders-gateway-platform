@@ -1,12 +1,8 @@
 #!/bin/sh
-# Grafana dashboards: dashboards/*.json is the source; Argo CD applies a
-# ConfigMap per dashboard from system/kube-prometheus-stack/manifests/ (label
-# grafana_dashboard=1, which Grafana's sidecar loads).
-#
-#   scripts/dashboards.sh gen     write the ConfigMaps from dashboards/*.json
-#   scripts/dashboards.sh check   CI: ConfigMaps up to date, every panel has a
-#                                 description, every PromQL query parses
-#
+# Grafana dashboards: dashboards/*.json is the source; the ConfigMaps in
+# system/kube-prometheus-stack/manifests/ are generated from it.
+#   gen    write the ConfigMaps
+#   check  CI: ConfigMaps current, every panel described, every query parses
 # Needs jq and Docker.
 set -eu
 cd "$(dirname "$0")/.."
@@ -44,20 +40,16 @@ case "${1:-}" in
     failed=0
     for f in dashboards/*.json; do
       name=$(basename "$f" .json)
-      # 1. The committed ConfigMap matches the JSON.
       if ! configmap "$f" | cmp -s - "$OUT/dashboard-$name.yaml"; then
         echo "FAIL $f: $OUT/dashboard-$name.yaml is out of date; run scripts/dashboards.sh gen"; failed=1
       fi
-      # 2. Every panel (rows aside) says what it measures.
       missing=$(jq -r '.. | objects | select(has("panels")) | .panels[] | select(.type != "row") | select((.description // "") == "") | .title' "$f")
       if [ -n "$missing" ]; then
         echo "FAIL $f: panels without a description:"; echo "$missing" | sed 's/^/  - /'; failed=1
       fi
-      # 3. Every Prometheus query parses: wrap them as recording rules (with
-      #    Grafana's variables filled in) and let promtool check them. This
-      #    also covers annotation queries, which carry an "expr" too. This
-      #    checks that queries parse, not that they return data. Piped
-      #    in on stdin: no bind mount, so it works the same under Colima.
+      # Queries parse (not that they return data): wrap them as recording rules
+      # with Grafana's variables filled in for promtool. Stdin, not a bind
+      # mount, so it works under Colima.
       # shellcheck disable=SC2016 # $n and $namespace etc. are jq/Grafana's
       jq -r --arg n "$name" '
         [.. | objects | select(has("expr")) | select((.datasource.type // "prometheus") == "prometheus") | .expr]

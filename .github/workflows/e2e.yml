@@ -1,28 +1,10 @@
 name: E2E
 
-# The cluster test: a fresh kind cluster on a runner, in five stages, each
-# reported in the job summary:
-#   1 · Platform build   docker compose up from a clean checkout
-#   2 · Platform verify  the kubeconfig works from the host; a restart
-#                        (docker compose stop / up) comes back healthy with
-#                        its data, and a re-run of ./platform up
-#                        (idempotent) too; ./platform verify; the Argo CD health
-#                        check; the resource budget
-#   3 · App CI           ./pipeline ci --version: test, build, scan, publish
-#   4 · App CD           ./pipeline cd to dev, staging and prod, a refused
-#                        out-of-order promotion, then rollback, with traffic
-#                        on prod the whole time
-#   5 · Demo             ./platform demo hello-world: a second app through
-#                        the same CI/CD, then its teardown
-# A stage runs only if the ones before it passed. Argo CD syncs from the
-# in-stack Git server, which the bootstrap fills with this job's checkout,
-# exactly what a fresh clone gets. About 20 minutes, so pull requests run it
-# only with the run-e2e label; it always runs on main and by hand. The
-# nightly run is nightly.yml. The fast checks are ci-app.yml (app) and
-# infra.yml (platform).
+# Full cluster test on a fresh kind cluster, in five stages (build, verify,
+# app CI, app CD, demo) summarised in the job summary; each needs the previous.
+# ~20 min, so PRs run it only with the run-e2e label.
 on:
   pull_request:
-    # labeled: adding the run-e2e label starts it.
     types: [opened, synchronize, reopened, labeled]
     paths: ["platform", "pipeline", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "bootstrap/**", "system/**", "apps/**", "helm/**", "cd/**", "alerts/**", "policies/**", ".github/workflows/e2e.yml"]
   push:
@@ -49,10 +31,8 @@ jobs:
       - name: "1 · Platform build: pre-flight (./platform doctor)"
         id: s1_doctor
         run: ./platform doctor # runners have 4 CPUs: a warning, not a failure
-      # The images a recent run on main used, so a cold start doesn't hinge on
-      # every registry answering (ECR Public 429s, ErrImagePull; see
-      # scripts/images.sh). The key never matches exactly: restore-keys picks
-      # the newest cache for this runner's architecture.
+      # Restore images from a recent main run so a cold start doesn't depend on
+      # every registry answering (ECR Public 429s). The key never matches exactly.
       - name: "1 · Platform build: restore the image cache"
         id: images
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -60,16 +40,10 @@ jobs:
           path: .cache/images
           key: images-v2-${{ runner.arch }}-${{ github.run_id }}
           restore-keys: images-v2-${{ runner.arch }}-
-      # The one-command start: Compose's
-      # `ready` service bootstraps everything and is healthy only when every
-      # Argo CD Application is Synced and Healthy and prod serves.
       - name: "1 · Platform build: start (docker compose up -d --wait)"
         id: s1_start
-        # Compose can report success at the wait timeout without `ready` being
-        # healthy, so check it here: a slow start then fails at this step,
-        # not later on a missing out/kubeconfig.yaml.
-        # The ready container's log is streamed while Compose waits, so a
-        # hang shows where it is live, not only after the timeout.
+        # `--wait` can return at the timeout without `ready` healthy, so check it.
+        # The ready log is streamed meanwhile so a hang is visible live.
         run: |
           (for _ in $(seq 1 120); do [ -n "$(docker compose ps -aq ready 2>/dev/null)" ] && break; sleep 1; done
            exec docker compose logs -f --no-log-prefix ready) & follow=$!
@@ -82,17 +56,12 @@ jobs:
       - name: "1 · Platform build: Compose logs (on failure)"
         if: failure()
         run: docker compose logs --tail=200 ready || true
-      # ./out/kubeconfig.yaml must work from the host, with the host's kubectl.
       - name: "2 · Platform verify: kubeconfig from the host"
         id: s2_kubeconfig
         run: kubectl --kubeconfig out/kubeconfig.yaml get nodes
-      # Restarts: stopping and starting Compose must come back healthy with the
-      # cluster (and its data) untouched.
       - name: "2 · Platform verify: restart (stop, then up again)"
         id: s2_restart
-        # The data that matters (registry, the in-stack Git history,
-        # Prometheus) must still be there afterwards: recorded before the
-        # stop, compared after (scripts/persistence-check.sh).
+        # Persistent data (registry, Git history, Prometheus) must survive.
         run: |
           ./platform shell scripts/persistence-check.sh record
           docker compose stop
@@ -101,8 +70,7 @@ jobs:
           [ "$status" = healthy ] || { echo "::error::ready is $status after the restart"; docker compose ps; docker compose logs --tail=80 ready; exit 1; }
           kubectl --kubeconfig out/kubeconfig.yaml get nodes
           ./platform shell scripts/persistence-check.sh check
-      # A cold start is mostly image pulls (nothing is cached on a runner),
-      # so list the slowest: a slow `up` can be explained from this log.
+      # A cold start is mostly image pulls: log the slowest.
       - name: "2 · Platform verify: slowest image pulls (from the start)"
         run: |
           ./platform kubectl get events -A --field-selector reason=Pulled \
@@ -124,8 +92,7 @@ jobs:
           ./platform kubectl get nodes -L topology.kubernetes.io/zone
           ./platform kubectl -n argocd get applications
           ./platform kubectl -n traefik get pods -o wide
-      # Apps, scrape targets, logs, alerts, the host ports and policies.
-      # Right after `up` a target may not have been scraped yet: retry a bit.
+      # Right after `up` a target may not have been scraped yet: retry.
       - name: "2 · Platform verify: ./platform verify"
         id: s2_verify
         run: |
@@ -135,26 +102,21 @@ jobs:
             sleep 30
           done
           exit 1
-      # The Application health check the root's sync waves rely on (#31).
+      # The health check the root's sync waves rely on.
       - name: "2 · Platform verify: Argo CD health check"
         id: s2_health
         run: ./platform shell scripts/test-argocd-health.sh
-      # Measured CPU/memory against the 6 CPU / 12 GiB budget, plus OOM kills.
       - name: "2 · Platform verify: resource budget (./platform budget)"
         id: s2_budget
         run: ./platform budget --watch 30
-      # Two published versions (image and chart, in the in-stack registry):
-      # 0.2.0, the baseline, and 0.3.0, the release under test. The cluster
-      # starts on 0.1.0 (up.sh's bootstrap build).
+      # Two versions: 0.2.0 (baseline) and 0.3.0 (under test); the cluster starts on 0.1.0.
       - name: "3 · App CI: ./pipeline ci orders-gateway --version (test, build, scan, publish)"
         id: s3_ci
         run: |
           ./pipeline ci orders-gateway --version 0.2.0
           ./pipeline ci orders-gateway --version 0.3.0
-      # 0.2.0 through dev, staging, prod as the baseline. Then 0.3.0: prod
-      # first is refused (staging never ran it), then in order with three
-      # clients on prod (:8080) the whole time; any non-200 fails the step.
-      # Then prod is rolled back twice.
+      # Baseline 0.2.0 everywhere, then 0.3.0 (out of order refused, then in
+      # order) under traffic on prod; any non-200 fails. Then two rollbacks.
       - name: "4 · App CD: ./pipeline cd dev → staging → prod, a refused promotion, rollback, under traffic"
         id: s4_cd
         run: |
@@ -212,10 +174,7 @@ jobs:
           # before 0.2.0), not back to 0.3.0.
           ./pipeline rollback orders-gateway prod --sync
           serves 0.1.0
-      # A second app through the same CI/CD next to orders-gateway: added,
-      # published, promoted in order, refused out of order, rolled back,
-      # seen in Prometheus. Then the teardown, which fails unless Argo CD has
-      # deleted the hello-world Applications.
+      # Teardown fails unless Argo CD has deleted the hello-world Applications.
       - name: "5 · Demo: ./platform demo hello-world (a second app through the CI/CD)"
         id: s5_demo
         run: ./platform demo hello-world
@@ -247,9 +206,8 @@ jobs:
             echo "| 4 · App CD | $(result "$S4") |"
             echo "| 5 · Demo: hello-world | $(result "$S5") |"
           } | tee -a "$GITHUB_STEP_SUMMARY"
-      # Refresh the image cache from main when the set of images changed (a
-      # chart or image bump). Only main and manual runs save: PR caches are
-      # scoped to their branch and would only crowd out main's (10 GB cap).
+      # Only main and manual runs save: PR caches are branch-scoped and would
+      # crowd out main's (10 GB cap).
       - name: Image cache up to date?
         id: imagelist
         if: github.event_name != 'pull_request'
@@ -274,9 +232,7 @@ jobs:
         with:
           path: .cache/images
           key: ${{ steps.imagelist.outputs.key }}
-      # On failure, show why: pods that aren't ready, their descriptions
-      # (image pulls, probes, OOM) and recent events. Best effort: the cluster
-      # may not exist if `up` failed early.
+      # Best effort: the cluster may not exist if `up` failed early.
       - name: Diagnostics (on failure)
         if: failure()
         run: |

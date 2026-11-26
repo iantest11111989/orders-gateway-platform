@@ -1,5 +1,4 @@
-# promtool unit tests for alerts/platform-delivery.yaml.
-# Run: scripts/test-alerts.sh (CI runs it on every pull request).
+# promtool tests for alerts/platform-delivery.yaml (scripts/test-alerts.sh).
 rule_files:
   - ../../.build/alerts/platform-delivery.rules.yaml
 
@@ -26,9 +25,7 @@ tests:
               description: "The live state of orders-gateway-prod differs from Git and Argo CD hasn't been able to sync it. Changes merged for it aren't reaching the cluster."
               runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/ArgoCDAppOutOfSync.md
 
-  # A manual-sync app OutOfSync for 90 minutes: no ArgoCDAppOutOfSync, and
-  # ArgoCDManualSyncPending only after the hour. An auto-sync app OutOfSync
-  # never raises the manual-sync alert.
+  # Manual-sync app OutOfSync 90 min: only ArgoCDManualSyncPending, after 1 h.
   - name: manual-sync app waits for a click
     interval: 1m
     input_series:
@@ -74,8 +71,7 @@ tests:
               description: "orders-gateway-staging has been Degraded for 10 minutes."
               runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/ArgoCDAppUnhealthy.md
 
-  # Three nodes at 3.8 GiB each = 11.4 GiB, 95% of 12 GiB. At 2.4 GiB each
-  # (60%, today's level) nothing fires.
+  # 3 x 3.8 GiB = 95% of 12 GiB fires; 3 x 2.4 GiB (60%) doesn't.
   - name: stack near its memory budget
     interval: 1m
     input_series:

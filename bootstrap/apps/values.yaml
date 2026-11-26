@@ -1,10 +1,7 @@
-# Git source every child Application reads its values and manifests from:
-# the in-stack Git server, which ./platform up fills with this checkout. (A
-# cluster per environment, docs/production-on-aws.md, sets its own repo.)
+# Git source for every child Application: the in-stack Git server.
 repo:
   url: http://git.git.svc.cluster.local:23232/platform.git
   revision: main
 
-# Which environment this cluster runs. Empty (local): dev, staging and prod
-# all run here. With one cluster per environment, each sets its own.
+# Empty (local): every environment runs here. One cluster per env sets its own.
 env: ""

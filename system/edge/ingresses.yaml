@@ -1,6 +1,4 @@
-# The platform UIs, one Traefik entrypoint (host port) each:
-#   http://localhost:8081 Argo CD, :3000 Grafana, :9090 Prometheus, :9093 Alertmanager
-# No hostname: anything arriving on that port goes to that UI.
+# Platform UIs, one Traefik entrypoint (host port) each, no hostname.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

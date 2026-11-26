@@ -1,9 +1,5 @@
-# Kyverno: admission policies (policies/, applied by kyverno-policies).
-# Admission controller only; the background, cleanup and reports controllers
-# are off to save memory. Values: system/kyverno/values.yaml.
-# Wave 20, beside observability: nothing before the policies (wave 30) needs
-# it, and its sync is slow (a pre-install check, the controller, then a
-# post-sync migration Job), so in wave 10 it held up everything after it.
+# Kyverno admission controller (system/kyverno/values.yaml). Wave 20, not 10:
+# its sync is slow and nothing before the policies (wave 30) needs it.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -34,12 +30,10 @@ spec:
     automated:
       prune: true
       selfHeal: true
-    # Auto-sync does not retry a failed sync of the same revision on its own;
-    # this covers transient failures such as a CRD not yet Established.
     retry:
       limit: 5
       backoff: {duration: 5s, factor: 2, maxDuration: 1m}
     syncOptions:
       - CreateNamespace=true
-      # Kyverno's CRDs are too large for client-side apply's last-applied annotation.
+      # Kyverno's CRDs are too large for client-side apply's annotation.
       - ServerSideApply=true

@@ -1,6 +1,5 @@
-# Kyverno ClusterPolicies from policies/. `kyverno test` cases live next to
-# them in policies/tests/ and aren't Kubernetes objects. Wave 30: after the
-# observability stack, before the apps (40), so new app pods are checked.
+# Kyverno policies from policies/ (tests/ excluded). Wave 30: before the apps,
+# so new app pods are checked.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -11,8 +10,6 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "30"
     argocd.argoproj.io/manifest-generate-paths: "/policies"
-  # Pruning or deleting this Application also deletes what it created;
-  # without it, a rename orphaned the old resources.
   finalizers: [resources-finalizer.argocd.argoproj.io]
 spec:
   project: default
@@ -29,8 +26,6 @@ spec:
     automated:
       prune: true
       selfHeal: true
-    # Auto-sync does not retry a failed sync of the same revision on its own;
-    # this covers transient failures such as a CRD not yet Established.
     retry:
       limit: 5
       backoff: {duration: 5s, factor: 2, maxDuration: 1m}

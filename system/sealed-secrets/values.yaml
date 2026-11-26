@@ -1,10 +1,8 @@
-# Sealed Secrets chart values (bootstrap/apps/templates/sealed-secrets.yaml).
 
-# kubeseal's defaults (controller name and namespace), so it needs no flags.
+# kubeseal's defaults, so it needs no flags.
 fullnameOverride: sealed-secrets-controller
 
-# Keep using the committed demo key: no automatic key renewal (default 30
-# days), which would start sealing with a new key that isn't in Git.
+# No key renewal: a new key wouldn't be in Git.
 keyrenewperiod: "0"
 
 resources:

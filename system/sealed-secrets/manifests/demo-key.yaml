@@ -1,11 +1,7 @@
-# DEMO ONLY: the Sealed Secrets private key, committed on purpose so every
-# fresh cluster (a laptop, CI) can unseal the SealedSecrets in this repo.
-# Anyone with this repo can decrypt them, so they must
-# never hold a real secret. A real deployment keeps the key out of Git
-# (backed up offline) or uses External Secrets with a vault.
-# The only plain Secret allowed in this repo (scripts/check-no-plain-secrets.sh).
-# Sync wave -1 inside the sealed-secrets app: it must exist before the
-# controller starts, or the controller generates its own key.
+# DEMO ONLY: the Sealed Secrets private key, committed so every fresh cluster
+# can unseal this repo's SealedSecrets; they must never hold a real secret.
+# The only plain Secret allowed (scripts/check-no-plain-secrets.sh). Wave -1:
+# it must exist before the controller starts, or it generates its own key.
 apiVersion: v1
 kind: Secret
 type: kubernetes.io/tls

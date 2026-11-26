@@ -1,20 +1,16 @@
-# kube-prometheus-stack values (chart prometheus-community/kube-prometheus-stack).
-# Sized for the 6 CPU / 12 GB budget.
-# Every pod except node-exporter runs restricted: non-root, read-only root
-# filesystem, no capabilities, RuntimeDefault seccomp.
+# kube-prometheus-stack values, sized for the 6 CPU / 12 GB budget.
+# Every pod except node-exporter runs restricted.
 
 # CRDs come from the prometheus-operator-crds Application (wave -10).
 crds:
   enabled: false
 
-# Rules from the chart: keep the Kubernetes, node and Prometheus ones. Our
-# own SLO and platform alerts live in alerts/.
+# Our own SLO and platform alerts live in alerts/.
 defaultRules:
   create: true
   rules:
     # kind has no Windows nodes
     windows: false
-  # Link every chart alert to the upstream runbooks
   runbookUrl: https://runbooks.prometheus-operator.dev/runbooks
 
 # ---- Alertmanager ----
@@ -31,11 +27,8 @@ alertmanager:
       runAsGroup: 65534
       fsGroup: 65534
       seccompProfile: {type: RuntimeDefault}
-  # Routing: every notification goes to alert-receiver
-  # (system/kube-prometheus-stack/manifests/alert-receiver.yaml), which writes it as one
-  # JSON log line, so alerts show up in Loki and Grafana. The path says how it
-  # was routed: /page, /ticket, /log, or /watchdog for the heartbeat.
-  # Production would send /page to an on-call tool and /ticket to chat.
+  # Every notification goes to alert-receiver, which logs it as JSON for Loki.
+  # The path is the route: /page, /ticket, /log or /watchdog.
   config:
     global:
       resolve_timeout: 5m
@@ -46,8 +39,7 @@ alertmanager:
       group_interval: 5m
       repeat_interval: 12h
       routes:
-        # Always firing: a notification every 5 minutes proves the whole path
-        # (Prometheus -> Alertmanager -> receiver -> Loki) works.
+        # Always firing: proves Prometheus -> Alertmanager -> receiver -> Loki works.
         - matchers: ['alertname = "Watchdog"']
           receiver: watchdog
           group_wait: 0s
@@ -62,7 +54,7 @@ alertmanager:
           repeat_interval: 1h
         - matchers: ['severity =~ "ticket|warning"']
           receiver: ticket
-    # The chart's defaults, plus the same for page over ticket.
+    # The chart's defaults, plus page over ticket.
     inhibit_rules:
       - source_matchers: ['severity =~ "critical|page"']
         target_matchers: ['severity =~ "warning|ticket|info"']
@@ -89,18 +81,14 @@ alertmanager:
 
 # ---- Grafana ----
 grafana:
-  # Login admin / admin12345 (the shared local login for every UI), from the SealedSecret
-  # system/kube-prometheus-stack/manifests/grafana-admin.sealed.yaml. Read it with:
-  #   ./platform kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d
+  # admin / admin12345, from grafana-admin.sealed.yaml.
   admin:
     existingSecret: grafana-admin
     userKey: admin-user
     passwordKey: admin-password
-  # Helm test pods aren't used by Argo CD.
   testFramework:
     enabled: false
-  # Grafana 13 runs each bundled backend plugin as its own process; 256Mi
-  # got the pod OOM-killed on start in a local sync test.
+  # Grafana 13 runs each bundled plugin as a process; 256Mi OOM-killed on start.
   resources:
     requests: {cpu: 25m, memory: 256Mi}
     limits: {memory: 512Mi}
@@ -116,14 +104,13 @@ grafana:
     capabilities: {drop: [ALL]}
   grafana.ini:
     server:
-      # Grafana's local address: http://localhost:3000, at the root, plain HTTP.
       root_url: http://localhost:3000/
       serve_from_sub_path: false
     analytics:
       reporting_enabled: false
       check_for_updates: false
       check_for_plugin_updates: false
-    # No background plugin downloads: we use only the bundled datasources.
+    # Only bundled datasources are used.
     plugins:
       preinstall_disabled: true
     log:
@@ -137,7 +124,6 @@ grafana:
     securityContext: *restrictedContainer
     dashboards:
       enabled: true
-      # Dashboards are ConfigMaps labelled grafana_dashboard=1, in any namespace.
       label: grafana_dashboard
       searchNamespace: ALL
     datasources:
@@ -156,8 +142,7 @@ prometheusOperator:
   resources:
     requests: {cpu: 10m, memory: 64Mi}
     limits: {memory: 128Mi}
-  # The validating webhook needs certificates from a hook Job; rules are
-  # validated by promtool in CI instead.
+  # The webhook needs certs from a hook Job; promtool validates rules in CI instead.
   admissionWebhooks:
     enabled: false
   tls:
@@ -173,8 +158,7 @@ prometheusOperator:
 prometheus:
   prometheusSpec:
     replicas: 1
-    # 24 h: enough for the 6 h burn-rate alerts.
-    # Production would keep 30+ days; see the README's "Local vs a real cloud".
+    # 24 h covers the 6 h burn-rate alerts.
     retention: 24h
     retentionSize: 4GB
     scrapeInterval: 30s
@@ -183,9 +167,7 @@ prometheus:
       requests: {cpu: 200m, memory: 768Mi}
       limits: {memory: 1536Mi}
     securityContext: *restrictedPod
-    # Pick up every ServiceMonitor, PodMonitor, Probe, ScrapeConfig and
-    # PrometheusRule in the cluster, not only the ones labelled for this
-    # Helm release.
+    # Select monitors and rules cluster-wide, not only this release's.
     serviceMonitorSelectorNilUsesHelmValues: false
     podMonitorSelectorNilUsesHelmValues: false
     probeSelectorNilUsesHelmValues: false
@@ -222,15 +204,13 @@ prometheus-node-exporter:
     requests: {cpu: 10m, memory: 32Mi}
     limits: {memory: 64Mi}
 
-# ---- Control-plane scraping (kind's kubeadm patches expose these, see
-# cluster/kind.yaml) ----
+# ---- Control-plane scraping (exposed by cluster/kind.yaml patches) ----
 kubeEtcd:
   service:
     port: 2381
     targetPort: 2381
 
-# Drop high-cardinality series nothing here uses. Each saves thousands of
-# series on this small cluster.
+# Drop high-cardinality series nothing here uses.
 kubeApiServer:
   serviceMonitor:
     metricRelabelings:

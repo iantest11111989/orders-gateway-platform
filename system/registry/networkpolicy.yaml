@@ -1,7 +1,5 @@
-# Argo CD's repo-server reads charts; the nodes pull images (NodePort
-# traffic arrives from outside the pod range 10.244.0.0/16). Pushes come
-# through `kubectl port-forward` (scripts/registry.sh), which the kubelet
-# forwards to the pod directly.
+# Argo CD reads charts; nodes pull images (NodePort traffic from outside the
+# pod range). Port-forwarded pushes bypass NetworkPolicy.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

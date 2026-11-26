@@ -1,9 +1,5 @@
-# Traefik: the ingress controller, and the only way in from the host. It
-# serves every Ingress in the cluster on plain HTTP, one entrypoint per host
-# port, through a NodePort Service that kind maps to 127.0.0.1 (cluster/kind.yaml).
-# Values: system/traefik/values.yaml. Wave 10 (controllers), after the
-# Prometheus Operator CRDs (-10) its ServiceMonitor needs. The chart brings
-# its own CRDs (Middleware is the one used here).
+# Traefik: the only way in from the host, one entrypoint per host port via a
+# NodePort that kind maps to 127.0.0.1. Wave 10, after the CRDs (-10).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

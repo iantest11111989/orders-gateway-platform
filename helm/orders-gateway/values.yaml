@@ -1,49 +1,39 @@
-# Defaults for every environment. cd/orders-gateway/<env>.yaml overrides
-# them; Argo CD passes both (bootstrap/apps/templates/orders-gateway-<env>.yaml).
+# Defaults for every environment; cd/orders-gateway/<env>.yaml overrides them.
 
-# Environment name: the `env` label on pods (Loki, Grafana).
+# The pods' `env` label (Loki, Grafana).
 env: dev
 
 image:
   repository: ghcr.io/iantest11111989/orders-gateway
-  # Required. A sha-<12> tag from CI (or a demo tag: v1, v2).
-  # Promotion between environments changes only this line.
+  # Required. Promotion changes only this line.
   tag: ""
-  # Optional sha256:... digest. When set, the pod runs repository@digest,
-  # so a re-pushed tag (the demo tags are rebuilt from main) can't change
-  # what runs; the tag stays for readability (APP_VERSION, labels).
+  # Optional. When set the pod runs repository@digest, so a re-pushed tag
+  # can't change what runs.
   digest: ""
   pullPolicy: IfNotPresent
 
 replicas: 1
 
-# App settings: the environment variables server.js reads. FAULT_* are left
-# unset unless given here, so the app's own defaults (no faults) apply; startupDelayMs unset keeps the app's 3 s warm-up.
+# Env vars server.js reads; null keeps the app's defaults (no faults, 3 s warm-up).
 config:
   faultErrorRate: null
   faultLatencyMs: null
   startupDelayMs: null
 
-# Node with no dependencies idles at about 45 MiB. /work burns CPU on the
-# single event loop, so the CPU request is what the HPA's 70% is measured
-# against: 100m. No CPU limit (it would only throttle).
+# The HPA's 70% is measured against the CPU request. No CPU limit (it would only throttle).
 resources:
   requests: {cpu: 100m, memory: 48Mi}
   limits: {memory: 128Mi}
 
-# The way in: an Ingress on one Traefik entrypoint, which is one host port
-# (system/traefik/values.yaml): prod 8080, dev 8082, staging 8083, demo 8084.
-# Every request on that port reaches this environment; there's no hostname.
-# /admin/* (the runtime fault switch, no auth) gets a 403 there.
+# One Traefik entrypoint = one host port (system/traefik/values.yaml); no
+# hostname needed. /admin/* (unauthenticated fault switch) gets a 403.
 ingress:
   enabled: true
   className: traefik
   entrypoint: dev
-  # Hostnames that reach the app on its entrypoint, e.g.
-  # orders-gateway.localhost (any *.localhost resolves to 127.0.0.1).
+  # e.g. orders-gateway.localhost (*.localhost resolves to 127.0.0.1).
   hosts: []
-  # Also the app for requests without a matching host (plain
-  # localhost:<port>). One app per entrypoint.
+  # Also serve requests with no matching host. One app per entrypoint.
   default: false
 
 autoscaling:
@@ -56,7 +46,6 @@ podDisruptionBudget:
   enabled: false
   maxUnavailable: 1
 
-# Spread pods across nodes and zones (kind nodes carry topology.kubernetes.io/zone).
 topologySpread:
   enabled: false
 
@@ -64,13 +53,11 @@ serviceMonitor:
   enabled: true
   interval: 30s
 
-# Ingress only from the gateway (traffic) and Prometheus (metrics); egress
-# only to DNS. The app has no real downstream: payments is simulated.
+# Ingress only from Traefik and Prometheus; egress only to DNS.
 networkPolicy:
   enabled: true
   ingressNamespace: traefik
   monitoringNamespace: monitoring
 
-# preStop sleep (5 s, so endpoints drop the pod before it stops accepting)
-# + the app's own 25 s hard exit after SIGTERM + margin.
+# 5 s preStop + the app's 25 s hard exit after SIGTERM + margin.
 terminationGracePeriodSeconds: 35

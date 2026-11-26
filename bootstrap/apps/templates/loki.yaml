@@ -1,7 +1,4 @@
-# Logs: Loki in single-binary mode, in namespace logging, with 2 days of
-# retention on a local volume. Alloy (alloy.yaml) ships every pod's logs here.
-# Values: system/loki/values.yaml. The namespace enforces Pod Security
-# "restricted".
+# Loki, single binary, 2 days retention (system/loki/values.yaml).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -32,8 +29,6 @@ spec:
     automated:
       prune: true
       selfHeal: true
-    # Auto-sync does not retry a failed sync of the same revision on its own;
-    # this covers transient failures such as a CRD not yet Established.
     retry:
       limit: 5
       backoff: {duration: 5s, factor: 2, maxDuration: 1m}
