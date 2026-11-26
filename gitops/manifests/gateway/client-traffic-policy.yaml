@@ -1,4 +1,4 @@
-# Path handling at the edge, pinned (decision 0028). /admin/* is refused by a
+# Path handling at the edge, pinned. /admin/* is refused by a
 # path match, and the app (Node) resolves dot segments itself, so Envoy must
 # hand routing the same path the app will see:
 # - dot segments (/x/../admin) are resolved before routing (Envoy Gateway's

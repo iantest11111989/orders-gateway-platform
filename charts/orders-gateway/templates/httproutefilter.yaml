@@ -1,5 +1,5 @@
 {{- if or .Values.route.enabled .Values.publicRoute.enabled }}
-# The 403 that every route answers for /admin/* (decision 0028).
+# The 403 that every route answers for /admin/*.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: HTTPRouteFilter
 metadata:

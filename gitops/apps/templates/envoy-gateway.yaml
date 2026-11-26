@@ -2,7 +2,7 @@
 # gitops/manifests/gateway/ into an Envoy proxy Deployment and a NodePort
 # Service (30080/30443, which kind maps to host 80/443).
 # Values: gitops/values/envoy-gateway.yaml. Wave 10 (controllers); CRDs come
-# from gateway-crds.yaml at wave -10. See decision 0008.
+# from gateway-crds.yaml at wave -10.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

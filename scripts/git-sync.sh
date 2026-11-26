@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/git-sync.sh: the in-stack Git server (decision 0029). Installs it if
+# scripts/git-sync.sh: the in-stack Git server. Installs it if
 # needed, then pushes a snapshot of this checkout's working tree to its
 # platform.git main, which Argo CD syncs from by default. The cluster runs the
 # checkout it was started from, not a copy on GitHub.

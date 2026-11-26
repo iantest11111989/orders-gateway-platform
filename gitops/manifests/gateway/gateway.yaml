@@ -41,7 +41,7 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
-    # The contract's plain-HTTP ports on the host (decision 0028): prod on
+    # Plain-HTTP ports on the host: prod on
     # 8080, and Grafana, Prometheus and Alertmanager on their usual ports.
     # Each listener takes routes from one namespace only.
     - name: app
@@ -68,7 +68,7 @@ spec:
       protocol: HTTP
       port: 9093
       allowedRoutes: *monitoring
-    # Argo CD's UI on a plain port (decision 0032), so every UI works from a
+    # Argo CD's UI on a plain port, so every UI works from a
     # browser without 80/443, which macOS won't let Colima open on 127.0.0.1.
     - name: argocd
       protocol: HTTP

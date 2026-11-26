@@ -1,6 +1,6 @@
 # Trivy Operator: scans the running workloads' images and the cluster's
 # configuration continuously, and exports the results as Prometheus metrics
-# (brief section 9; decision 0021). Values: gitops/values/trivy-operator.yaml.
+# Values: gitops/values/trivy-operator.yaml.
 # Trimmed to fit the budget: one scan at a time against one shared Trivy
 # server. Wave 20, beside observability: its ServiceMonitor needs the
 # prometheus-operator CRDs (wave -10), and nothing before the apps needs it.
