@@ -1,5 +1,5 @@
 # Alerts for the delivery side of the platform: Argo CD, Argo Rollouts,
-# cert-manager, and the 6 CPU / 12 GiB budget (brief, section 8).
+# cert-manager, and the 6 CPU / 12 GiB budget.
 #
 # Severities match the routing (page | ticket), like the SLO alerts in
 # orders-gateway-slo.yaml. The chart's defaults already cover TargetDown,
@@ -47,7 +47,7 @@ spec:
         # A canary that aborted is already back on the stable version, so this
         # is a ticket: find out why before trying again. The demo
         # namespace is left out because the canary-fail demo aborts on purpose.
-        # prod is a plain Deployment now (decision 0026), so this covers any
+        # prod is a plain Deployment now, so this covers any
         # Rollout outside the demo copy; KubeDeploymentRolloutStuck covers prod.
         - alert: RolloutAborted
           expr: max by (exported_namespace, name) (rollout_info{phase="Abort", exported_namespace!="demo"}) == 1

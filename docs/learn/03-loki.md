@@ -15,7 +15,7 @@ By the end you will know how to find log lines in Loki by label, filter them by 
 
 2. Open <http://localhost:3000> (`admin` / `admin12345`), go to **Explore** (the compass icon), and pick the **Loki** data source at the top. Switch the query editor from **Builder** to **Code**.
 
-Grafana Alloy collects every pod's stdout and sends it to Loki ([decision 0007](../decisions/0007-observability-stack.md)).
+Grafana Alloy collects every pod's stdout and sends it to Loki.
 
 ## 1. Select a stream with labels (2 min)
 

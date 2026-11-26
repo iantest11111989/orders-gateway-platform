@@ -50,7 +50,7 @@ data:
         {
           "type": "stat",
           "title": "Security alerts firing",
-          "description": "Alerts from alerts/platform-security.yaml and the certificate alerts that are firing now. Each links to a runbook (decision 0025). Should be 0.",
+          "description": "Alerts from alerts/platform-security.yaml and the certificate alerts that are firing now. Each links to a runbook. Should be 0.",
           "id": 2,
           "datasource": {
             "type": "prometheus",
@@ -112,7 +112,7 @@ data:
         {
           "type": "stat",
           "title": "Critical vulnerabilities in our app",
-          "description": "Critical findings Trivy Operator reports in the images running in dev, staging and prod. CI blocks fixable ones at build time (decision 0016), so a non-zero value is usually a CVE published after the build. The OrdersImageCriticalVulnerability alert fires after 30 minutes.",
+          "description": "Critical findings Trivy Operator reports in the images running in dev, staging and prod. CI blocks fixable ones at build time, so a non-zero value is usually a CVE published after the build. The OrdersImageCriticalVulnerability alert fires after 30 minutes.",
           "id": 3,
           "datasource": {
             "type": "prometheus",
@@ -174,7 +174,7 @@ data:
         {
           "type": "stat",
           "title": "High vulnerabilities in our app",
-          "description": "High findings in the app's images (dev, staging, prod). Not alerted on, but Renovate and the daily rescan (decision 0019) should bring this to 0.",
+          "description": "High findings in the app's images (dev, staging, prod). Not alerted on, but Renovate and the daily rescan should bring this to 0.",
           "id": 4,
           "datasource": {
             "type": "prometheus",
@@ -294,7 +294,7 @@ data:
         {
           "type": "stat",
           "title": "Signature checks failed (24 h)",
-          "description": "Images refused by verify-image-signatures in the last 24 hours: an app image not signed by this repo's CI (decision 0013). Any non-zero value is worth a look; the policy demo adds some on purpose.",
+          "description": "Images refused by verify-image-signatures in the last 24 hours: an app image not signed by this repo's CI. Any non-zero value is worth a look; the policy demo adds some on purpose.",
           "id": 6,
           "datasource": {
             "type": "prometheus",
@@ -418,7 +418,7 @@ data:
         {
           "type": "stat",
           "title": "Sealed Secrets controller up",
-          "description": "The controller that turns SealedSecrets from Git into Secrets (decision 0018). While it's down, changed SealedSecrets don't apply.",
+          "description": "The controller that turns SealedSecrets from Git into Secrets. While it's down, changed SealedSecrets don't apply.",
           "id": 8,
           "datasource": {
             "type": "prometheus",
@@ -480,7 +480,7 @@ data:
         {
           "type": "stat",
           "title": "Trivy Operator up",
-          "description": "The in-cluster scanner (decision 0021). While it's down, running images aren't rescanned; CI's daily rescan still covers the app image.",
+          "description": "The in-cluster scanner. While it's down, running images aren't rescanned; CI's daily rescan still covers the app image.",
           "id": 9,
           "datasource": {
             "type": "prometheus",
@@ -617,7 +617,7 @@ data:
         {
           "type": "table",
           "title": "Vulnerabilities by namespace",
-          "description": "Findings in the images running in each namespace, by severity, from Trivy Operator's VulnerabilityReports. Platform namespaces run third-party images with known findings (decision 0021); dev, staging and prod are ours and should be clean. Unknown means the CVE has no severity rating yet.",
+          "description": "Findings in the images running in each namespace, by severity, from Trivy Operator's VulnerabilityReports. Platform namespaces run third-party images with known findings; dev, staging and prod are ours and should be clean. Unknown means the CVE has no severity rating yet.",
           "id": 12,
           "datasource": {
             "type": "prometheus",
@@ -1230,7 +1230,7 @@ data:
         {
           "type": "timeseries",
           "title": "Findings in dev, staging and prod over time",
-          "description": "Critical and high findings in the app's images per environment. A step up without a new image means a newly published CVE; a step down follows a new image (Renovate, then the patch promoter, decision 0024).",
+          "description": "Critical and high findings in the app's images per environment. A step up without a new image means a newly published CVE; a step down follows a new image (Renovate, then the patch promoter).",
           "id": 14,
           "datasource": {
             "type": "prometheus",

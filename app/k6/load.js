@@ -7,7 +7,7 @@
 //             10..WORK_MS)
 //
 // Mix: 60% GET /work?ms=10..WORK_MS (CPU on the app's single event loop),
-// 30% POST /echo, 10% GET /version. "Good" per the SLOs (decision 0027): not
+// 30% POST /echo, 10% GET /version. "Good" per the SLOs: not
 // 5xx; and for /echo and /version, also under 250 ms. /work's latency is
 // what the caller asked for, so only its availability counts.
 import http from 'k6/http';

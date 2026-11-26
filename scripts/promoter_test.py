@@ -75,7 +75,7 @@ class Gates(unittest.TestCase):
 
     def test_queries_use_the_apps_metrics(self):
         # app/server.js exports app_info{version} and http_requests_total{route,method,status};
-        # the soak counts only the SLIs' routes (decision 0027) in the previous environment.
+        # the soak counts only the SLIs' routes in the previous environment.
         seen, kube_paths = [], []
         prom = fake_prometheus()
         evaluate(prom=lambda q: seen.append(q) or prom(q),

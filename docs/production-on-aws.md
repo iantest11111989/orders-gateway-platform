@@ -1,16 +1,16 @@
 # Running orders-gateway-platform in production on AWS
 
-Status: a plan for discussion, not a decision record. Written 2026-11-25 by claude_momma and claude_daddy against `main` at `69a6389`. Nothing here has been built or applied. It extends [`docs/terraform-sketch/`](terraform-sketch/README.md) and the README's [Local vs a real cloud](../README.md#local-vs-a-real-cloud-eksgke) table.
+Status: a plan for discussion. Nothing here has been built or applied. It extends [`docs/terraform-sketch/`](terraform-sketch/README.md) and the README's [Local vs a real cloud](../README.md#local-vs-a-real-cloud) table.
 
-**How to read it.** §1 is the target in one paragraph and a diagram. §2 maps every local component to its production replacement. §3 goes area by area (accounts, EKS, identity, images, GitOps, ingress, secrets, Datadog, tests, canaries, DR, cost, security, operations). §4 is the Terraform layout, §5 the migration order, §6 the decisions the owner has to make. Where the two of us disagree, both views are given with a recommendation.
+**How to read it.** §1 is the target in one paragraph and a diagram. §2 maps every local component to its production replacement. §3 goes area by area (accounts, EKS, identity, images, GitOps, ingress, secrets, Datadog, tests, canaries, DR, cost, security, operations). §4 is the Terraform layout, §5 the migration order, §6 the decisions the owner has to make. Where there are two reasonable options, both are given with a recommendation.
 
-Conventions: "**Recommend**" is the opinionated pick. "*(unsure)*" marks things I have not verified (prices, newer AWS/Datadog features). Prices are approximate eu-west-1 list prices from memory and must be checked before anyone budgets on them.
+Conventions: "**Recommend**" is the opinionated pick. "*(unsure)*" marks things not yet verified (prices, newer AWS/Datadog features). Prices are approximate eu-west-1 list prices from memory and must be checked before anyone budgets on them.
 
 ---
 
 ## 1. Summary and target shape
 
-Production drops Docker Compose, kind and the in-stack Git server. Terraform builds an **AWS Organization with one account per environment** (dev, staging, prod), plus shared-services (ECR, CI roles, root DNS), a tooling account for the **Argo CD hub**, and the usual security and log-archive accounts. Each environment account has **its own VPC across 3 AZs** (public subnets for the load balancer and NAT, private subnets for nodes) and **its own EKS cluster**, with nodes on Graviton managed by **Karpenter**. One **Argo CD hub** in the tooling account reconciles every spoke cluster from GitHub. **ApplicationSets** generate one per-cluster copy of today's `gitops/apps` app-of-apps, so the sync-wave design in ADR 0005 survives. CI uses **GitHub OIDC to assume short-lived roles** (no AWS keys), pushes signed, immutable images to **ECR**, and promotes by Git change as it does today (ADRs 0014, 0015, 0024). Traffic enters through an **ALB with ACM certificates and WAF**, managed by the AWS Load Balancer Controller, and goes to **Envoy Gateway**, which keeps the Gateway API routes, the `/admin` 403 and the canary weights. **Route 53 records come from ExternalDNS**. Secrets come from **Secrets Manager through External Secrets**, encrypted with per-account KMS keys. **Datadog** replaces Prometheus, Loki, Alertmanager and Grafana for metrics, logs, APM, SLOs, monitors, dashboards and synthetics. The app keeps its Prometheus-format `/metrics`, which the Datadog Agent scrapes as OpenMetrics, so `app/server.js` stays unchanged. Prod finally runs the **Argo Rollouts canary**, with analysis driven by Datadog.
+Production drops Docker Compose, kind and the in-stack Git server. Terraform builds an **AWS Organization with one account per environment** (dev, staging, prod), plus shared-services (ECR, CI roles, root DNS), a tooling account for the **Argo CD hub**, and the usual security and log-archive accounts. Each environment account has **its own VPC across 3 AZs** (public subnets for the load balancer and NAT, private subnets for nodes) and **its own EKS cluster**, with nodes on Graviton managed by **Karpenter**. One **Argo CD hub** in the tooling account reconciles every spoke cluster from GitHub. **ApplicationSets** generate one per-cluster copy of today's `gitops/apps` app-of-apps, so today's sync waves survive. CI uses **GitHub OIDC to assume short-lived roles** (no AWS keys), pushes signed, immutable images to **ECR**, and promotes by Git change as it does today. Traffic enters through an **ALB with ACM certificates and WAF**, managed by the AWS Load Balancer Controller, and goes to **Envoy Gateway**, which keeps the Gateway API routes, the `/admin` 403 and the canary weights. **Route 53 records come from ExternalDNS**. Secrets come from **Secrets Manager through External Secrets**, encrypted with per-account KMS keys. **Datadog** replaces Prometheus, Loki, Alertmanager and Grafana for metrics, logs, APM, SLOs, monitors, dashboards and synthetics. The app keeps its Prometheus-format `/metrics`, which the Datadog Agent scrapes as OpenMetrics, so `app/server.js` stays unchanged. Prod finally runs the **Argo Rollouts canary**, with analysis driven by Datadog.
 
 The diagram shows the fully split layout, one account and cluster per environment. With the recommended shared non-prod cluster (§3.1), the dev and staging boxes are one account and one EKS cluster holding both namespaces.
 
@@ -63,35 +63,35 @@ flowchart TB
 
 | Local (repo reference) | Production | Why |
 | --- | --- | --- |
-| `docker-compose.yml`, the `ready` service and toolbox (ADR 0026, `toolbox/`, `scripts/up.sh`) | Terraform roots run from CI, plus a one-off Argo CD install in the hub | Compose existed to give the assignment one command and a health signal. In production the cluster's lifecycle belongs to IaC with reviewed plans. **Keep Compose and kind as the local dev loop and as the PR integration test** (`platform.yml`'s cluster job). |
-| kind, 1 control plane + 2 workers, fake zones (`cluster/kind.yaml`, ADR 0004) | EKS per environment, 3 real AZs, Karpenter on Graviton | Managed control plane, real failure domains |
+| `docker-compose.yml`, the `ready` service and toolbox (`toolbox/`, `scripts/up.sh`) | Terraform roots run from CI, plus a one-off Argo CD install in the hub | Compose exists locally to give one command and a health signal. In production the cluster's lifecycle belongs to IaC with reviewed plans. **Keep Compose and kind as the local dev loop and as the PR integration test** (`platform.yml`'s cluster job). |
+| kind, 1 control plane + 2 workers, fake zones (`cluster/kind.yaml`) | EKS per environment, 3 real AZs, Karpenter on Graviton | Managed control plane, real failure domains |
 | dev/staging/prod as namespaces in one cluster (`gitops/apps/templates/{dev,staging,prod}.yaml`) | One cluster per environment, each in its own account | Blast radius, IAM separation, separate upgrade cadence. The sketch shared one cluster between dev and staging; see §5 |
-| In-stack Git server, soft-serve (ADR 0029, `gitops/manifests/git-server/`) | GitHub only (today's "GitHub mode") | Its only purpose was offline use |
-| Root Application applied by `./platform up` (`gitops/root.yaml`) | An ApplicationSet in the hub that generates a `root-<cluster>` Application per spoke | Keeps ADR 0005's app-of-apps and sync waves for each cluster |
-| `./platform ship` / `rollback` with `kind load` (ADR 0030) | Promotion PRs and revert PRs (ADRs 0014, 0015). `localhost/` images are not admitted | Only CI-built, signed images run |
+| In-stack Git server, soft-serve (`gitops/manifests/git-server/`) | GitHub only (today's "GitHub mode") | Its only purpose was offline use |
+| Root Application applied by `./platform up` (`gitops/root.yaml`) | An ApplicationSet in the hub that generates a `root-<cluster>` Application per spoke | Keeps the app-of-apps and sync waves for each cluster |
+| `./platform ship` / `rollback` with `kind load` | Promotion PRs and revert PRs. `localhost/` images are not admitted | Only CI-built, signed images run |
 | GHCR (`cd-app.yml` `IMAGE: ghcr.io/...`) | ECR in shared-services. Optionally dual-push to GHCR during migration | IAM-native pulls, no external dependency in the data path, Inspector scanning |
-| cosign keyless + BuildKit SBOM (ADR 0013) | Keep. Change the registry glob and the identity in `policies/verify-image-signatures.yaml` | Already the right design |
-| Kyverno, 1 replica, `failurePolicy: Ignore` (ADRs 0012, 0022) | Kyverno, 3 replicas, `Fail` for app namespaces, every policy on Enforce | ADR 0022 already says this is what production needs |
-| Envoy Gateway on NodePorts, 1 proxy (ADRs 0008, 0028) | ALB (LBC, ACM, WAF) to Envoy Gateway, 2+ proxies across AZs with a PDB | WAF and ACM need an ALB. Envoy keeps HTTPRoutes, the `/admin` filter and the Rollouts plugin |
+| cosign keyless + BuildKit SBOM | Keep. Change the registry glob and the identity in `policies/verify-image-signatures.yaml` | Already the right design |
+| Kyverno, 1 replica, `failurePolicy: Ignore` | Kyverno, 3 replicas, `Fail` for app namespaces, every policy on Enforce | What production needs |
+| Envoy Gateway on NodePorts, 1 proxy | ALB (LBC, ACM, WAF) to Envoy Gateway, 2+ proxies across AZs with a PDB | WAF and ACM need an ALB. Envoy keeps HTTPRoutes, the `/admin` filter and the Rollouts plugin |
 | cert-manager + demo CA, `*.localtest.me` | ACM for public certificates. cert-manager only for the ALB→Envoy hop | ACM renews itself, and it's free on ALB |
 | No DNS | Route 53, a delegated subzone per env account, ExternalDNS per cluster | |
-| Sealed Secrets with a committed demo key (ADR 0018) | External Secrets Operator + Secrets Manager + KMS | ADR 0018 names this as the production path |
-| kube-prometheus-stack, Prometheus 24 h (ADR 0007) | Datadog Agent + Cluster Agent (Datadog Operator). Keep metrics-server for the HPA | See §8. 15 months of metrics, so the real 30-day error budget can be computed (the ADR 0006 limitation goes away) |
+| Sealed Secrets with a committed demo key | External Secrets Operator + Secrets Manager + KMS | The standard production path |
+| kube-prometheus-stack, Prometheus 24 h | Datadog Agent + Cluster Agent (Datadog Operator). Keep metrics-server for the HPA | See §3.8. 15 months of metrics, so the real 30-day error budget can be computed (locally, 24 h) |
 | Loki + Alloy | Datadog Logs, prod indexed, archives in S3 | |
-| Grafana + `dashboards/*.json` (ADR 0023) | Datadog dashboards as code (Terraform `datadog` provider) | |
-| `alerts/*.yaml` PrometheusRules + promtool tests | Datadog SLOs + burn-rate monitors + regular monitors, as code. Tests become fire drills in staging (§10) | |
-| Alertmanager → `alert-receiver` (ADR 0025) | Datadog monitors → PagerDuty (or Datadog On-Call) for pages, Slack/Jira for tickets | |
+| Grafana + `dashboards/*.json` | Datadog dashboards as code (Terraform `datadog` provider) | |
+| `alerts/*.yaml` PrometheusRules + promtool tests | Datadog SLOs + burn-rate monitors + regular monitors, as code. Tests become fire drills in staging (§3.9) | |
+| Alertmanager → `alert-receiver` | Datadog monitors → PagerDuty (or Datadog On-Call) for pages, Slack/Jira for tickets | |
 | `runbooks/*.md` | Keep in Git. Every monitor message links to one. Rewrite the PromQL/LogQL sections as Datadog queries | |
-| Trivy in CI (ADR 0016), `rescan.yml` (ADR 0019) | Keep Trivy as the CI gate. Replace the daily rescan with Inspector continuous ECR scanning | Inspector re-scans when a new CVE is published |
-| Trivy Operator (ADR 0021) | Drop. Use Inspector for images and Kyverno Enforce for config | Cuts duplicate tooling. *(Alternative: Datadog Cloud Security if it's licensed)* |
-| NetworkPolicies on kindnet (ADR 0017) | VPC CNI network-policy enforcement (an EKS add-on option). Same policies, plus default-deny egress | ADR 0017 wanted FQDN egress, which needs Cilium or Network Firewall (§13) |
+| Trivy in CI, `rescan.yml` | Keep Trivy as the CI gate. Replace the daily rescan with Inspector continuous ECR scanning | Inspector re-scans when a new CVE is published |
+| Trivy Operator | Drop. Use Inspector for images and Kyverno Enforce for config | Cuts duplicate tooling. *(Alternative: Datadog Cloud Security if it's licensed)* |
+| NetworkPolicies on kindnet | VPC CNI network-policy enforcement (an EKS add-on option). Same policies, plus default-deny egress | FQDN egress needs Cilium or Network Firewall (§3.13) |
 | `local-path` volumes | gp3 EBS through the CSI driver. Almost nothing stateful is left once Prometheus and Loki go | |
-| Argo Rollouts in the demo copy only (ADRs 0011, 0020) | Canary in prod, analysis through Rollouts' Datadog provider | Production has no contract that forces a plain Deployment |
-| Patch promoter CronJob with a fine-grained token (ADR 0024) | Keep it, in the hub. Gates read the Datadog SLO/monitor APIs and the hub's Argo CD API. Token from a GitHub App | |
+| Argo Rollouts in the demo copy only | Canary in prod, analysis through Rollouts' Datadog provider | Every prod release should be a canary |
+| Patch promoter CronJob with a fine-grained token | Keep it, in the hub. Gates read the Datadog SLO/monitor APIs and the hub's Argo CD API. Token from a GitHub App | |
 | Trickle Deployment (`gitops/manifests/promoter/trickle.yaml`) | Keep it in dev/staging. In prod use Datadog Synthetics plus real traffic | |
 | `admin` / `admin12345` | SSO everywhere (IAM Identity Center + IdP) | |
 | `promotion/PAUSED` | Keep. Add Argo CD sync windows for prod freezes | |
-| Renovate (ADR 0010) | Keep. Add Terraform providers and modules | |
+| Renovate | Keep. Add Terraform providers and modules | |
 
 ---
 
@@ -112,7 +112,7 @@ flowchart TB
 
 **Options considered:** a single account with env-tagged resources (rejected: no IAM blast-radius boundary, and cost attribution by tags only). A shared non-prod account holding dev+staging (a reasonable saving; see open questions).
 
-**claude_daddy's view: two clusters, not three.** One EKS cluster for prod in its own account, and **one shared non-prod cluster** (dev and staging as namespaces, as they are locally) in a non-prod account. It saves a control plane, the system nodes, a NAT gateway and a load balancer (~$300–400/month), and keeps today's namespace model for dev and staging. The cost is weaker isolation between dev and staging, which matters far less than prod's. The subnets add an **isolated tier per AZ** (no route to the internet) for future data stores. VPC endpoints for ECR (api and dkr), S3, STS, CloudWatch Logs and Secrets Manager mean image pulls and AWS calls skip NAT. **Our joint recommendation:** start with daddy's two clusters, and split staging out only if it must mirror prod's IAM and network exactly (open question 1).
+**Alternative: two clusters, not three.** One EKS cluster for prod in its own account, and **one shared non-prod cluster** (dev and staging as namespaces, as they are locally) in a non-prod account. It saves a control plane, the system nodes, a NAT gateway and a load balancer (~$300–400/month), and keeps today's namespace model for dev and staging. The cost is weaker isolation between dev and staging, which matters far less than prod's. The subnets add an **isolated tier per AZ** (no route to the internet) for future data stores. VPC endpoints for ECR (api and dkr), S3, STS, CloudWatch Logs and Secrets Manager mean image pulls and AWS calls skip NAT. **Recommend:** start with two clusters, and split staging out only if it must mirror prod's IAM and network exactly (open question 1).
 
 **Repo changes:** new `infra/` tree (§4). README's "Local vs a real cloud" table gets a link to this doc.
 
@@ -122,7 +122,7 @@ flowchart TB
 - **Clusters: prod alone, one shared non-prod cluster for dev and staging (§3.1's joint recommendation), plus one hub cluster in tooling.** If staging is split out (open question 1), it's one cluster per environment account. Everything below applies to each cluster either way. Private API endpoint. Access entries, not the `aws-auth` ConfigMap (the sketch already does this). Control-plane logs (`api`, `audit`, `authenticator`) to CloudWatch with 30-day retention, forwarded to Datadog only if Cloud SIEM is bought.
 - **Compute: a small managed node group `system`** (2× `m7g.large`, Bottlerocket or AL2023 ARM, tainted `CriticalAddonsOnly`) for CoreDNS, Karpenter, LBC, ExternalDNS, ESO, Kyverno and the Datadog Cluster Agent. **Karpenter** NodePools provide the rest:
   - `apps`: on-demand in prod, Spot plus on-demand fallback in dev/staging, Graviton families `m7g`/`c7g`/`m8g`, consolidation `WhenEmptyOrUnderutilized`, disruption budgets restricted in prod business hours.
-  - This replaces the sketch's fixed `platform` and `apps` node groups. Karpenter bin-packs better, and **Datadog bills per host**, so fewer, larger nodes save money twice (§11).
+  - This replaces the sketch's fixed `platform` and `apps` node groups. Karpenter bin-packs better, and **Datadog bills per host**, so fewer, larger nodes save money twice (§3.12).
 - **EKS Auto Mode** is a serious alternative. AWS then runs Karpenter, the VPC CNI, EBS CSI and the LB controller for you, at a per-instance management fee (roughly +12% on EC2 *(unsure)*). **Recommend standard EKS + Karpenter**: the team already runs every one of those controllers through GitOps, and Auto Mode's LB controller is less configurable. Re-evaluate if nobody wants to own the add-on upgrades.
 - **Managed add-ons** through Terraform: vpc-cni (with `enableNetworkPolicy`), coredns, kube-proxy, eks-pod-identity-agent, aws-ebs-csi-driver, metrics-server *(unsure: metrics-server is available as an EKS community add-on; otherwise keep the existing Argo CD Application, minus `--kubelet-insecure-tls`)*.
 - **The app's sizing stays as charted:** 100m request, no CPU limit, 128Mi memory limit, HPA 3–6 at 70% (`charts/orders-gateway/values.yaml`). Raise `maxReplicas` in prod (e.g. 12) now that Karpenter can add nodes. 6 was the laptop's ceiling.
@@ -161,7 +161,7 @@ Roles, one per controller per cluster, least privilege:
 - `gha-ecr-push` (shared-services): trust `sub = repo:iantest11111989/orders-gateway-platform:ref:refs/heads/main` and `aud = sts.amazonaws.com`. Permissions: `ecr:PutImage`, `InitiateLayerUpload` and friends on `orders-gateway` only. **No delete or tag-mutation rights.** PRs get no role; they build without pushing, as `ci-app.yml` already does.
 - `gha-tf-plan-<acct>`: read-only plus the state bucket, trusted for `pull_request` events. `gha-tf-apply-<acct>`: trusted for `environment:<env>` only, so prod applies need the GitHub Environment's required reviewers.
 - **CI never talks to a cluster.** Argo CD pulls, so no kube credentials exist in GitHub at all. That's the strongest property the repo already has; keep it.
-- Replace the promoter's fine-grained PAT (ADR 0024) and the `GITHUB_TOKEN` PR-opening trick (ADR 0015) with a **GitHub App** whose private key lives in Secrets Manager (tooling account). Separately: ADR 0024 notes that "the bots share one GitHub account". Production needs individual human and bot identities, or approvals mean nothing.
+- Replace the promoter's fine-grained PAT and the `GITHUB_TOKEN` PR-opening trick with a **GitHub App** whose private key lives in Secrets Manager (tooling account). Production needs individual human and bot identities, or approvals mean nothing.
 
 **Repo changes:** `charts/orders-gateway/templates/serviceaccount.yaml` is unchanged. New Terraform modules `pod-identity`, `github-oidc`. `gitops/values/argocd.yaml` gains OIDC, RBAC and HA.
 
@@ -169,16 +169,16 @@ Roles, one per controller per cluster, least privilege:
 
 **Recommend:**
 - **ECR in shared-services**, repository `orders-gateway`:
-  - **Tag immutability ON.** This breaks today's practice of re-pushing `v1`/`v2`/`v2-bad` from every main commit (ADR 0013). Move the demo images to a separate `orders-gateway-demo` repository with mutable tags, never admitted in prod. Immutability still allows *adding* a tag to an existing digest, which promotion uses below.
-  - **Enhanced scanning (Inspector), continuous** on `orders-gateway`, scan-on-push on the rest. Findings go to Security Hub and Datadog. This replaces `rescan.yml`'s daily job (ADR 0019); keep `rescan.yml` until Inspector has run in parallel for a month.
+  - **Tag immutability ON.** This breaks today's practice of re-pushing `v1`/`v2`/`v2-bad` from every main commit. Move the demo images to a separate `orders-gateway-demo` repository with mutable tags, never admitted in prod. Immutability still allows *adding* a tag to an existing digest, which promotion uses below.
+  - **Enhanced scanning (Inspector), continuous** on `orders-gateway`, scan-on-push on the rest. Findings go to Security Hub and Datadog. This replaces `rescan.yml`'s daily job; keep `rescan.yml` until Inspector has run in parallel for a month.
   - **Lifecycle:** expire untagged manifests after 7 days *(careful: cosign v3 bundles and BuildKit SBOM manifests are referrers/index children. Check that the lifecycle rules don't treat them as untagged orphans. Unsure; test it in dev first.)* Keep the last 100 `sha-*` images. Never expire `release-*`, which the promotion job adds to a digest when it reaches prod.
   - **Encryption** with a shared-services KMS CMK. The repo policy grants pull to the org (`aws:PrincipalOrgID` plus the `Workloads` OU path condition) for the node roles. **Cross-account pull, not replication, within one region.** Cross-region **replication** only to the DR region (§3.11).
   - **Pull-through cache** rules for `docker.io`, `quay.io`, `registry.k8s.io`, `ghcr.io` and `public.ecr.aws`, so third-party charts' images come through ECR. That removes the rate-limit failure mode in the README's troubleshooting table, and Inspector scans them too. Kyverno's `restrict-image-registries` then allows **only** `<shared-acct>.dkr.ecr.<region>.amazonaws.com/` (plus a few exceptions while migrating). The sketch has the GHCR rule. Docker Hub needs credentials in Secrets Manager.
-- **Signing: keep cosign keyless** (ADR 0013). It's free and keyless, and the identity check (`cd-app.yml@refs/heads/main`, `policies/verify-image-signatures.yaml`) is exactly the right policy. ECR supports the OCI 1.1 referrers API that cosign v3 bundles use *(unsure: confirm with a real push, because Kyverno 1.20's referrer lookup was only verified on GHCR)*. Alternatives:
+- **Signing: keep cosign keyless**. It's free and keyless, and the identity check (`cd-app.yml@refs/heads/main`, `policies/verify-image-signatures.yaml`) is exactly the right policy. ECR supports the OCI 1.1 referrers API that cosign v3 bundles use *(unsure: confirm with a real push, because Kyverno 1.20's referrer lookup was only verified on GHCR)*. Alternatives:
   - **AWS Signer + Notation:** AWS-native, but Kyverno's Notary verification is less mature, and the signing key moves to AWS. Not worth the switch.
   - **cosign with a KMS key:** removes the dependency on public Sigstore (Fulcio/Rekor) at admission. Worth it if the org won't accept public transparency-log entries naming its repo. Open question.
 - **Add SLSA build provenance** (`actions/attest-build-provenance` or `cosign attest --type slsaprovenance`), and have Kyverno require it in prod. Keep the BuildKit SBOMs.
-- **Admission:** Kyverno HA (3 replicas, PDB, `system` node pool), **`failurePolicy: Fail`** on the image policies in the app namespaces. Exclude `kube-system` and `kyverno` as today. Turn on the background and reports controllers so already-running pods are re-checked (ADR 0022's gap: "a pod created while Kyverno is down ... stays running"). Every Audit policy in `policies/` moves to Enforce once clean, as ADR 0012 planned.
+- **Admission:** Kyverno HA (3 replicas, PDB, `system` node pool), **`failurePolicy: Fail`** on the image policies in the app namespaces. Exclude `kube-system` and `kyverno` as today. Turn on the background and reports controllers so already-running pods are re-checked (closing the gap where a pod created while Kyverno is down stays running). Every Audit policy in `policies/` moves to Enforce once clean,.
 - **CI changes in `.github/workflows/cd-app.yml`:** `aws-actions/configure-aws-credentials` with the OIDC role, then `aws-actions/amazon-ecr-login`. Push by digest, sign, verify, and fail on an empty SBOM, as now. During migration, push to both GHCR and ECR. `promote-dev` writes the ECR repository into `environments/dev/values.yaml`, and `scripts/set-image.sh` learns a repository argument.
 
 ### 3.5 GitOps and promotion across clusters
@@ -200,18 +200,18 @@ Roles, one per controller per cluster, least privilege:
 
 If the owner judges the hub-holds-prod risk too high, a sensible middle is **one Argo CD for non-prod (the hub) and a separate one inside prod**.
 
-**Structure (minimal change from ADR 0005):**
+**Structure (minimal change from today):**
 - Terraform registers each spoke as an Argo CD **cluster Secret** in the hub, labelled `env=dev|staging|prod`, `region=eu-west-1`, `account=<id>`. Annotations carry Terraform outputs: role ARNs, the ACM cert ARN, the WAF ACL ARN, the hosted zone, VPC id and cluster name. This is the "GitOps Bridge" pattern.
 - **One ApplicationSet `platform-roots`** in the hub, with a **cluster generator**. It creates `root-<cluster>`, which renders the existing `gitops/apps` chart with values `{repo, cluster: {name, server, env}, aws: {…annotations}}`. Every template in `gitops/apps/templates/` changes `destination.server: https://kubernetes.default.svc` to `{{ .Values.cluster.server }}`, and Application names get a cluster suffix (they all live in the hub's `argocd` namespace). **Sync waves keep working inside each root**, which wouldn't be true with one flat ApplicationSet per component. That's the reason to prefer this over a matrix generator of clusters × components.
 - `gitops/apps/templates/{dev,staging,prod}.yaml` collapse into one `orders-gateway.yaml` template that picks `environments/{{ .Values.cluster.env }}/values.yaml`. Each cluster runs only its own environment.
 - The `argocd.yaml` self-management Application moves to the hub only. Spokes run no Argo CD.
 - `gitops/values/` splits into `base/` (today's files minus kind-isms), `eks/`, and per-env overrides where needed (e.g. `gitops/values/prod/karpenter.yaml`).
 
-**Reporting deploys to GitHub (decision 0033).** Locally, the patch promoter writes GitHub Deployments from Argo CD's sync and health. On AWS, **argocd-notifications** should do it from the hub (its GitHub service has a `deployment` template), triggered on sync succeeded, failed and degraded. That removes a job from the promoter, and the panel updates the moment Argo CD acts instead of on the promoter's 10-minute schedule.
+**Reporting deploys to GitHub.** Locally, the patch promoter writes GitHub Deployments from Argo CD's sync and health. On AWS, **argocd-notifications** should do it from the hub (its GitHub service has a `deployment` template), triggered on sync succeeded, failed and degraded. That removes a job from the promoter, and the panel updates the moment Argo CD acts instead of on the promoter's 10-minute schedule.
 
 **Promotion across clusters: keep it a Git change, exactly as today.**
-- `main` merge → CI builds, signs and pushes to ECR → the `promote-dev` commit edits `environments/dev/values.yaml` (ADR 0014) → the hub syncs the dev cluster.
-- The `promote/staging` and `promote/prod` PRs as in ADR 0015. The patch promoter (ADR 0024) merges patch PRs after soak, and features need an owner approval.
+- `main` merge → CI builds, signs and pushes to ECR → the `promote-dev` commit edits `environments/dev/values.yaml` → the hub syncs the dev cluster.
+- The `promote/staging` and `promote/prod` PRs as today. The patch promoter merges patch PRs after soak, and features need an owner approval.
 - What changes: the promoter runs in the hub and reads **Datadog** (SLO status API for the 1 h window, the monitor search API for "no alerts fired", metric queries for request count and version soak) instead of Prometheus, plus the hub's Argo CD API for Synced/Healthy. Its GitHub credential becomes a GitHub App.
 - The prod PR also gets a required status check from a post-deploy staging smoke and load job (§3.9).
 - **Kargo** (Akuity) was considered: it models "freight" moving through stages, with verification. It's nice, but it duplicates what the promoter and promotion PRs already do and adds a controller. Revisit with many services.
@@ -224,28 +224,28 @@ If the owner judges the hub-holds-prod risk too high, a sensible middle is **one
 | --- | --- | --- | --- | --- |
 | WAF | Yes | **No** (WAF doesn't attach to an NLB) | Yes | Yes for ALB-backed Gateways |
 | ACM certs | Yes | Yes (TLS listener) | Yes | Yes |
-| `/admin` 403, path filters | ALB listener rules (annotation JSON) | Envoy `HTTPRouteFilter` (ADR 0028) | Both: WAF rule + Envoy filter | Gateway API, limited filters *(unsure)* |
-| Canary traffic split | Rollouts ALB provider (weighted target groups) | Gateway API plugin (ADR 0011) | Gateway API plugin, unchanged | Gateway API plugin *(unsure if supported)* |
+| `/admin` 403, path filters | ALB listener rules (annotation JSON) | Envoy `HTTPRouteFilter` | Both: WAF rule + Envoy filter | Gateway API, limited filters *(unsure)* |
+| Canary traffic split | Rollouts ALB provider (weighted target groups) | Gateway API plugin | Gateway API plugin, unchanged | Gateway API plugin *(unsure if supported)* |
 | Keeps the repo's routes and tests | No, rewrite as Ingress | Yes | Yes | Mostly |
 | Extra hop and cost | none | NLB | ALB + Envoy pods | none |
 
-**Recommend ALB → Envoy Gateway.** WAF in prod is non-negotiable, and Envoy keeps every Gateway API route, the `/admin` filter, the JSON access logs and the canary plugin already proven in ADR 0011. The ALB is created by LBC from a small `Ingress` (class `alb`) in `envoy-gateway-system`, with Envoy's Service as default backend (IP targets). Annotations:
+**Recommend ALB → Envoy Gateway.** WAF in prod is non-negotiable, and Envoy keeps every Gateway API route, the `/admin` filter, the JSON access logs and the canary plugin already proven locally. The ALB is created by LBC from a small `Ingress` (class `alb`) in `envoy-gateway-system`, with Envoy's Service as default backend (IP targets). Annotations:
 
 - `certificate-arn` (or ACM auto-discovery by host), `wafv2-acl-arn`, `ssl-policy` = a TLS 1.2/1.3 policy, `ssl-redirect`
 - `healthcheck-path` against Envoy's ready endpoint
 - `load-balancer-attributes: deletion_protection.enabled=true`, access logs to S3
 - `external-dns.alpha.kubernetes.io/hostname` for the record
 
-**claude_daddy's view: NLB → Envoy, with an ALB only if WAF is needed.** Envoy Gateway's `EnvoyProxy` Service becomes an internet-facing **NLB** through the AWS Load Balancer Controller (IP targets, cross-zone). TLS terminates **at Envoy**, with certificates from cert-manager and Let's Encrypt DNS-01 through Route 53. That keeps today's design closest: the same Gateway, listeners, HTTPRoutes, the `/admin` 403 filter and the path-normalising `ClientTrafficPolicy` (decision 0028), with one fewer hop. **Where we land:** both keep Envoy and every route. The only question is whether the edge needs AWS WAF, which only attaches to an ALB, CloudFront or API Gateway. A public `orders` API should have WAF (managed rule groups, rate limits, body-size limits), so **prod gets ALB → Envoy and non-prod can use NLB → Envoy**. If the owner decides prod doesn't need WAF, NLB everywhere is simpler.
+**Alternative: NLB → Envoy, with an ALB only if WAF is needed.** Envoy Gateway's `EnvoyProxy` Service becomes an internet-facing **NLB** through the AWS Load Balancer Controller (IP targets, cross-zone). TLS terminates **at Envoy**, with certificates from cert-manager and Let's Encrypt DNS-01 through Route 53. That keeps today's design closest: the same Gateway, listeners, HTTPRoutes, the `/admin` 403 filter and the path-normalising `ClientTrafficPolicy`, with one fewer hop. **Recommend:** both keep Envoy and every route. The only question is whether the edge needs AWS WAF, which only attaches to an ALB, CloudFront or API Gateway. A public `orders` API should have WAF (managed rule groups, rate limits, body-size limits), so **prod gets ALB → Envoy and non-prod can use NLB → Envoy**. If the owner decides prod doesn't need WAF, NLB everywhere is simpler.
 
 Envoy's `EnvoyProxy` (`gitops/manifests/gateway/envoyproxy.yaml`) becomes `ClusterIP` with `replicas: 3`, topology spread across AZs and a PDB (the README's "What we'd do next" #1). Watch out: the ALB's idle timeout (60 s) must stay **below** Envoy's and the app's keep-alive (`server.keepAliveTimeout = 65000` in server.js, so that already holds) to avoid 502s on reused connections.
 
 *Considered:* making LBC's Gateway API implementation the only proxy (drops Envoy). It's attractive once its filter support and the Rollouts plugin's compatibility are confirmed *(unsure)*. Not now.
 
-**Edge rules for prod. These differ from the local contract on purpose:**
-- **Only route the app's real paths:** `/work`, `/echo` (POST), `/version`. Return 404 at Envoy for everything else, including **`/metrics`, `/healthz` and `/readyz`, which the local edge forwards today** (ADR 0027: "the ingress still forwards them, because the contract says everything the app serves must be reachable").
+**Edge rules for prod. These are stricter than local on purpose:**
+- **Only route the app's real paths:** `/work`, `/echo` (POST), `/version`. Return 404 at Envoy for everything else, including **`/metrics`, `/healthz` and `/readyz`, which the local edge forwards today**.
   - Reason one: `/metrics` leaks internals.
-  - Reason two: **server.js keys its in-memory counters and histograms by the raw path** (`route = url.pathname`, then `inc()`/`observe()` for every non-probe request, 404s included). A scanner hitting random URLs grows the process's memory without bound until the 128Mi limit OOM-kills the pod. ADR 0027 only drops those series at scrape time, so it protects Prometheus, not the pod. Filtering unknown paths at the edge is the only fix that leaves server.js unchanged. *(Worth confirming with a soak test, §3.9.)*
+  - Reason two: **server.js keys its in-memory counters and histograms by the raw path** (`route = url.pathname`, then `inc()`/`observe()` for every non-probe request, 404s included). A scanner hitting random URLs grows the process's memory without bound until the 128Mi limit OOM-kills the pod. The ServiceMonitor only drops those series at scrape time, so it protects Prometheus, not the pod. Filtering unknown paths at the edge is the only fix that leaves server.js unchanged. *(Worth confirming with a soak test, §3.9.)*
 - WAF: AWS managed rule groups (Common, KnownBadInputs, IP reputation, Anonymous IP optional). A rate-based rule per IP. A body-size limit on `POST /echo` (the app reads the whole body into memory). An explicit block of `/admin*`.
 - Shield Standard comes free. Shield Advanced (~$3k/month) only if the business case exists.
 
@@ -268,7 +268,7 @@ Envoy's `EnvoyProxy` (`gitops/manifests/gateway/envoyproxy.yaml`) becomes `Clust
 - Rotation: Datadog API keys rotated by hand yearly, with a runbook. GitHub App private keys every 90 days (two keys valid during overlap).
 
 **Options considered:**
-- **Sealed Secrets with the key kept out of Git** (ADR 0018's other path): workable, but key backup, rotation and per-cluster re-sealing become our problem. With per-account clusters, each needs its own sealing cert.
+- **Sealed Secrets with the key kept out of Git** : workable, but key backup, rotation and per-cluster re-sealing become our problem. With per-account clusters, each needs its own sealing cert.
 - **SSM Parameter Store SecureString:** free standard tier vs ~$0.40/secret/month for Secrets Manager. ESO supports both. With fewer than 20 secrets the cost is noise, and Secrets Manager adds rotation and cross-region replicas (DR).
 - **Secrets Store CSI driver:** mounts files rather than Kubernetes Secrets. Better for "never in etcd", but Datadog/Argo CD want Secret objects.
 
@@ -306,12 +306,12 @@ If cost or lock-in dominates, C is the defensible answer. Either way, **keep the
 - Pod annotation for the OpenMetrics check (`ad.datadoghq.com/app.checks`), `openmetrics_endpoint: http://%%host%%:8080/metrics`.
 - Metrics: `http_requests_total`, `http_request_duration_seconds`, `app_info`, `app_ready`, `app_inflight_requests`.
 - `histogram_buckets_as_distributions: true`, so latency percentiles are computed server-side across pods.
-- **Keep ADR 0027's route allow-list** in the check config, or the edge filter above, to bound custom-metric cardinality.
+- **Keep the route allow-list** in the check config, or the edge filter above, to bound custom-metric cardinality.
 - Use Metrics without Limits to drop `pod_name` and `container_id` from the indexed tags on the counters (you query by env/route/status, not pod). This is the main custom-metrics cost lever.
 
 **Logs:**
 - The app's JSON lines parse automatically. Add a pipeline that remaps `status` → `http.status_code` and `duration_ms` → `duration`, plus a trace-id remapper on `trace_id`.
-- Exclusion filters: drop the trickle (`cust-trickle`, per ADR 0024) and Envoy health checks.
+- Exclusion filters: drop the trickle (`cust-trickle`) and Envoy health checks.
 - Indexes: prod 15 days. Dev/staging at 10–20% sampling, or Flex Logs. Archive everything to S3 in log-archive for 1 year (rehydrate on demand).
 
 **Traces:**
@@ -319,14 +319,14 @@ If cost or lock-in dominates, C is the defensible answer. Either way, **keep the
   - **Recommend Datadog's admission-controller library injection** (Single Step Instrumentation for Node). It adds `dd-trace` through an init container at pod start, with no image change. Enable it on the app namespace only, with `DD_TRACE_PROPAGATION_STYLE=tracecontext,datadog` so the incoming `traceparent` is honoured.
   - Alternative, more neutral: the OpenTelemetry Operator's Node auto-instrumentation, exporting OTLP to the Agent.
 - Envoy Gateway can also emit OTLP spans for the edge hop.
-- **Honest note:** the app makes no downstream calls (README "What we skipped"), so a trace is ~2 spans (Envoy + app). APM mainly buys per-request latency breakdowns, error tracking and log↔trace links, which is useful but not transformative here. APM is billed per host, so consider enabling it only in prod and staging.
+- **Honest note:** the app makes no downstream calls (README, Limitations), so a trace is ~2 spans (Envoy + app). APM mainly buys per-request latency breakdowns, error tracking and log↔trace links, which is useful but not transformative here. APM is billed per host, so consider enabling it only in prod and staging.
 - *(unsure: the injected tracer must not double-handle `traceparent`. Check that the app's logged `trace_id` matches the APM trace id in W3C mode.)*
 
-**SLOs and burn-rate alerts (mapping ADRs 0006 and 0027):**
+**SLOs and burn-rate alerts (mapping today's rules):**
 | Today (`alerts/orders-gateway-slo.yaml`) | Datadog |
 | --- | --- |
 | Availability SLI: 5xx on `/work`+`/echo` over non-4xx | **Metric-based SLO**, per env (`env` tag as the SLO's group, or one SLO per env). Good = `sum:http_requests_total.count{route IN (/work,/echo), !status:5*, !status:4*}`, total = the same without the `!status:5*`. Target 99.5% over 30 days (plus 7-day views) |
-| Latency SLI: `/echo`+`/version` within 250 ms (`le="0.25"` bucket) | Metric SLO from the bucket counter: good = `http_request_duration_seconds.bucket{route IN (/echo,/version), upper_bound:0.25}`, total = `…count{route IN …}`. Exact, as in ADR 0027 *(unsure about the exact bucket tag name the OpenMetrics check emits; verify on the dev cluster)*. Or a time-slice SLO on p99 from the distribution, which is simpler but a different semantic. Prefer the ratio |
+| Latency SLI: `/echo`+`/version` within 250 ms (`le="0.25"` bucket) | Metric SLO from the bucket counter: good = `http_request_duration_seconds.bucket{route IN (/echo,/version), upper_bound:0.25}`, total = `…count{route IN …}`. Exact, as locally *(unsure about the exact bucket tag name the OpenMetrics check emits; verify on the dev cluster)*. Or a time-slice SLO on p99 from the distribution, which is simpler but a different semantic. Prefer the ratio |
 | Fast burn 14.4× over 1 h & 5 m, `severity: page` | **SLO burn-rate alert**, long window 1 h. Datadog uses a short window of 1/12 of the long, so 5 m, which matches. Threshold 14.4 → `@pagerduty-orders` |
 | Slow burn 6× over 6 h & 30 m, `severity: ticket` | Burn-rate alert, long window 6 h (short 30 m), threshold 6 → `@slack-orders-alerts` + `@jira` |
 | Platform/security alerts (`alerts/platform-delivery.yaml`, `platform-security.yaml`) | Monitors: Argo CD app health/sync (Argo CD metrics via the Agent's Argo CD integration, scraped from the hub), Kyverno admission errors and denials, cert expiry (ACM's `DaysToExpiry` via the AWS integration, and cert-manager's for the internal cert), ExternalSecret sync failures, Inspector critical findings, Rollouts aborted, Karpenter provisioning failures |
@@ -346,7 +346,7 @@ Principle: every promotion step requires evidence from the step before, collecte
 | --- | --- | --- | --- |
 | Unit | `node --test` (existing `app/server.test.js`) | PR, main | merge |
 | Static | hadolint, shellcheck, actionlint, `helm lint` + `kubeconform` per env, `helm-unittest` for the chart's conditionals (rollout on/off, publicRoute), `kyverno test policies/tests`, `tflint`/`checkov` (or `trivy config`) on `infra/`, `terraform validate` | PR | merge |
-| Contract / API | Write an **OpenAPI spec** for the black box (`app/openapi.yaml`: `/work` incl. the `ms` cap at 2000, `POST /echo`, `/version`, 404 shape, 503 `/readyz` while draining). Run **Schemathesis** against the built container in CI (property-based, catches 5xx on odd inputs). Plus a hand-written **Hurl** or k6 suite for exact behaviours: the SIGTERM drain (`/readyz` → 503, in-flight finishes), `connection: close` while shutting down, the `ms` cap, invalid JSON on `/admin/fault` → 500 *(that last is a real server.js behaviour: `JSON.parse` throws into the catch)* | PR (on the image built in the `image` job) | merge |
+| API | Write an **OpenAPI spec** for the black box (`app/openapi.yaml`: `/work` incl. the `ms` cap at 2000, `POST /echo`, `/version`, 404 shape, 503 `/readyz` while draining). Run **Schemathesis** against the built container in CI (property-based, catches 5xx on odd inputs). Plus a hand-written **Hurl** or k6 suite for exact behaviours: the SIGTERM drain (`/readyz` → 503, in-flight finishes), `connection: close` while shutting down, the `ms` cap, invalid JSON on `/admin/fault` → 500 *(that last is a real server.js behaviour: `JSON.parse` throws into the catch)* | PR (on the image built in the `image` job) | merge |
 | Integration | The existing kind cluster job (`platform.yml`): full `up`, `verify`, ship/rollback under traffic. Add an **EKS-layer render test**: `argocd app diff` preview, or [argo-cd-diff-preview](https://github.com/dag-andersen/argocd-diff-preview), posting rendered manifest diffs for every cluster on the PR | PR | merge |
 | Terraform plan | `terraform plan` per affected root, plan posted to the PR (read-only OIDC role) | PR | merge; apply on main with an environment approval for prod |
 | Smoke (post-deploy) | An Argo CD **PostSync hook Job** in each env (small image with `curl`/Hurl): hits the Service and the public hostname. `/version` must equal the expected tag, `POST /echo` round-trips, `/admin/fault` → 403 at the edge, `/metrics` → 404 at the edge (prod). A failed hook makes the sync Failed, which fires an Argo CD notification and a Datadog event | after every sync, every env | the promoter's gate: "last sync's smoke passed" |
@@ -354,7 +354,7 @@ Principle: every promotion step requires evidence from the step before, collecte
 | Canary analysis | Argo Rollouts AnalysisTemplate with the Datadog provider (§3.10) | prod releases | automatic abort/rollback |
 | Load | k6 (existing `app/k6/load.js`) via the **k6 Operator** in staging: a nightly 15 min at 2× prod's peak rate, plus a weekly step test to find the knee (when the HPA saturates, p99 vs replicas). Thresholds as in load.js (`orders_slo_good >= 0.995`, p99 < 250 ms). Results sent to Datadog | nightly + before a feature promotion | **feature** promotion to prod requires the latest staging load run green on that image |
 | Soak | 8–24 h in staging weekly at prod-like rate, **including a slice of random-path requests**, watching memory per pod (the unbounded-route-map risk in §3.6), event-loop lag, and fd counts | weekly; before major Node base-image upgrades | ticket on regression |
-| Chaos | **AWS FIS** experiments: terminate a node, AZ power-interruption scenario, `ec2:stop` on Envoy's node, API throttling. In-cluster: pod kill, CoreDNS loss, Kyverno down (verifies fail-closed doesn't block rollbacks: an **open question**, because `Fail` + a Kyverno outage blocks new pods). Reuse `./platform demo chaos` logic, with the SLO gate at 99.5% | monthly game day in staging; quarterly in prod in business hours with stop conditions on the burn-rate monitors | findings become tickets/ADRs |
+| Chaos | **AWS FIS** experiments: terminate a node, AZ power-interruption scenario, `ec2:stop` on Envoy's node, API throttling. In-cluster: pod kill, CoreDNS loss, Kyverno down (verifies fail-closed doesn't block rollbacks: an **open question**, because `Fail` + a Kyverno outage blocks new pods). Reuse `./platform demo chaos` logic, with the SLO gate at 99.5% | monthly game day in staging; quarterly in prod in business hours with stop conditions on the burn-rate monitors | findings become tickets |
 | Security | Trivy (CI gate), Inspector (continuous), an OWASP ZAP baseline DAST against staging nightly | PR / nightly | critical findings block promotion (an Inspector finding on the target digest is a promoter gate) |
 | Alert fire drill | The `/admin/fault` drill in staging (§3.8) | weekly | ticket if a monitor didn't fire |
 
@@ -374,27 +374,27 @@ Principle: every promotion step requires evidence from the step before, collecte
 | Cost | Infracost on the plan, posted to the PR; AWS Budgets alerts | every PR / continuous | a change that quietly adds a NAT gateway per AZ in dev |
 
 **Gaps in the app's own tests, found in this repo.** Worth fixing before any of the above, because they hide failures:
-- **Injected latency can't trip the latency SLO.** server.js applies `FAULT_LATENCY_MS` only to `/work`, and the latency SLI measures `/echo` and `/version` (decision 0027 leaves `/work` out on purpose, since it burns CPU by design). So `v2-bad`'s 400 ms, and any latency drill through `/admin/fault`, never moves the latency SLI. In `canary-fail` the canary is caught by its error rate alone. A real latency drill has to slow `/echo` indirectly, by saturating the event loop with `/work` calls on the same pods, or by adding latency at Envoy (a fault-injection `BackendTrafficPolicy`), which is the better production drill anyway.
+- **Injected latency can't trip the latency SLO.** server.js applies `FAULT_LATENCY_MS` only to `/work`, and the latency SLI measures `/echo` and `/version` (`/work` is left out on purpose: the caller chooses how long it takes). So `v2-bad`'s 400 ms, and any latency drill through `/admin/fault`, never moves the latency SLI. In `canary-fail` the canary is caught by its error rate alone. A real latency drill has to slow `/echo` indirectly, by saturating the event loop with `/work` calls on the same pods, or by adding latency at Envoy (a fault-injection `BackendTrafficPolicy`), which is the better production drill anyway.
 - **The canary's "no data" path.** A canary that gets too little traffic is Inconclusive and pauses, waiting for a human. That's correct (fail closed), but nothing alerts on a Rollout paused for a long time. Add a monitor on a Rollout `Paused` for over 30 minutes.
 
 **Promotion gates, summarised:**
 - **dev:** automatic after main's build/sign. Smoke must pass.
 - **staging:** promotion PR. Dev smoke passed + dev SLO held 1 h + no monitors + checks green. Patches merge automatically (promoter), features need the owner.
-- **prod:** promotion PR. Staging soaked 1 h on that exact digest (as ADR 0024) + staging SLO + synthetics green + latest nightly load green (features) + no critical Inspector finding + owner approval for features. Then canary analysis in prod, post-sync smoke, and synthetics watching.
+- **prod:** promotion PR. Staging soaked 1 h on that exact digest + staging SLO + synthetics green + latest nightly load green (features) + no critical Inspector finding + owner approval for features. Then canary analysis in prod, post-sync smoke, and synthetics watching.
 
 ### 3.10 Release safety: canaries in prod
 
-ADR 0011's canary has only ever run in the `demo` copy, because the contract needed a Deployment named `app`. Production has no such contract. **Note a stale comment:** `environments/prod/values.yaml` says "Every image change rolls out as a canary" but sets `rollout.enabled: false`. Fix the comment either way.
+Locally the canary only runs in the `demo` copy, and prod is a plain Deployment named `app`. In production every prod release should be a canary.
 
 **Recommend:**
-- `rollout.enabled: true` in prod (and staging, so the canary path is itself tested before prod). Consider replacing `workloadRef` with a native `Rollout` template so `kubectl get deploy` doesn't show 0/0 (ADR 0011's documented oddity). The chart can do either; native is clearer for on-call.
+- `rollout.enabled: true` in prod (and staging, so the canary path is itself tested before prod). Consider replacing `workloadRef` with a native `Rollout` template so `kubectl get deploy` doesn't show 0/0. The chart can do either; native is clearer for on-call.
 - **Traffic routing:** keep the Gateway API plugin (Envoy stays, §3.6). The `ignoreDifferences` on HTTPRoute weights stays (`gitops/apps/templates/prod.yaml`).
 - **Steps:** 5% (2 min analysis) → 25% → 50% → 100%, plus a **background analysis** throughout. `abortScaleDownDelaySeconds` so a rollback is instant. `dynamicStableScale: true` to avoid doubling capacity. `maxSurge` so the canary pods land in different AZs.
-- **AnalysisTemplate with the Datadog provider:** the same two SLIs as ADR 0027 on the canary only, using a `rollouts-pod-template-hash` tag. Unified Service Tagging gives `version:<tag>`, so query by `version` instead, which is simpler. Datadog metrics arrive with ~1–2 min delay *(unsure on exact latency)*, so set `initialDelay: 2m` and keep the **fail-closed on empty data** design (ADR 0011's lesson). A Datadog outage then means *Inconclusive → pause*, never a silent pass.
+- **AnalysisTemplate with the Datadog provider:** the same two SLIs on the canary only, using a `rollouts-pod-template-hash` tag. Unified Service Tagging gives `version:<tag>`, so query by `version` instead, which is simpler. Datadog metrics arrive with ~1–2 min delay *(unsure on exact latency)*, so set `initialDelay: 2m` and keep the **fail-closed on empty data** design. A Datadog outage then means *Inconclusive → pause*, never a silent pass.
   - Alternative: keep a tiny in-cluster Prometheus (2 h retention) just for analysis. It's faster and has no SaaS dependency, but it's a second metrics system. **Prefer Datadog**, and revisit if the delay makes steps too slow.
 - **Low traffic:** if prod's real traffic is low at night, the 5% step will be Inconclusive. Either keep the trickle in prod (as today), or schedule promotions within working hours (Argo CD sync windows).
-- **If Datadog isn't chosen (§3.8, option C):** the same AnalysisTemplates run against **Amazon Managed Service for Prometheus**. Rollouts' Prometheus provider signs requests with SigV4 through its `authentication.sigv4` block, using a Pod Identity role on the Rollouts controller allowed only `aps:QueryMetrics`. The queries in `charts/orders-gateway/templates/analysistemplate.yaml` move over unchanged. claude_daddy's steps (10 → 25 → 50 → 100, with an analysis after each) are today's chart defaults and fine for prod. The 5% first step above only matters at high traffic.
-- **Keep the `ignoreDifferences` fix from #107:** `.spec.rules[].backendRefs[]?.weight`. Without the `?`, the `/admin` rule (no backends) breaks the expression, Argo CD resets every canary step, and the analysis goes Inconclusive. It was found in this repo on 2026-11-25.
+- **If Datadog isn't chosen (§3.8, option C):** the same AnalysisTemplates run against **Amazon Managed Service for Prometheus**. Rollouts' Prometheus provider signs requests with SigV4 through its `authentication.sigv4` block, using a Pod Identity role on the Rollouts controller allowed only `aps:QueryMetrics`. The queries in `charts/orders-gateway/templates/analysistemplate.yaml` move over unchanged. The steps 10 → 25 → 50 → 100, with an analysis after each, are the chart's defaults and fine for prod. The 5% first step above only matters at high traffic.
+- **Keep the `ignoreDifferences` on route weights as it is:** `.spec.rules[].backendRefs[]?.weight`. Without the `?`, the `/admin` rule (no backends) breaks the expression, Argo CD resets every canary step, and the analysis goes Inconclusive.
 - **Rollback paths:** (1) automatic abort by analysis; (2) `kubectl argo rollouts abort` (SSO, restricted to platform on-call); (3) a revert PR of the promotion commit, which is the durable fix, because Git otherwise re-promotes.
 - **Notifications:** Argo CD + Rollouts notifications → Slack and Datadog events, so dashboards show "deploy started/aborted" markers (replacing the version-change annotation in the Grafana dashboard).
 - **Cross-cluster progression** is the promotion chain itself (§3.5). Within prod, one cluster for now. With a second region, promote region by region with the same gates.
@@ -470,10 +470,10 @@ The table prices the fully split layout (one cluster per environment, as in the 
   - Pod Security `restricted` on app namespaces (as today, via `managedNamespaceMetadata`).
   - Kyverno all-Enforce, HA, fail-closed for the app namespaces. Turn on background scans.
   - Network policies via the VPC CNI, **adding default-deny egress** for the app namespace (it needs only DNS; the Datadog Agent scrapes it, and it initiates nothing. The canary and tracing don't change that, except that **SSI-injected dd-trace sends traces to the node-local Agent**, so allow egress to the Agent's host port or socket).
-  - FQDN egress control for platform namespaces is ADR 0017's open follow-up. Options: Cilium in chaining mode (adds a CNI to operate) or AWS Network Firewall (~$300/month per AZ endpoint *(unsure)*). **Defer.** Start with security groups plus NAT egress logs and GuardDuty.
+  - FQDN egress control for platform namespaces is an open follow-up. Options: Cilium in chaining mode (adds a CNI to operate) or AWS Network Firewall (~$300/month per AZ endpoint *(unsure)*). **Defer.** Start with security groups plus NAT egress logs and GuardDuty.
 - **Edge:** WAF as §3.6. TLS 1.2+. ALB access logs. `/metrics` and the probes not exposed.
 - **Supply chain:** as §3.4. Plus GitHub hardening:
-  - **branch protection on `main`** (ADR 0014 notes `main` has *no* branch protection today), required reviews, and CODEOWNERS for `environments/prod/`, `policies/` and `infra/`.
+  - **branch protection on `main`** (`main` has none today), required reviews, and CODEOWNERS for `environments/prod/`, `policies/` and `infra/`.
   - Required status checks. Secret scanning and push protection. Dependabot alerts alongside Renovate.
   - Actions pinned by SHA (already done). Environments with required reviewers for `terraform apply` in prod.
   - Note that the promotion bot's direct push to main (`promote-dev`) then needs a bypass for the GitHub App only.
@@ -528,10 +528,10 @@ infra/
 ```
 
 - **State:** one S3 bucket per account (versioned, KMS, S3 native lockfile as in the sketch's `use_lockfile = true`), key `<root>/terraform.tfstate`. CI assumes the target account's plan/apply role, so no cross-account state access is needed. Separate roots for `network` and `eks-cluster` within an env, so a cluster rebuild doesn't touch the VPC. Small roots keep plans fast and blast radius small.
-- **Locking:** Terraform 1.10+ locks state with a lockfile in the S3 bucket itself (`use_lockfile = true`), so the older S3 + DynamoDB lock table isn't needed. claude_daddy's draft had the DynamoDB table; either works, but the native lockfile is one less resource.
-- **Which repo:** claude_daddy prefers the Terraform in **its own repo** (`orders-gateway-infra`), with its own reviewers and CODEOWNERS, so a platform-config PR can never touch IAM by accident. The layout below works as a separate repo or as `infra/` here. **Recommend a separate repo** once more than one service exists; `infra/` in this repo is fine while it's one service and one team.
+- **Locking:** Terraform 1.10+ locks state with a lockfile in the S3 bucket itself (`use_lockfile = true`), so the older S3 + DynamoDB lock table isn't needed. The DynamoDB table also works, but the lockfile is one less resource.
+- **Which repo:** the Terraform can live in **its own repo** (`orders-gateway-infra`), with its own reviewers and CODEOWNERS, so a platform-config PR can never touch IAM by accident. The layout below works as a separate repo or as `infra/` here. **Recommend a separate repo** once more than one service exists; `infra/` in this repo is fine while it's one service and one team.
 - **Tooling:** plain Terraform (or OpenTofu; open question) with one `env.tfvars` per root. Terragrunt helps with DRY backends and dependency ordering across ~15 roots. **Recommend starting without it** and adding it if the copy-paste hurts.
-- **Pin providers and modules.** Renovate already manages pins (ADR 0010). Add the `terraform` manager.
+- **Pin providers and modules.** Renovate already manages pins. Add the `terraform` manager.
 - **CI:** `.github/workflows/infra.yml`. On PR: fmt, validate, tflint, checkov/trivy config, and `plan` for changed roots, posted as a PR comment. On main: `apply` per root in dependency order. Prod roots wait on a GitHub Environment approval. **Nightly drift detection** (`plan -detailed-exitcode`) opens an issue on drift (the same pattern as `rescan.yml`'s tracking issue).
 - **Handover to Argo CD (the GitOps bridge):**
   1. `eks-cluster` creates the cluster, the system node group and the Pod Identity associations, plus the AWS resources the in-cluster controllers will need (roles, ACM cert, WAF ACL, zone).
@@ -544,10 +544,10 @@ infra/
 
 ## 5. Phased migration plan
 
-**Phase 0: decisions and foundations (1–2 weeks)**
+**Phase 0: choices and foundations (1–2 weeks)**
 - Answer the open questions below, especially non-prod layout, region, domain, IdP and budget.
 - `live/bootstrap`, the Organization, SCPs, Identity Center, the security/log-archive baseline (CloudTrail, GuardDuty, Security Hub, Config), budgets.
-- GitHub: branch protection on main, a GitHub App for the bots, individual identities.
+- GitHub: branch protection on main, a GitHub App for automation, individual identities.
 
 **Phase 1: images (≈1 week)**
 - ECR + pull-through cache + GitHub OIDC push role.
@@ -567,7 +567,7 @@ infra/
 
 **Phase 4: staging + test series (2 weeks)**
 - Staging: the `staging` namespace in the non-prod cluster, or its own account and cluster if open question 1 splits it out. The canary on in staging.
-- PostSync smoke hooks, the k6 Operator nightly load, the weekly soak, the contract tests in PR CI, the alert fire drill, the first FIS game day.
+- PostSync smoke hooks, the k6 Operator nightly load, the weekly soak, the API tests in PR CI, the alert fire drill, the first FIS game day.
 
 **Phase 5: prod (2 weeks + soak)**
 - The prod account, NAT per AZ, endpoints, the ALB with WAF and ACM, the canary with Datadog analysis, Kyverno fail-closed, GuardDuty runtime monitoring.
@@ -593,18 +593,7 @@ infra/
 8. **Domain name** for the apex zone, and are the per-env subdomains OK?
 9. **Public Sigstore OK** (keyless signatures in the public Rekor log naming the repo), or switch to cosign with a KMS key?
 10. **Compliance target** (SOC 2, ISO 27001, PCI)? It changes Config packs, log retention and access reviews.
-11. **Who approves prod promotions** once the bots stop sharing one GitHub account? Does the patch promoter keep auto-merging prod patches?
-12. **Kyverno fail-closed in prod:** accept that a full Kyverno outage blocks new app pods (including rollbacks), relying on 3 replicas + PDB? Or keep `Ignore` with background re-scans as the safety net? I lean towards **Fail**.
+11. **Who approves prod promotions** once every person and bot has its own GitHub identity? Does the patch promoter keep auto-merging prod patches?
+12. **Kyverno fail-closed in prod:** accept that a full Kyverno outage blocks new app pods (including rollbacks), relying on 3 replicas + PDB? Or keep `Ignore` with background re-scans as the safety net? Recommend **Fail**.
 13. **Terraform or OpenTofu**, and Terragrunt or plain roots?
-14. Should **prod's public edge stay this strict** (only `/work`, `/echo`, `/version`), given that the local contract required everything to be reachable?
-
----
-
-### Repo issues found while writing this
-
-Fixed in the bug-hunt PRs of 2026-11-25 (claude_momma and claude_daddy), or listed here until they are:
-- `environments/prod/values.yaml`'s header said every prod image change rolls out as a canary, but prod sets `rollout.enabled: false` (a plain Deployment, as the contract requires). Only the demo copies use the canary.
-- Several docs still gave the canary's latency limit as 300 ms; it's 250 ms (decision 0027: the app's histogram has no 0.3 s bucket).
-- The demo copies of prod carried `env: prod` on their pods, so their logs in Loki were labelled `env=prod`.
-- The ADRs keep the names in use when each was written (`orders-*` namespaces, `POST /orders`, 300 ms). They're records, so they stay as they are. Decision 0027 supersedes them.
-- server.js counts every non-probe path, so its in-memory metric maps grow with unique unknown paths (§3.6). It's harmless locally, but worth a soak test before any public exposure, and the reason prod's edge should route only known paths.
+14. Should **prod's public edge stay this strict** (only `/work`, `/echo`, `/version`), when the local edge forwards everything the app serves?

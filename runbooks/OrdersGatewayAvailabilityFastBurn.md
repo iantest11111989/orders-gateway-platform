@@ -4,13 +4,11 @@
 
 ## What it means
 
-The orders-gateway availability SLO says 99.5% of `/work` and `/echo` requests must not fail with a 5xx, over 30 days. That leaves an **error budget of 0.5%**. 4xx answers (a `GET /echo`, say) are the caller's mistake and count as neither good nor bad ([decision 0027](../docs/decisions/0027-slis-for-the-node-app.md)). This alert covers the **availability** SLI.
+The orders-gateway availability SLO says 99.5% of `/work` and `/echo` requests must not fail with a 5xx, over 30 days. That leaves an **error budget of 0.5%**. 4xx answers (a `GET /echo`, say) are the caller's mistake and count as neither good nor bad. This alert covers the **availability** SLI.
 
 It fires when more than **7.2%** of `/work` and `/echo` requests in one namespace (environment) fail with a 5xx status. That's **14.4x** the rate the budget allows, measured over the last **1 hour** and also over the last **5 minutes**, for 2 minutes. At that rate the whole 30-day error budget would be gone in about 2 days.
 
 The short window lets the alert clear soon after the problem is fixed, instead of waiting for the long window to forget it. Its slower sibling is [OrdersGatewayAvailabilitySlowBurn](OrdersGatewayAvailabilitySlowBurn.md).
-
-The burn-rate rules are [decision 0006](../docs/decisions/0006-slo-rules.md).
 
 The alert's `namespace` label tells you which environment it is. Use it for `<namespace>` below; `<env>` is the matching folder in `environments/`.
 

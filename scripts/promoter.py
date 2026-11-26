@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The patch promoter (brief section 10, decision 0024).
+"""The patch promoter.
 
 Runs inside the cluster, because GitHub's runners can't reach a cluster on a
 laptop. Two modes:
@@ -52,7 +52,7 @@ TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
 PROMETHEUS = os.environ.get("PROMETHEUS_URL", "http://kube-prometheus-stack-prometheus.monitoring:9090")
 SOAK_MINUTES = int(os.environ.get("SOAK_MINUTES", "60"))
 MIN_REQUESTS = int(os.environ.get("MIN_REQUESTS", "300"))
-SLO_ERROR_BUDGET = 0.005  # 99.5% (decision 0006)
+SLO_ERROR_BUDGET = 0.005  # 99.5%
 
 PREVIOUS = {"staging": "dev", "prod": "staging"}  # promotion order
 MARKER = "<!-- patch-promoter -->"
@@ -186,7 +186,7 @@ def soak_gates(prev, env, tag, prom=prometheus, kube_get=kube):
     gates.append((f"{prev} has run only {tag} for {SOAK_MINUTES} min", ran >= SOAK_MINUTES - 2,
                   f"{ran} of the last {SOAK_MINUTES} minutes"))
 
-    # The SLIs' routes (decision 0027): an SLO held with no traffic proves nothing.
+    # The SLIs' routes: an SLO held with no traffic proves nothing.
     served = value(prom(f'sum(increase(http_requests_total{{namespace="{ns}",route=~"/work|/echo"}}[{window}]))'))
     served = int(served or 0)
     gates.append((f"{prev} served at least {MIN_REQUESTS} requests", served >= MIN_REQUESTS, f"{served} in {SOAK_MINUTES} min"))
@@ -231,7 +231,7 @@ def table(gates):
 
 def comment_body(env, tag, gates, outcome):
     return (f"{MARKER}\n**Patch promoter** ({'live' if TOKEN else 'dry run'}): promote **{env}** to `{tag}`, "
-            f"[decision 0024](https://github.com/{REPO}/blob/main/docs/decisions/0024-patch-promoter.md).\n\n"
+            f"[how it works](https://github.com/{REPO}/blob/main/promotion/README.md).\n\n"
             f"{table(gates)}\n\n**{outcome}** "
             f"(checked {time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime())}; rechecked every 10 minutes).")
 
@@ -270,7 +270,7 @@ def evaluate(env, pr, paused, gh=github_ok, prom=prometheus, kube_get=kube):
 # Argo CD's half of the pipeline, shown on GitHub: each environment becomes a
 # GitHub Deployment at the revision Argo CD synced, with the image version,
 # so the repo's Environments panel and the promotion PRs say what's live
-# (decision 0033). Reported on every pass; a new Deployment only when the
+#. Reported on every pass; a new Deployment only when the
 # revision changes, a new status only when the state does.
 ENVIRONMENTS = ("dev", "staging", "prod")
 
@@ -334,7 +334,7 @@ def report_deployments(gh=github_ok, kube_get=kube):
         try:
             log(f"{env}: GitHub deployment {report_environment(env, gh, kube_get)}")
         # Anything (network, timeouts, odd payloads): reporting must never
-        # stop the promotions that follow (decision 0033).
+        # stop the promotions that follow.
         except Exception as e:  # noqa: BLE001
             hint = " (the token needs Deployments: read and write)" if "HTTP 403" in str(e) or "HTTP 404" in str(e) else ""
             log(f"{env}: GitHub deployment not reported: {e}{hint}")
@@ -368,7 +368,7 @@ def run():
             github_ok("PUT", f"/pulls/{pr['number']}/merge", {
                 "merge_method": "merge", "sha": pr["head"]["sha"],  # refuses if the branch moved since the check
                 "commit_title": f"Auto-promote {env} to {tag} (#{pr['number']})",
-                "commit_message": f"Patch promoter, decision 0024. Gates:\n\n{table(gates)}\n"})
+                "commit_message": f"Patch promoter. Gates:\n\n{table(gates)}\n"})
             log(f"{env}: merged #{pr['number']} ({tag})")
             return  # one promotion per pass; the next pass sees the new state
         log(f"{env}: {outcome}")

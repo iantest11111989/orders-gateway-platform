@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Healthcheck of Compose's progress services (decision 0026). `docker compose
+# Healthcheck of Compose's progress services. `docker compose
 # up -d --wait` only shows each container's state, so a single `ready` reads
 # "Waiting" for ten minutes. step-1..step-4 each turn healthy when one stage
 # of the bootstrap is done, so the stages tick off one by one:
@@ -55,7 +55,7 @@ case "${1:-}" in
     url=$(kubectl -n argocd get application root -o jsonpath='{.spec.source.repoURL}' 2>/dev/null) ||
       { echo "root Application not created yet"; exit 1; }
     # The in-stack Git server only exists when Argo CD follows it, not in
-    # GitHub mode (REPO_URL set, decision 0029).
+    # GitHub mode (REPO_URL set).
     case "$url" in *.git.svc*) running git/soft-serve ;; esac ;;
   platform)
     left=$(not_ready '^(?!(dev|staging|prod)$)')

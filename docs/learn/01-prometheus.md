@@ -95,7 +95,7 @@ The app's buckets are 5, 10, 25, 50, 100, 250, 500 ms, 1, 2.5 and 5 s. The laten
    sum(rate(http_request_duration_seconds_count{namespace="dev", route=~"/echo|/version"}[5m]))
    ```
 
-The SLO rules in [`alerts/orders-gateway-slo.yaml`](../../alerts/orders-gateway-slo.yaml) are built from these queries, saved as recording rules, with three refinements: they leave out `4xx` (the caller's mistake), they use `or 0 * ...` so a namespace that has never had a 5xx shows 0 instead of no data, and the latency rule is `1 -` the fast share, so it counts the *slow* requests. Try `slo:orders_availability_errors:ratio_rate5m`. While traffic flows, dev shows `0`. [Decision 0027](../decisions/0027-slis-for-the-node-app.md) explains the choice of routes.
+The SLO rules in [`alerts/orders-gateway-slo.yaml`](../../alerts/orders-gateway-slo.yaml) are built from these queries, saved as recording rules, with three refinements: they leave out `4xx` (the caller's mistake), they use `or 0 * ...` so a namespace that has never had a 5xx shows 0 instead of no data, and the latency rule is `1 -` the fast share, so it counts the *slow* requests. Try `slo:orders_availability_errors:ratio_rate5m`. While traffic flows, dev shows `0`.
 
 ## 4. Why cardinality matters (3 min)
 
@@ -121,7 +121,7 @@ The app's metrics stay small, but not by the app's own doing. Its `route` label 
 for i in 1 2 3; do curl -sk -o /dev/null https://orders.dev.localtest.me/nope-$i; done
 ```
 
-Then look for them: `http_requests_total{namespace="dev", route=~"/nope.*"}` returns nothing. The ServiceMonitor keeps only the app's own routes (`/work`, `/echo`, `/version`, `/admin`) and drops the rest at scrape time ([decision 0027](../decisions/0027-slis-for-the-node-app.md)). The 404s still show in the logs (exercise 3, Loki) and in Envoy's metrics.
+Then look for them: `http_requests_total{namespace="dev", route=~"/nope.*"}` returns nothing. The ServiceMonitor keeps only the app's own routes (`/work`, `/echo`, `/version`, `/admin`) and drops the rest at scrape time. The 404s still show in the logs (exercise 3, Loki) and in Envoy's metrics.
 
 Rule of thumb: if a label's values can grow without limit (IDs, emails, raw URLs, timestamps), it doesn't belong on a metric. Per-request values like `trace_id` go in the logs.
 

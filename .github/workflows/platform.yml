@@ -96,8 +96,8 @@ jobs:
   # building it locally (minutes on a fresh machine). The tag is the same hash
   # of toolbox/ that `./platform` computes (toolbox_image in ./platform), so a
   # change to any pinned tool gives a new tag, and an unchanged toolbox isn't
-  # rebuilt. Signed and checked like the app image (scripts/sign-images.sh,
-  # decision 0013), with this workflow on main as the identity.
+  # rebuilt. Signed and checked like the app image (scripts/sign-images.sh),
+  # with this workflow on main as the identity.
   toolbox-publish:
     name: "Publish toolbox (main only)"
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
@@ -166,8 +166,8 @@ jobs:
     name: "E2E · Fresh install"
     runs-on: ubuntu-24.04
     # No REPO_URL: Argo CD syncs from the in-stack Git server, which the
-    # bootstrap fills with this job's checkout (decision 0029), exactly what a
-    # reviewer gets. (This replaces syncing the PR's merge commit from GitHub.)
+    # bootstrap fills with this job's checkout, exactly what a
+    # fresh clone gets. (This replaces syncing the PR's merge commit from GitHub.)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -185,7 +185,7 @@ jobs:
           path: .cache/images
           key: images-v2-${{ runner.arch }}-${{ github.run_id }}
           restore-keys: images-v2-${{ runner.arch }}-
-      # The reviewer's entry point (the brief's fixed contract): Compose's
+      # The one-command start: Compose's
       # `ready` service bootstraps everything and is healthy only when every
       # Argo CD Application is Synced and Healthy and prod serves.
       - name: "Start (docker compose up -d --wait)"
@@ -249,7 +249,7 @@ jobs:
       - name: Argo CD health check
         run: ./platform shell scripts/test-argocd-health.sh
       # The README's "ship a new version" and "roll back", while traffic flows
-      # (decision 0030): a request loop against prod at :8080 for the whole
+      #: a request loop against prod at :8080 for the whole
       # time; any non-200 fails the step.
       - name: "Ship and roll back under traffic"
         run: |

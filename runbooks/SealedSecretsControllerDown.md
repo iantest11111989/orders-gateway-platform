@@ -4,7 +4,7 @@
 
 ## What it means
 
-The Sealed Secrets controller in `kube-system` hasn't answered a Prometheus scrape for 10 minutes. Existing Secrets keep working. New or changed **SealedSecrets** in Git won't be decrypted into Secrets until it's back, so changes to them don't take effect ([decision 0018](../docs/decisions/0018-sealed-secrets.md)).
+The Sealed Secrets controller in `kube-system` hasn't answered a Prometheus scrape for 10 minutes. Existing Secrets keep working. New or changed **SealedSecrets** in Git won't be decrypted into Secrets until it's back, so changes to them don't take effect.
 
 ## Likely causes
 

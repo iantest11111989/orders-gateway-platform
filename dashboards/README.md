@@ -1,6 +1,6 @@
 # dashboards
 
-Grafana dashboards as JSON, provisioned automatically. Every panel has a plain-English description ([decision 0023](../docs/decisions/0023-dashboards-as-code.md)).
+Grafana dashboards as JSON, provisioned automatically. Every panel has a plain-English description.
 
 | Dashboard | What it shows |
 | --- | --- |

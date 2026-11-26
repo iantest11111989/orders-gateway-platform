@@ -1,7 +1,7 @@
 #!/bin/sh
 # Grafana dashboards: dashboards/*.json is the source; Argo CD applies a
 # ConfigMap per dashboard from gitops/manifests/monitoring/ (label
-# grafana_dashboard=1, which Grafana's sidecar loads; decision 0023).
+# grafana_dashboard=1, which Grafana's sidecar loads).
 #
 #   scripts/dashboards.sh gen     write the ConfigMaps from dashboards/*.json
 #   scripts/dashboards.sh check   CI: ConfigMaps up to date, every panel has a

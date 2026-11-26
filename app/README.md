@@ -1,6 +1,6 @@
 # app: orders-gateway
 
-The assignment's service, `server.js`, **unchanged** (the rules allow changes only through configuration). This folder adds a better `Dockerfile`, a `.dockerignore` and the k6 load script (`k6/load.js`).
+The service, `server.js`. Its behaviour changes only through configuration (environment variables). This folder adds a better `Dockerfile`, a `.dockerignore` and the k6 load script (`k6/load.js`).
 
 ## What it does (read from server.js)
 
@@ -12,9 +12,9 @@ The assignment's service, `server.js`, **unchanged** (the rules allow changes on
 | `GET /version` | the `VERSION` and pod name |
 | `GET /work?ms=N` | **burns N ms of CPU (max 2000) on Node's single event loop**, blocking every other request on that pod meanwhile |
 | `POST /echo` | returns the body |
-| `POST /admin/fault` | **sets the error rate and added latency at runtime, with no authentication**; refused at the edge (decision 0028) |
+| `POST /admin/fault` | **sets the error rate and added latency at runtime, with no authentication**; refused at the edge |
 
-Probes, metrics and `/healthz` aren't counted or logged. Every other request is logged as one JSON line (`ts`, `pod`, `version`, `level` = `info` or `error`, `msg`, `route`, `status`, `duration_ms`, `trace_id` from a `traceparent` header). Unknown paths get their raw path as `route`, so the ServiceMonitor keeps only the known routes (decision 0027).
+Probes, metrics and `/healthz` aren't counted or logged. Every other request is logged as one JSON line (`ts`, `pod`, `version`, `level` = `info` or `error`, `msg`, `route`, `status`, `duration_ms`, `trace_id` from a `traceparent` header). Unknown paths get their raw path as `route`, so the ServiceMonitor keeps only the known routes.
 
 **Configuration:** `PORT` (8080), `VERSION`, `STARTUP_DELAY_MS` (3000), `FAULT_ERROR_RATE` (0–1), `FAULT_LATENCY_MS`.
 

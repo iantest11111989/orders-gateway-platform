@@ -109,7 +109,7 @@ data:
         {
           "type": "stat",
           "title": "Audit findings (24 h)",
-          "description": "Checks that failed in Audit mode over the last 24 hours: reported, not blocked. These are what would be refused if the policy moved to Enforce (decision 0012).",
+          "description": "Checks that failed in Audit mode over the last 24 hours: reported, not blocked. These are what would be refused if the policy moved to Enforce.",
           "id": 3,
           "datasource": {
             "type": "prometheus",
@@ -397,7 +397,7 @@ data:
         {
           "type": "table",
           "title": "Failures by policy and namespace (24 h)",
-          "description": "Which policy failed in which namespace over the last 24 hours. Use it to decide the next policy to move to Enforce: one that stays at zero outside the test namespaces is ready (decision 0012).",
+          "description": "Which policy failed in which namespace over the last 24 hours. Use it to decide the next policy to move to Enforce: one that stays at zero outside the test namespaces is ready.",
           "id": 9,
           "datasource": {
             "type": "prometheus",

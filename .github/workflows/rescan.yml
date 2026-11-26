@@ -1,7 +1,7 @@
 name: Scheduled · image rescan
 
 # Daily: scans the images dev, staging and prod run now against today's
-# vulnerability DB (decision 0019). The app workflow scans an image only when
+# vulnerability DB. The app workflow scans an image only when
 # it's built; a CVE published later shows up here. Findings open (or update)
 # one tracking issue; a clean run closes it.
 on:
@@ -68,7 +68,7 @@ jobs:
           if [ "$STATUS" = 1 ]; then
             body="$(cat report.md)
 
-          Fixable HIGH/CRITICAL findings (details: $RUN_URL). Fix with a dependency bump; CD · app then publishes, scans and promotes a new image (decision 0016)."
+          Fixable HIGH/CRITICAL findings (details: $RUN_URL). Fix with a dependency bump; CD · app then publishes, scans and promotes a new image."
             if [ -n "$issue" ]; then gh issue comment "$issue" --body "$body"
             else gh issue create --title "$TITLE" --label security --body "$body"; fi
           elif [ "$STATUS" = 0 ] && [ -n "$issue" ]; then

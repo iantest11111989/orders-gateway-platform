@@ -6,11 +6,11 @@ By the end you will have made the app fail on purpose, watched its error budget 
 
 ## The SLO in one paragraph
 
-Two SLIs, each 99.5% over 30 days: **availability**, `/work` and `/echo` requests that don't fail with a 5xx; and **latency**, `/echo` and `/version` requests answered within 250 ms. `/work`'s latency is left out because the caller picks it with `?ms=` ([decision 0027](../decisions/0027-slis-for-the-node-app.md)). The 0.5% that may fail is the **error budget**. The **burn rate** is how fast you're spending it: 1 means on pace to spend exactly the budget in 30 days, 14.4 means it's gone in about 2 days. `OrdersGatewayAvailabilityFastBurn` pages when the burn rate is over 14.4 (7.2% of requests failing) over the last **1 hour** *and* the last **5 minutes**, for 2 minutes. The rules are in [`alerts/orders-gateway-slo.yaml`](../../alerts/orders-gateway-slo.yaml), and [decision 0006](../decisions/0006-slo-rules.md) explains them.
+Two SLIs, each 99.5% over 30 days: **availability**, `/work` and `/echo` requests that don't fail with a 5xx; and **latency**, `/echo` and `/version` requests answered within 250 ms. `/work`'s latency is left out because the caller picks it with `?ms=`. The 0.5% that may fail is the **error budget**. The **burn rate** is how fast you're spending it: 1 means on pace to spend exactly the budget in 30 days, 14.4 means it's gone in about 2 days. `OrdersGatewayAvailabilityFastBurn` pages when the burn rate is over 14.4 (7.2% of requests failing) over the last **1 hour** *and* the last **5 minutes**, for 2 minutes. The rules are in [`alerts/orders-gateway-slo.yaml`](../../alerts/orders-gateway-slo.yaml).
 
 ## 0. A copy of dev to break (3 min)
 
-Never break the real environments. Make a copy in `demo` the way the demos do ([decision 0020](../decisions/0020-demos-in-a-copy-of-prod.md)):
+Never break the real environments. Make a copy in `demo` the way the demos do:
 
 ```sh
 ./platform demo rolling-update --keep
@@ -90,7 +90,7 @@ Stop k6 (Ctrl-C), leave the shell, and delete the copy:
 
 ## Try next (optional)
 
-- `config.faultLatencyMs` adds delay to `/work` only. Set it to `400`: `/work` gets slow on the dashboard, yet the **latency** SLO doesn't move, because `/work` isn't in it. Is that what you'd want? (Decision 0027 argues yes.)
+- `config.faultLatencyMs` adds delay to `/work` only. Set it to `400`: `/work` gets slow on the dashboard, yet the **latency** SLO doesn't move, because `/work` isn't in it. Is that what you'd want? (Here, yes: the caller chooses how long `/work` takes, so its latency says nothing about the service.)
 - Now make the latency SLO burn the honest way: run k6 with `-e WORK_MS=1500 -e RATE=10`. Each `/work` blocks the pod's single event loop for up to 1.5 s, so `/echo` waits behind it, and `OrdersGatewayLatencyFastBurn` fires while availability stays perfect. Watch the HPA add pods (**Pods by version**) and whether that's enough.
 
 ## Check yourself

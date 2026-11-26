@@ -1,4 +1,4 @@
-# Alerts for the security components (brief section 8): Kyverno (admission),
+# Alerts for the security components: Kyverno (admission),
 # Sealed Secrets (secrets in Git) and Trivy Operator (vulnerability scans).
 # Argo CD, Rollouts and cert-manager alerts live in their own file.
 #
@@ -18,7 +18,7 @@ spec:
   groups:
     - name: platform-security
       rules:
-        # Kyverno's webhooks use failurePolicy: Ignore (decision 0022), so while
+        # Kyverno's webhooks use failurePolicy: Ignore, so while
         # Kyverno is down, pods are admitted unchecked: :latest and unsigned
         # images get into the app namespaces. That's why this one pages.
         - alert: KyvernoDown
@@ -87,7 +87,7 @@ spec:
             runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/TrivyOperatorDown.md
         # By digest: the environments run images by digest, so image_tag is empty.
         # Our own app's images only: the platform's third-party images carry
-        # known findings (decision 0021), which would keep this firing.
+        # known findings, which would keep this firing.
         - alert: OrdersImageCriticalVulnerability
           expr: |
             sum by (namespace, image_repository, image_digest) (

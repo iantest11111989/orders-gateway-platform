@@ -11,7 +11,7 @@ coverage.*
 
 # Never commit plain secrets or private keys. The DEMO ONLY Sealed Secrets key
 # is a Secret manifest (gitops/manifests/sealed-secrets/demo-key.yaml); its
-# public certificate is the one .pem allowed (decision 0018).
+# public certificate is the one .pem allowed.
 *.key
 *.pem
 !gitops/manifests/sealed-secrets/demo-cert.pem

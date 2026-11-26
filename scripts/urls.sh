@@ -16,7 +16,7 @@ else
   rm -f "$ca_file.tmp"; ca_file=
 fi
 
-step "The contract's endpoints (plain HTTP on the host)"
+step "Plain HTTP on the host"
 echo "  http://localhost:8080      the app in prod (/admin/* is refused)"
 echo "  http://localhost:3000      Grafana"
 echo "  http://localhost:9090      Prometheus"
@@ -39,7 +39,7 @@ fi
 
 step "Argo CD"
 echo "  https://argocd.localtest.me"
-echo "  Login: admin / admin12345 (the contract's dev UI login)"
+echo "  Login: admin / admin12345 (a demo login)"
 # The toolbox sets ARGOCD_OPTS to reach Argo CD by port-forward, so the CLI
 # works even if the gateway is down; no server address needed there.
 echo "  CLI (inside ./platform shell): argocd login --username admin --password <above>, then argocd app list"
@@ -48,7 +48,7 @@ echo "  CLI on your machine, through the gateway: argocd login argocd.localtest.
 step "Grafana"
 echo "  https://grafana.localtest.me"
 gpw=$(kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d || true)
-# From a SealedSecret sealed with the committed DEMO ONLY key (decision 0018).
+# From a SealedSecret sealed with the committed DEMO ONLY key.
 echo "  Login: admin / ${gpw:-<not unsealed yet: re-run ./platform urls in a minute>}"
 
 step "Prometheus and Alertmanager (no login; bound to 127.0.0.1 only)"
