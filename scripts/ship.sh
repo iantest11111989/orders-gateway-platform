@@ -87,11 +87,19 @@ wait_chart() { # wait_chart <version>
   while :; do
     got=$(kubectl -n "$env" get deploy app -o jsonpath='{.metadata.labels.helm\.sh/chart}' 2>/dev/null || true)
     [ "$got" = "$want" ] && break
-    [ "$(date +%s)" -lt "$deadline" ] || die "Argo CD hasn't applied chart $1 to $env after 5 minutes (the Deployment shows ${got:-nothing}); see ./platform verify"
+    [ "$(date +%s)" -lt "$deadline" ] || { app_status; die "Argo CD hasn't applied chart $1 to $env after 5 minutes (the Deployment shows ${got:-nothing}); see ./platform verify"; }
     sleep 3
   done
   kubectl -n "$env" rollout status deploy/app --timeout=300s
   ok "$env runs chart $1"
+}
+
+# On a timeout: what Argo CD says about the environment's Application.
+app_status() {
+  kubectl -n argocd get applications.argoproj.io "$APP-$env" -o json 2>/dev/null |
+    jq -r '"  Argo CD \(.metadata.name): sync \(.status.sync.status // "?"), health \(.status.health.status // "?")",
+           (.status.conditions // [] | .[] | "    \(.type): \(.message)"),
+           (.status.operationState.message // empty | "    last sync: \(.)")' >&2 || true
 }
 
 show() { # what prod serves now, and its 5-minute availability SLO
@@ -118,7 +126,7 @@ roll_out() { # push the checkout, then wait for the Deployment
   while :; do
     img=$(kubectl -n "$env" get deploy app -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
     [ "$img" = "$want" ] && break
-    [ "$(date +%s)" -lt "$deadline" ] || die "Argo CD hasn't applied $want to $env/app after 5 minutes (it shows ${img:-nothing}); see ./platform verify"
+    [ "$(date +%s)" -lt "$deadline" ] || { app_status; die "Argo CD hasn't applied $want to $env/app after 5 minutes (it shows ${img:-nothing}); see ./platform verify"; }
     sleep 3
   done
   kubectl -n "$env" rollout status deploy/app --timeout=300s
