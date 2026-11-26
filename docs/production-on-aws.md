@@ -62,7 +62,7 @@ flowchart TB
 | --- | --- | --- |
 | `docker-compose.yml`, the `ready` service and toolbox (`toolbox/`, `scripts/up.sh`) | Terraform roots run from CI, plus a one-off Argo CD install in each cluster | Compose exists locally to give one command and a health signal. In production the cluster's lifecycle belongs to IaC with reviewed plans. **Keep Compose and kind as the local dev loop and as the PR integration test** (`platform.yml`'s cluster job). |
 | kind, 1 control plane + 2 workers, fake zones (`cluster/kind.yaml`) | EKS per environment, 3 real AZs, Karpenter on Graviton | Managed control plane, real failure domains |
-| dev/staging/prod as namespaces in one cluster (`gitops/apps/templates/{dev,staging,prod}.yaml`) | One cluster per environment, each in its own account | Blast radius, IAM separation, separate upgrade cadence. Not a shared non-prod cluster: dev and staging get the same isolation as prod |
+| dev/staging/prod as namespaces in one cluster (`gitops/apps/templates/orders-gateway-{dev,staging,prod}.yaml`) | One cluster per environment, each in its own account | Blast radius, IAM separation, separate upgrade cadence. Not a shared non-prod cluster: dev and staging get the same isolation as prod |
 | In-stack Git server, soft-serve (`gitops/manifests/git-server/`) | GitHub only (today's "GitHub mode") | Its only purpose was offline use |
 | Root Application applied by `./platform up` (`gitops/root.yaml`) | The same root Application, created by Terraform in each cluster with that cluster's values | Keeps the app-of-apps and sync waves unchanged |
 | `./platform ship` / `rollback` with `kind load` | Promotion PRs and revert PRs. `localhost/` images are not admitted | Only CI-built, signed images run |
