@@ -1,0 +1,15 @@
+# dev: copied to cd/hello-world/dev.yaml first, by ./pipeline cd hello-world dev. ./pipeline cd adds the version
+# and fills in the image before it pushes, so the in-stack Git never sees
+# this file without a version.
+env: dev
+
+# true: Argo CD applies every change by itself; false: a change waits for
+# its Sync click (the demo uses ./pipeline cd --sync).
+autoSync: true
+
+image:
+  tag: ""
+  digest: ""
+
+ingress:
+  entrypoint: dev
