@@ -240,16 +240,9 @@ jobs:
         run: ./platform kubectl get nodes -L topology.kubernetes.io/zone
       - name: Argo CD Applications
         run: ./platform kubectl -n argocd get applications
-      # One ReplicaSet means the Envoy proxy didn't roll during bootstrap
-      # (#46). More is a regression worth seeing, not worth failing CI over.
-      - name: Envoy proxy rolled during bootstrap?
-        run: |
-          ./platform kubectl -n envoy-gateway-system get replicasets -l app.kubernetes.io/component=proxy
-          n=$(./platform kubectl -n envoy-gateway-system get replicasets -l app.kubernetes.io/component=proxy --no-headers | grep -c . || true)
-          if [ "$n" -gt 1 ]; then
-            echo "::warning::the Envoy proxy has $n ReplicaSets after up: it rolled during bootstrap (see #46)"
-          fi
-      # Apps, scrape targets, logs, HTTPS and policies (includes check-https).
+      - name: Traefik pods and their nodes
+        run: ./platform kubectl -n traefik get pods -o wide
+      # Apps, scrape targets, logs, the host ports and policies.
       # Right after `up` a target may not have been scraped yet: retry a bit.
       - name: "Verify (./platform verify)"
         run: |

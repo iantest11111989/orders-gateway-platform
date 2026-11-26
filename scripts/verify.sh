@@ -4,9 +4,9 @@
 #   1. every Argo CD Application is Synced and Healthy
 #   2. every Prometheus scrape target is up
 #   3. Loki has logs from every namespace that runs pods
-#   4. HTTPS answers on every hostname (scripts/check-https.sh)
-#   4b. the plain-HTTP host ports: prod on :8080 (/admin/* refused),
-#       Grafana :3000, Prometheus :9090, Alertmanager :9093
+#   4. the host ports, all plain HTTP through Traefik: prod :8080, dev :8082,
+#      staging :8083 (/admin/* refused on each), Grafana :3000,
+#      Prometheus :9090, Alertmanager :9093, Argo CD :8081
 #   5. Kyverno rejects a bad manifest at admission (a server-side dry run of
 #      a :latest pod in dev must be denied by disallow-latest-tag)
 # Prometheus, Loki and Kyverno are reached through the API server's service
@@ -40,7 +40,7 @@ if res=$(proxy monitoring kube-prometheus-stack-prometheus:9090 '/api/v1/query?q
   while read -r job ns pod instance; do
     [ -n "$job" ] || continue
     # A pod that is gone or terminating (an old replica still draining, e.g.
-    # the Envoy proxy after its bootstrap rollout: 360 s grace period) isn't a
+    # a proxy pod after a rollout, with a long grace period) isn't a
     # problem with the running stack: note it, don't fail on it.
     if [ "$pod" != "-" ]; then
       if ! since=$(kubectl -n "$ns" get pod "$pod" -o jsonpath='{.metadata.deletionTimestamp}' 2>&1); then
@@ -85,27 +85,20 @@ n=$(proxy logging loki:3100 "/loki/api/v1/query_range?query=$q&since=1h&limit=20
 if [ "${n:-0}" -gt 0 ]; then pass "Watchdog notifications delivered ($n in the last hour)"
 else miss "no Watchdog notification in Loki from monitoring/alert-receiver in the last hour"; fi
 
-step "HTTPS on every hostname"
-https_log=$(mktemp)
-trap 'rm -f "$https_log"' EXIT
-if "$(dirname "$0")/check-https.sh" >"$https_log" 2>&1; then
-  pass "every hostname answers over HTTPS with the demo CA"
-else
-  cat "$https_log"
-  miss "HTTPS check failed (output above)"
-fi
-
-step "The plain-HTTP ports on the host"
+step "The host ports (plain HTTP, through Traefik)"
 # Runs with the host's network (the toolbox, and Compose's ready service), so
 # localhost is the host's.
 # curl prints 000 itself when it can't connect; don't add a second one.
 code() { curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$@" || true; }
-c=$(code http://localhost:8080/readyz)
-if [ "$c" = 200 ]; then pass "prod serves at http://localhost:8080 (/readyz 200)"
-else miss "prod at http://localhost:8080/readyz answered $c"; fi
-c=$(code -X POST -d '{}' http://localhost:8080/admin/fault)
-if [ "$c" = 403 ]; then pass "/admin/* is refused at the edge (POST /admin/fault: 403)"
-else miss "POST http://localhost:8080/admin/fault answered $c, not 403: /admin must not be reachable from outside"; fi
+for env_port in prod:8080 dev:8082 staging:8083; do
+  env=${env_port%%:*} port=${env_port##*:}
+  c=$(code "http://localhost:$port/readyz")
+  if [ "$c" = 200 ]; then pass "$env serves at http://localhost:$port (/readyz 200)"
+  else miss "$env at http://localhost:$port/readyz answered $c"; fi
+  c=$(code -X POST -d '{}' "http://localhost:$port/admin/fault")
+  if [ "$c" = 403 ]; then pass "$env: /admin/* is refused at the edge (POST /admin/fault: 403)"
+  else miss "$env: POST http://localhost:$port/admin/fault answered $c, not 403: /admin must not be reachable from outside"; fi
+done
 # Disguised paths: the app (Node) resolves them to /admin/fault, so the edge
 # must refuse them too (non-2xx). --path-as-is sends them unaltered.
 for p in /x/../admin/fault //admin/fault /admin%2Ffault /%61dmin/fault /admin/./fault; do

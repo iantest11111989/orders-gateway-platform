@@ -11,7 +11,7 @@ By the end you will know where the app's metrics come from, how counters and his
 
    ```sh
    ./platform shell
-   k6 run --quiet --insecure-skip-tls-verify -e BASE_URL=https://orders.dev.localtest.me -e RATE=5 -e DURATION=10m app/k6/load.js
+   k6 run --quiet -e BASE_URL=http://localhost:8082 -e RATE=5 -e DURATION=10m app/k6/load.js
    ```
 
    The traffic is 60% `GET /work?ms=10..50` (the app burns that much CPU), 30% `POST /echo` and 10% `GET /version`. Leave it running.
@@ -71,7 +71,7 @@ The app's buckets are 5, 10, 25, 50, 100, 250, 500 ms, 1, 2.5 and 5 s. The laten
    sum by (route, method, status) (rate(http_requests_total{namespace="dev"}[5m]))
    ```
 
-   `sum by (...)` adds up all the pods and keeps only the labels you name. Everything should be `200`. Try `curl -sk https://orders.dev.localtest.me/echo` (a `GET`, which `/echo` doesn't serve) a few times and a `404` series appears.
+   `sum by (...)` adds up all the pods and keeps only the labels you name. Everything should be `200`. Try `curl -s http://localhost:8082/echo` (a `GET`, which `/echo` doesn't serve) a few times and a `404` series appears.
 
 3. The share of `/work` and `/echo` requests that failed with a 5xx. With no faults turned on this is 0, or empty if there has never been a 5xx:
 
@@ -118,10 +118,10 @@ count by (__name__) ({job="app", __name__=~"http_.*|app_.*"})
 The app's metrics stay small, but not by the app's own doing. Its `route` label is the raw path for any path it doesn't know, so a scanner trying `/wp-login.php`, `/.env`, `/a1`, `/a2`, ... would create a new series for each. Try it:
 
 ```sh
-for i in 1 2 3; do curl -sk -o /dev/null https://orders.dev.localtest.me/nope-$i; done
+for i in 1 2 3; do curl -s -o /dev/null http://localhost:8082/nope-$i; done
 ```
 
-Then look for them: `http_requests_total{namespace="dev", route=~"/nope.*"}` returns nothing. The ServiceMonitor keeps only the app's own routes (`/work`, `/echo`, `/version`, `/admin`) and drops the rest at scrape time. The 404s still show in the logs (exercise 3, Loki) and in Envoy's metrics.
+Then look for them: `http_requests_total{namespace="dev", route=~"/nope.*"}` returns nothing. The ServiceMonitor keeps only the app's own routes (`/work`, `/echo`, `/version`, `/admin`) and drops the rest at scrape time. The 404s still show in the logs (exercise 3, Loki) and in Traefik's metrics (`traefik_service_requests_total`).
 
 Rule of thumb: if a label's values can grow without limit (IDs, emails, raw URLs, timestamps), it doesn't belong on a metric. Per-request values like `trace_id` go in the logs.
 

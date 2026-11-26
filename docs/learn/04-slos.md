@@ -16,7 +16,7 @@ Never break the real environments. Make a copy in `demo` the way the demos do:
 ./platform demo rolling-update --keep
 ```
 
-This takes about 2 minutes and leaves an Argo CD Application `orders-gateway-demo` (namespace `demo`), a copy of dev, running at `https://orders-demo.localtest.me`.
+This takes about 2 minutes and leaves an Argo CD Application `orders-gateway-demo` (namespace `demo`), a copy of dev, running at <http://localhost:8084>.
 
 Open the **orders-gateway** dashboard in Grafana and set **environment** to `demo`. The budgets are at 100% and the burn rates at 0.
 
@@ -35,7 +35,7 @@ Argo CD syncs the change and the pods restart with 20% of `/work` and `/echo` fa
 Then send traffic, in the same shell:
 
 ```sh
-k6 run --quiet --insecure-skip-tls-verify -e BASE_URL=https://orders-demo.localtest.me -e RATE=5 -e DURATION=30m app/k6/load.js
+k6 run --quiet -e BASE_URL=http://localhost:8084 -e RATE=5 -e DURATION=30m app/k6/load.js
 ```
 
 k6 complains that its `orders_slo_good` threshold is crossed. That's expected: you broke it.

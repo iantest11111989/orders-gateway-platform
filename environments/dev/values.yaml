@@ -9,6 +9,6 @@ image:
 
 replicas: 1
 
-route:
-  hostname: orders.dev.localtest.me
+ingress:
+  entrypoint: dev
 

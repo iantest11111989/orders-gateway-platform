@@ -9,9 +9,9 @@ Grafana dashboards as JSON, provisioned automatically. Every panel has a plain-E
 | [`kyverno`](kyverno.json) | Requests refused (Deny), Audit findings, policy errors, admission latency, results by policy, failures by policy and namespace (which policy is ready for Enforce) |
 | [`budget`](budget.json) | The whole stack's CPU and memory against 6 CPU / 12 GiB (the same numbers as `./platform budget`, over time), by namespace and per node against its cap, and OOM kills |
 | [`platform-overview`](platform-overview.json) | The first one to open: pages and tickets firing, Argo CD apps not Synced or Healthy, pods not Ready, targets down, every firing alert, each environment's version, burn rate and order rate, the resource budget, and links to the rest |
-| [`security`](security.json) | Security alerts firing, critical and high findings in our app's images, refusals and failed signature checks, Kyverno, Sealed Secrets and Trivy Operator up, findings by namespace and image, config audit findings, admission results, certificates and days until expiry |
+| [`security`](security.json) | Security alerts firing, critical and high findings in our app's images, refusals and failed signature checks, Kyverno, Sealed Secrets and Trivy Operator up, findings by namespace and image, config audit findings, admission results |
 
-Open them at `https://grafana.localtest.me/d/<name>` (e.g. <https://grafana.localtest.me/d/orders-gateway>) (`./platform urls` prints the login). Grafana also ships the standard Kubernetes dashboards from kube-prometheus-stack.
+Open them at `http://localhost:3000/d/<name>` (e.g. <http://localhost:3000/d/orders-gateway>) (`./platform urls` prints the login). Grafana also ships the standard Kubernetes dashboards from kube-prometheus-stack.
 
 ## Changing a dashboard
 

@@ -12,14 +12,12 @@ Sync waves: -10 CRDs, 0 Argo CD, 10 controllers, 20 observability, 30 policies, 
 | Application | Wave | What |
 | --- | --- | --- |
 | `prometheus-operator-crds` | -10 | Prometheus Operator CRDs |
-| `gateway-crds` | -10 | Gateway API and Envoy Gateway CRDs |
 | `argocd` | 0 | Argo CD, managing itself |
-| `cert-manager` | 10 | Certificates from the demo CA |
-| `envoy-gateway` | 10 | Gateway API controller (Envoy) |
+| `traefik` | 10 | Ingress controller: 2 replicas + PDB, plain HTTP, one entrypoint per host port (`values/traefik.yaml`) |
 | `metrics-server` | 10 | CPU/memory metrics for HPAs and `kubectl top` |
-| `platform-gateway` | 15 | Demo CA, `*.localtest.me` certificate, Gateway, HTTP→HTTPS redirect, UI routes (`manifests/gateway/`) |
 | `kube-prometheus-stack` | 20 | Prometheus, Alertmanager, Grafana, exporters |
 | `loki` | 20 | Loki, single binary |
 | `alloy` | 20 | Log collection DaemonSet |
 | `platform-alerts` | 25 | PrometheusRules from `alerts/` |
+| `edge` | 25 | Ingresses for Argo CD (:8081), Grafana (:3000), Prometheus (:9090) and Alertmanager (:9093) (`manifests/edge/`) |
 | `orders-gateway-dev`, `-staging`, `-prod` | 40 | orders-gateway per environment: `charts/orders-gateway` + `environments/<env>/values.yaml` |

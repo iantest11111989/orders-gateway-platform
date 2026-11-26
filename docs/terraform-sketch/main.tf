@@ -105,14 +105,14 @@ module "eks" {
   }
 }
 
-# Pod identities for the controllers that need AWS: certificates from a
-# public CA through DNS-01 (cert-manager), DNS records (ExternalDNS), the
-# load balancer (AWS Load Balancer Controller), secrets (External Secrets).
+# Pod identities for the controllers that need AWS: DNS records (ExternalDNS),
+# the load balancer (AWS Load Balancer Controller), secrets (External Secrets).
+# No cert-manager: ACM certificates on the load balancer
+# (docs/production-on-aws.md §3.6).
 module "irsa" {
   source   = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts"
   version  = "~> 6.0"
   for_each = {
-    cert-manager     = { namespace = "cert-manager", sa = "cert-manager", attach = "cert_manager" }
     external-dns     = { namespace = "external-dns", sa = "external-dns", attach = "external_dns" }
     aws-lb           = { namespace = "kube-system", sa = "aws-load-balancer-controller", attach = "load_balancer_controller" }
     external-secrets = { namespace = "external-secrets", sa = "external-secrets", attach = "external_secrets" }
@@ -126,8 +126,6 @@ module "irsa" {
     }
   }
 
-  attach_cert_manager_policy              = each.value.attach == "cert_manager"
-  cert_manager_hosted_zone_arns           = [var.route53_zone_arn]
   attach_external_dns_policy              = each.value.attach == "external_dns"
   external_dns_hosted_zone_arns           = [var.route53_zone_arn]
   attach_load_balancer_controller_policy  = each.value.attach == "load_balancer_controller"
@@ -184,7 +182,7 @@ resource "helm_release" "root" {
           targetRevision = "main"
           path           = "gitops/apps"
           # Today's values; a real port adds an EKS layer (gitops/values/*-eks.yaml)
-          # for the load balancer, storage classes and cert-manager's issuer.
+          # for the load balancer and storage classes.
           helm = { valuesObject = { repo = { url = var.repo_url, revision = "main" } } }
         }
         destination = { server = "https://kubernetes.default.svc", namespace = "argocd" }

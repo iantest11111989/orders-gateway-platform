@@ -13,12 +13,8 @@ autoscaling:
   maxReplicas: 6
   targetCPUUtilizationPercentage: 70
 
-route:
-  hostname: orders.localtest.me
-
-# http://localhost:8080 (the app's plain-HTTP endpoint).
-publicRoute:
-  enabled: true
+ingress:
+  entrypoint: prod
 
 podDisruptionBudget:
   enabled: true

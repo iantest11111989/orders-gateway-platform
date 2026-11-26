@@ -37,11 +37,11 @@ spec:
         # on kind that's the nodes and the API server on the control plane.
         - ipBlock: {cidr: 0.0.0.0/0, except: [10.244.0.0/16]}
 ---
-# The HTTPRoutes for Grafana, Prometheus and Alertmanager (platform-gateway).
+# Traefik serves Grafana, Prometheus and Alertmanager (gitops/manifests/edge).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-gateway-to-uis
+  name: allow-traefik-to-uis
   namespace: monitoring
 spec:
   podSelector: {}
@@ -50,7 +50,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: envoy-gateway-system
+              kubernetes.io/metadata.name: traefik
       ports:
         - {port: 3000, protocol: TCP}
         - {port: 9090, protocol: TCP}

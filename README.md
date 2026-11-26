@@ -23,7 +23,7 @@ To follow every detail as it happens: `docker compose logs -f ready`.
 | | Where | Check it |
 | --- | --- | --- |
 | The app in prod | `http://localhost:8080` (`/admin/*` is refused with 403) | `curl localhost:8080/version` |
-| The app in dev and staging | `https://orders.dev.localtest.me`, `https://orders.staging.localtest.me` | `curl -k https://orders.dev.localtest.me/version` |
+| The app in dev and staging | `http://localhost:8082` (dev), `http://localhost:8083` (staging) | `curl localhost:8082/version` |
 | Grafana | `http://localhost:3000`, `admin` / `admin12345` | the **orders-gateway** dashboard |
 | Argo CD | `http://localhost:8081`, `admin` / `admin12345` | every app Synced and Healthy |
 | Prometheus, Alertmanager | `http://localhost:9090`, `http://localhost:9093` | only **Watchdog** firing when healthy |
@@ -68,7 +68,7 @@ Then open Grafana at <http://localhost:3000> and its **orders-gateway** dashboar
 
 > **Security note:** the `ready` container and the toolbox mount the Docker socket so kind can create its node containers. That's root-equivalent on the Docker host (normal for kind), so run it on a machine you control.
 
-**HTTPS names.** Every UI also has an HTTPS name under `*.localtest.me`, which resolves to `127.0.0.1`: `argocd`, `grafana`, `prometheus`, `alertmanager`, and `orders`, `orders.dev`, `orders.staging` for the app. They use a certificate from the cluster's own demo CA (`./platform urls` shows how to trust it) and need ports 80 and 443 free. On macOS with Colima they don't reach the Mac's browser (only root can open ports below 1024 there), so use the plain ports.
+**Plain HTTP on local ports.** Everything is on `127.0.0.1`, through Traefik, one port each: prod `:8080`, dev `:8082`, staging `:8083`, the demo copy `:8084`, Argo CD `:8081`, Grafana `:3000`, Prometheus `:9090`, Alertmanager `:9093`. No hostnames, no certificates, nothing below port 1024. `./platform urls` lists them with the logins.
 
 ## How it works
 
@@ -86,11 +86,10 @@ flowchart LR
       app["Deployment <b>app</b><br/>HPA · PDB · NetworkPolicy"]
     end
     subgraph platform [Platform]
-      gw[Envoy Gateway]
+      gw[Traefik: Ingress]
       kyv[Kyverno: admission]
       ss[Sealed Secrets]
       trivy[Trivy Operator]
-      cm[cert-manager]
     end
     gw -->|"/admin/* → 403"| app
     prom[Prometheus] -->|scrapes| app
@@ -99,14 +98,14 @@ flowchart LR
     prom & loki --> graf[Grafana]
   end
 
-  user([Browser, curl, k6]) -->|":8080 prod · :3000 Grafana · :8081 Argo CD<br/>:9090 Prometheus · :9093 Alertmanager"| gw
+  user([Browser, curl, k6]) -->|":8080 prod · :8082 dev · :8083 staging<br/>:3000 Grafana · :8081 Argo CD<br/>:9090 Prometheus · :9093 Alertmanager"| gw
   gh[(GitHub: CI builds, scans,<br/>signs; promotion PRs)] -.->|GitHub mode| argocd
 ```
 
 - **Compose is only the outer shell.** Its `ready` service runs the toolbox, creates the kind cluster, installs Argo CD and hands it the root Application, then stays up as the health signal. The four `step-*` services do no work: their healthchecks show progress.
 - **Git is the only way in.** Argo CD follows a Git server inside the cluster, which `ready` (and `./platform up`, `ship`, `rollback`) pushes this checkout to, with self-heal and prune on. Set `REPO_URL=https://github.com/...` to follow GitHub instead, where CI and promotion pull requests take over.
-- **Argo CD installs everything with Helm,** itself included, in sync waves: CRDs, then controllers, then monitoring, policies and the gateway, then the apps.
-- **One edge.** Envoy Gateway serves every port and HTTPS name, and refuses `/admin/*` from outside.
+- **Argo CD installs everything with Helm,** itself included, in sync waves: CRDs, then controllers, then monitoring, policies and the UI Ingresses, then the apps.
+- **One edge.** Traefik (2 replicas, a disruption budget) serves every port as a standard Kubernetes Ingress, and refuses `/admin/*` from outside with a 403.
 - **Alerts you can see.** Alertmanager delivers to a small `alert-receiver` that logs each alert as JSON into Loki. The always-firing Watchdog proves the path works.
 
 ### Main choices
@@ -114,15 +113,17 @@ flowchart LR
 | Choice | Why | Instead of |
 | --- | --- | --- |
 | **kind**, 1 control plane + 2 workers, run from a toolbox container | Only Docker needed; upstream Kubernetes; two workers in two labelled zones make disruption budgets, drains and spreading real | k3d (k3s differs from upstream), minikube (built for one node) |
-| **One Helm chart, a values file per environment** | The app needs conditionals (HPA, PDB and the public route only in prod), which Helm expresses simply | Kustomize overlays |
+| **One Helm chart, a values file per environment** | The app needs conditionals (HPA and PDB only in some environments), which Helm expresses simply | Kustomize overlays |
 | **Argo CD, app-of-apps, managing itself** | Everything comes from Git, sync waves give an ordered start-up, and its UI makes changes easy to follow | Flux (no UI) |
 | **A Git server inside the cluster** (soft-serve) | Works offline with no GitHub token; `ship` and `rollback` are Git commits | Gitea (heavier) |
-| **Gateway API with Envoy Gateway** | The successor to Ingress; per-path filters and traffic weights without annotations | ingress-nginx (retired) |
+| **Traefik, with standard Ingresses** | The brief asks for an Ingress; Traefik is maintained, light, and its middleware does the `/admin` 403 | ingress-nginx (retired), Gateway API (below) |
 | **kube-prometheus-stack, Loki, Alloy** | The common open-source stack, trimmed to fit 12 GB | Elastic, or a SaaS |
 | **Burn-rate SLO alerts** | Page fast on real problems, stay quiet on blips | Plain error-rate thresholds |
 | **Sealed Secrets** | Encrypted secrets live in Git and work offline. The key is committed so any clone can decrypt: **demo only** | External Secrets (needs a secret manager) |
 | **Kyverno** | Policies as YAML next to the manifests, tested with `kyverno test` | OPA Gatekeeper (Rego) |
 | **cosign keyless, Trivy, Renovate** | Signed images with SBOMs and no keys to manage; scans in CI and in the cluster; every pin kept current | |
+
+**Why Ingress, not Gateway API.** Gateway API (with Envoy Gateway) was built and explored for this project, then set aside: it adds more moving parts than a single-service demo needs, and the brief asks for an Ingress. For a new production system we'd adopt it: role-based ownership, traffic splitting and portability are built into the standard.
 
 ## Ship a new version, roll it back
 
@@ -167,11 +168,10 @@ Start with `./platform doctor` (Docker, CPU, memory, disk, ports) and `./platfor
 | Symptom | Likely cause | What to do |
 | --- | --- | --- |
 | `doctor`: "Port 80/443 is already in use" | Another web server on the host | Stop it |
-| macOS: a port shows another app, or `ERR_SSL_PROTOCOL_ERROR` on `*.localtest.me` | A program on the Mac holds the port | `./platform doctor` names it; stop it, then `colima restart` |
+| macOS: a port shows another app | A program on the Mac holds the port | `./platform doctor` names it; stop it, then `colima restart` |
 | Pods in `ImagePullBackOff` during start-up | A registry rate-limited or flaked | Wait and re-run `./platform up`; Kubernetes keeps retrying |
 | `up` fails: "nodes advertise more than their cap" | An old cluster | `./platform down && ./platform up` |
 | `budget` reports `OOMKilled` | A container hit its memory limit | `./platform kubectl -n <ns> describe pod <pod>`; limits are in `gitops/values/` |
-| The browser warns about the certificate | The demo CA isn't trusted | `./platform urls` shows how to trust it |
 | A pod in `dev`, `staging`, `prod` or `demo` is refused by `disallow-latest-tag` or `verify-image-signatures` | Working as intended | Use a tagged, signed image |
 | An app is `OutOfSync` after a manual change | Self-heal puts it back from Git | Change Git, not the cluster |
 | `docker compose up -d --wait` waits forever, `ready` unhealthy | The cluster was deleted while an old `ready` kept running | `docker compose down && docker compose up -d --wait` |
@@ -186,13 +186,13 @@ The app is a single Node event loop with a 3-second warm-up, a `/readyz` that tu
 | Situation | What protects it | Why |
 | --- | --- | --- |
 | A pod starts | `startupProbe` on `/healthz`, then `readinessProbe` on `/readyz` | Traffic arrives only after the warm-up |
-| A pod stops (release, drain, scale-down) | `preStop` sleep 5 s, then SIGTERM; `terminationGracePeriodSeconds: 35` | The gateway drops the pod *before* it stops accepting; 35 s = 5 s + the app's 25 s + margin |
+| A pod stops (release, drain, scale-down) | `preStop` sleep 5 s, then SIGTERM; `terminationGracePeriodSeconds: 35` | Traefik drops the pod *before* it stops accepting; 35 s = 5 s + the app's 25 s + margin |
 | A release | `maxSurge: 1`, `maxUnavailable: 0` | Never below full capacity |
 | A node drain | PodDisruptionBudget (`maxUnavailable: 1`); spread across nodes and zones | One pod at a time; a lost node doesn't take every replica |
 | A traffic spike | HPA, 3–6 pods at 70% of a 100m CPU request; **no CPU limit**, 128 Mi memory limit | `/work` burns CPU; a CPU limit would only throttle |
 | A busy event loop | a lenient `livenessProbe` (every 10 s, 6 failures) | A busy pod isn't restarted mid-spike |
-| A compromised pod | non-root, read-only filesystem, no capabilities, no service-account token, Pod Security `restricted`; NetworkPolicy allows in only the gateway and Prometheus, out only DNS | Least privilege |
-| A platform component dies | Argo CD puts back anything deleted; Kyverno fails open; the request path (Envoy → pod) doesn't depend on Prometheus, Loki or Argo CD | The app stays up when the tools around it don't |
+| A compromised pod | non-root, read-only filesystem, no capabilities, no service-account token, Pod Security `restricted`; NetworkPolicy allows in only Traefik and Prometheus, out only DNS | Least privilege |
+| A platform component dies | Argo CD puts back anything deleted; Kyverno fails open; the request path (Traefik → pod) doesn't depend on Prometheus, Loki or Argo CD | The app stays up when the tools around it don't |
 
 **Measured:** k6 at 100 requests/s on `:8080` for 3 minutes: 18,000 requests, **0 failed**, `POST /echo` p99 42 ms. The HPA went from 3 to 6 pods and the cluster peaked at 4.46 of 6 CPU. The demos below each fail unless 99.5% of their requests meet the SLO.
 
@@ -262,7 +262,7 @@ The largest users at idle: `kube-system` (API server, etcd) 2.3 GiB, `monitoring
 
 ## Demos
 
-`./platform demo <name>` narrates each step and says where to watch. Demos run in namespace `demo`, a copy of prod (or of dev for `rolling-update` and `gitops-revert`), so the real environments only change through Git. k6 sends traffic through the gateway the whole time.
+`./platform demo <name>` narrates each step and says where to watch. Demos run in namespace `demo`, a copy of prod (or of dev for `rolling-update` and `gitops-revert`), so the real environments only change through Git. k6 sends traffic through Traefik (`http://localhost:8084`) the whole time.
 
 | Demo | What happens | Time |
 | --- | --- | --- |
@@ -283,8 +283,8 @@ The full plan for running this on AWS (accounts, EKS, IAM, ECR, Argo CD across c
 | --- | --- | --- |
 | kind in Docker, 3 nodes, two labelled "zones" | A managed control plane, nodes in 3 real zones, Karpenter adding nodes | One machine |
 | dev, staging and prod as namespaces in one cluster, one Argo CD | One account, cluster and Argo CD per environment | The budget |
-| Envoy on host ports, one proxy | A cloud load balancer in front of 2+ proxies across zones | No load balancer locally |
-| Demo CA, `*.localtest.me` | Real certificates and DNS | No public DNS |
+| Traefik on host ports, 2 replicas | A cloud load balancer in front of 3 Traefik replicas across zones | No load balancer locally |
+| Plain HTTP, a port per environment | TLS at the load balancer (ACM), a hostname per environment | No public DNS or certificates |
 | Sealed Secrets with a demo key in Git | External Secrets from a secret manager | Must work offline from a clone |
 | `admin` / `admin12345` | SSO with roles | A demo login |
 | A Git server in the cluster; `ship` loads a local image | GitHub only; prod admits only signed CI images | No registry or token needed |
@@ -302,7 +302,7 @@ The local platform keeps promotion manual on purpose. [docs/production-on-aws.md
 
 ## Limitations
 
-- **Envoy's proxy is a single replica.** Killing it interrupts traffic at the edge for a few seconds.
+- **No TLS locally.** Everything is plain HTTP on `127.0.0.1`; production terminates TLS at the load balancer.
 - **Releases are rolling updates, not canaries.** A bad version reaches every pod before anyone notices; the SLO alerts and `./platform rollback` are the safety net. [docs/production-on-aws.md](docs/production-on-aws.md) covers canaries for a real setup.
 - **Kyverno fails open.** If it's down, pods are admitted unchecked, so a policy outage can't block a rollback.
 - **Prometheus keeps 24 hours,** so the error-budget panels cover a day, not 30 days.
@@ -311,7 +311,7 @@ The local platform keeps promotion manual on purpose. [docs/production-on-aws.md
 - **No tracing backend.** Requests correlate across logs by `trace_id` only.
 - **The app's latency fault only slows `/work`,** which the latency SLO leaves out, so injected latency doesn't trip the latency alert. Saturating the event loop with `/work` does (see [docs/learn/04-slos.md](docs/learn/04-slos.md)).
 
-**Next steps:** two Envoy replicas with a disruption budget; tracing with Tempo and OpenTelemetry; canary releases; applying the Terraform to a sandbox account.
+**Next steps:** tracing with Tempo and OpenTelemetry; canary releases; applying the Terraform to a sandbox account.
 
 ## Repository layout
 

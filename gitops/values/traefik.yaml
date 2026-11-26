@@ -1,0 +1,124 @@
+# Traefik: the one way in from the host. Plain HTTP, one entrypoint per
+# host port (kind maps each host port to the NodePort below):
+#   8080 prod (the app's public endpoint)  8082 dev  8083 staging  8084 demo
+#   3000 Grafana  9090 Prometheus  9093 Alertmanager  8081 Argo CD
+# Routing is standard Kubernetes Ingress (ingressClassName: traefik), bound to
+# an entrypoint with the traefik.ingress.kubernetes.io/router.entrypoints
+# annotation. Container ports avoid 8080, which Traefik keeps for itself.
+deployment:
+  replicas: 2
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+# One replica per node where possible, and across the two zones.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels: {app.kubernetes.io/name: traefik}
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels: {app.kubernetes.io/name: traefik}
+
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+  name: traefik
+
+providers:
+  kubernetesCRD:
+    enabled: true # for the Middleware that blocks /admin
+  kubernetesIngress:
+    enabled: true
+    # NodePort Service: no load balancer to publish, so report 127.0.0.1 on
+    # each Ingress (Argo CD counts an Ingress Healthy once it has an address).
+    publishedService:
+      enabled: false
+    ingressEndpoint:
+      ip: 127.0.0.1
+  kubernetesGateway:
+    enabled: false
+gateway:
+  enabled: false
+gatewayClass:
+  enabled: false
+
+ports:
+  web:
+    enabled: false
+  websecure:
+    enabled: false
+  prod:
+    port: 18080
+    exposedPort: 8080
+    nodePort: 30808
+    expose: {default: true}
+    protocol: TCP
+  argocd:
+    port: 18081
+    exposedPort: 8081
+    nodePort: 30881
+    expose: {default: true}
+    protocol: TCP
+  dev:
+    port: 18082
+    exposedPort: 8082
+    nodePort: 30882
+    expose: {default: true}
+    protocol: TCP
+  staging:
+    port: 18083
+    exposedPort: 8083
+    nodePort: 30883
+    expose: {default: true}
+    protocol: TCP
+  demo:
+    port: 18084
+    exposedPort: 8084
+    nodePort: 30884
+    expose: {default: true}
+    protocol: TCP
+  grafana:
+    port: 13000
+    exposedPort: 3000
+    nodePort: 30300
+    expose: {default: true}
+    protocol: TCP
+  prometheus:
+    port: 19090
+    exposedPort: 9090
+    nodePort: 30909
+    expose: {default: true}
+    protocol: TCP
+  alertmanager:
+    port: 19093
+    exposedPort: 9093
+    nodePort: 30993
+    expose: {default: true}
+    protocol: TCP
+
+service:
+  spec:
+    type: NodePort
+    externalTrafficPolicy: Cluster
+
+metrics:
+  prometheus:
+    entryPoint: metrics
+    addEntryPointsLabels: true
+    addServicesLabels: true
+    serviceMonitor:
+      enabled: true
+
+log:
+  level: WARN
+accessLog:
+  enabled: true
+  format: json
+
+resources:
+  requests: {cpu: 50m, memory: 48Mi}
+  limits: {memory: 160Mi}

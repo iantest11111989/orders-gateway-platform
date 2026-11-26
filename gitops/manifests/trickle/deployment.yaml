@@ -1,8 +1,8 @@
-# A light, steady stream of requests to dev, staging and prod, through the
-# gateway like a real client, so the dashboards and SLOs show live traffic
+# A light, steady stream of requests to dev, staging and prod, through
+# Traefik like a real client, so the dashboards and SLOs show live traffic
 # without anyone sending any. Each round, about twice a second: GET
 # /work?ms=10 and POST /echo to every environment (about 4 requests a second
-# each). One curl process per round; it reuses one connection per host.
+# each). One curl process per round; it reuses one connection per port.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -27,27 +27,24 @@ spec:
         - name: trickle
           image: docker.io/curlimages/curl:8.17.0@sha256:935d9100e9ba842cdb060de42472c7ca90cfe9a7c96e4dacb55e79e560b3ff40
           env:
-            - {name: HOSTS, value: "orders.dev.localtest.me orders.staging.localtest.me orders.localtest.me"}
-            - {name: GATEWAY, value: "envoy-platform.envoy-gateway-system"}
+            # Traefik's Service: one port per environment (dev, staging, prod).
+            - {name: TARGETS, value: "traefik.traefik:8082 traefik.traefik:8083 traefik.traefik:8080"}
             - {name: INTERVAL, value: "0.5"}
           command: [sh, -c]
           args:
             - |
-              # TLS to the gateway Service with each environment's hostname as
-              # SNI (--connect-to), like a client resolving the real name.
-              # -k: the platform's own demo CA.
               set -u
-              echo "trickle: GET /work?ms=10 and POST /echo to $HOSTS every ${INTERVAL}s, via $GATEWAY"
+              echo "trickle: GET /work?ms=10 and POST /echo to $TARGETS every ${INTERVAL}s"
               rounds=0 errors=0
               while true; do
-                set -- -sk --max-time 5 --connect-to "::$GATEWAY:443" -o /dev/null -w '%{http_code}\n'
+                set -- -s --max-time 5 -o /dev/null -w '%{http_code}\n'
                 first=1
-                for h in $HOSTS; do
-                  [ "$first" = 1 ] || set -- "$@" --next -sk --max-time 5 --connect-to "::$GATEWAY:443" -o /dev/null -w '%{http_code}\n'
+                for t in $TARGETS; do
+                  [ "$first" = 1 ] || set -- "$@" --next -s --max-time 5 -o /dev/null -w '%{http_code}\n'
                   first=0
-                  set -- "$@" "https://$h/work?ms=10" \
-                    --next -sk --max-time 5 --connect-to "::$GATEWAY:443" -o /dev/null -w '%{http_code}\n' \
-                    -H 'Content-Type: application/json' -d '{"from":"trickle"}' "https://$h/echo"
+                  set -- "$@" "http://$t/work?ms=10" \
+                    --next -s --max-time 5 -o /dev/null -w '%{http_code}\n' \
+                    -H 'Content-Type: application/json' -d '{"from":"trickle"}' "http://$t/echo"
                 done
                 bad=$(curl "$@" 2>/dev/null | grep -cv '^200$')
                 rounds=$((rounds + 1)) errors=$((errors + bad))

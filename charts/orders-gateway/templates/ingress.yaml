@@ -1,0 +1,61 @@
+{{- if .Values.ingress.enabled }}
+{{- $name := include "orders-gateway.name" . }}
+{{- /* Two Ingresses on the same Traefik entrypoint: everything goes to the app,
+     except /admin/*, which goes through a deny-all IPAllowList and gets a 403.
+     The app's runtime fault switch (POST /admin/fault) has no auth, so it must
+     only be reachable inside the cluster. Traefik ranks routers by rule length,
+     so the longer /admin rule wins for /admin/*. */}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "orders-gateway.labels" . | nindent 4 }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: {{ .Values.ingress.entrypoint }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $name }}
+                port:
+                  name: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $name }}-admin
+  labels:
+    {{- include "orders-gateway.labels" . | nindent 4 }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: {{ .Values.ingress.entrypoint }}
+    traefik.ingress.kubernetes.io/router.middlewares: {{ .Release.Namespace }}-{{ $name }}-admin-deny@kubernetescrd
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - http:
+        paths:
+          - path: /admin
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $name }}
+                port:
+                  name: http
+---
+# Allows no source address, so every request it sees gets 403 Forbidden.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ $name }}-admin-deny
+  labels:
+    {{- include "orders-gateway.labels" . | nindent 4 }}
+spec:
+  ipAllowList:
+    sourceRange: ["255.255.255.255/32"]
+{{- end }}

@@ -13,7 +13,7 @@ data:
     {
       "uid": "platform-overview",
       "title": "Platform overview",
-      "description": "The first dashboard to open: alerts, Argo CD, pods, each environment's version and SLO, and the resource budget, each linking on to the detailed dashboard. Hover the (i) on any panel.",
+      "description": "The first dashboard to open: alerts, Argo CD, pods, each environment's version and SLO, the edge (Traefik) and the resource budget, each linking on to the detailed dashboard. Hover the (i) on any panel.",
       "tags": [
         "platform"
       ],
@@ -1325,6 +1325,113 @@ data:
             "colorMode": "background",
             "graphMode": "none",
             "textMode": "value"
+          }
+        },
+        {
+          "type": "row",
+          "title": "The edge: every request from outside, through Traefik",
+          "id": 18,
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 28
+          },
+          "panels": []
+        },
+        {
+          "type": "timeseries",
+          "title": "Requests per second at the edge, by status code",
+          "description": "Every request Traefik passed to a backend, per HTTP status, across all ports (the apps, the trickle, k6 and the UIs). 403s are /admin/* being refused at the edge; 5xx means a backend failed. From traefik_service_requests_total.",
+          "id": 19,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 29
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "refId": "A",
+              "expr": "sum by (code) (rate(traefik_service_requests_total[$__rate_interval]))",
+              "legendFormat": "{{code}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "custom": {
+                "fillOpacity": 10,
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Requests per second at the edge, by backend",
+          "description": "The same requests per backend Service, named <namespace>-<service>-<port>: prod-app-http, dev-app-http and staging-app-http are the app; the rest are the platform UIs. (Traefik's own service label arrives as exported_service, since the scrape adds its own service label.)",
+          "id": 20,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 29
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "refId": "A",
+              "expr": "label_replace(sum by (exported_service) (rate(traefik_service_requests_total[$__rate_interval])), \"backend\", \"$1\", \"exported_service\", \"(.*)@kubernetes\")",
+              "legendFormat": "{{backend}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "custom": {
+                "fillOpacity": 10,
+                "lineWidth": 1
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
           }
         }
       ],

@@ -31,20 +31,14 @@ resources:
   requests: {cpu: 100m, memory: 48Mi}
   limits: {memory: 128Mi}
 
-# Shared Gateway from gitops/manifests/gateway/.
-route:
+# The way in: an Ingress on one Traefik entrypoint, which is one host port
+# (gitops/values/traefik.yaml): prod 8080, dev 8082, staging 8083, demo 8084.
+# Every request on that port reaches this environment; there's no hostname.
+# /admin/* (the runtime fault switch, no auth) gets a 403 there.
+ingress:
   enabled: true
-  hostname: orders.dev.localtest.me
-  gateway:
-    name: platform
-    namespace: envoy-gateway-system
-    sectionName: https
-
-# The app's plain-HTTP endpoint, http://localhost:8080 with no hostname: prod only
-# (environments/prod/values.yaml). Same Gateway, listener "app".
-publicRoute:
-  enabled: false
-  sectionName: app
+  className: traefik
+  entrypoint: dev
 
 autoscaling:
   enabled: false
@@ -68,7 +62,7 @@ serviceMonitor:
 # only to DNS. The app has no real downstream: payments is simulated.
 networkPolicy:
   enabled: true
-  gatewayNamespace: envoy-gateway-system
+  ingressNamespace: traefik
   monitoringNamespace: monitoring
 
 # preStop sleep (5 s, so endpoints drop the pod before it stops accepting)

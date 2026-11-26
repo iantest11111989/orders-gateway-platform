@@ -6,10 +6,10 @@ What Terraform does here, and what it deliberately doesn't:
 
 | Terraform owns | Argo CD keeps owning (unchanged from `gitops/`) |
 | --- | --- |
-| VPC across 3 zones, private subnets, NAT | Every platform component: Prometheus, Loki, Kyverno, cert-manager, Envoy Gateway, ... |
+| VPC across 3 zones, private subnets, NAT | Every platform component: Prometheus, Loki, Kyverno, Traefik, ... |
 | EKS: private API endpoint, SSO access entries, add-ons (VPC CNI with network policy, EBS CSI) | The app in dev, staging and prod, from `environments/*/values.yaml` |
 | Two node groups: `platform` (tainted) and `apps` | Promotion by Git change, self-heal and prune |
-| IAM roles for service accounts: cert-manager (DNS-01), ExternalDNS, the AWS Load Balancer Controller, External Secrets | |
+| IAM roles for service accounts: ExternalDNS, the AWS Load Balancer Controller, External Secrets | |
 | An ECR pull-through cache of GHCR | |
 | Argo CD and the root Application, the only two things installed by hand today (`./platform up`) | |
 
@@ -21,8 +21,8 @@ How it maps to the local stack:
 | --- | --- |
 | kind: 1 control plane + 2 workers, two fake zones | EKS's managed control plane, nodes in 3 real zones |
 | One cluster, three namespaces | One cluster per environment (`env` is dev, staging or prod), each with its own Argo CD |
-| Envoy on NodePorts mapped to `127.0.0.1` | Envoy Gateway behind an NLB from the AWS Load Balancer Controller, 2+ proxy replicas |
-| Demo CA, `*.localtest.me` | Let's Encrypt via DNS-01 (cert-manager with its IAM role), ExternalDNS writing Route 53 |
+| Traefik on NodePorts mapped to `127.0.0.1`, plain HTTP | Traefik behind an ALB (WAF) from the AWS Load Balancer Controller, 3 replicas across zones |
+| No TLS, a port per environment | ACM certificates on the load balancer, which terminates TLS; ExternalDNS writing Route 53 |
 | Sealed Secrets with a demo key in Git | External Secrets reading AWS Secrets Manager (`ogp/<env>/*`) |
 | `local-path` storage | EBS volumes (gp3) for Prometheus, Loki and Grafana |
 | In-stack Git server (soft-serve) | GitHub, with promotion PRs and approvals for prod (and, in the AWS design, a patch promoter) |

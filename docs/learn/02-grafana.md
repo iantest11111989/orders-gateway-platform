@@ -11,7 +11,7 @@ By the end you will have built a small dashboard yourself: a time series panel, 
 
    ```sh
    ./platform shell
-   k6 run --quiet --insecure-skip-tls-verify -e BASE_URL=https://orders.dev.localtest.me -e RATE=5 -e DURATION=15m app/k6/load.js
+   k6 run --quiet -e BASE_URL=http://localhost:8082 -e RATE=5 -e DURATION=15m app/k6/load.js
    ```
 
 ## 1. Tour the provided dashboard (3 min)

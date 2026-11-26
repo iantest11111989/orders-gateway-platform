@@ -16,25 +16,20 @@ nodes:
     image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
     labels:
       topology.kubernetes.io/zone: zone-a
-    # Host 80/443 -> NodePorts 30080/30443, where the Envoy Gateway service
-    # listens. Bound to 127.0.0.1 so the stack is not exposed to the LAN.
+    # Host ports -> Traefik's NodePorts (gitops/values/traefik.yaml), plain
+    # HTTP, bound to 127.0.0.1 so the stack is not exposed to the LAN:
+    # 8080 prod, 8082 dev, 8083 staging, 8084 demo, 8081 Argo CD,
+    # 3000 Grafana, 9090 Prometheus, 9093 Alertmanager.
+    # Changing these needs a new cluster (./platform down && ./platform up).
     extraPortMappings:
-      - containerPort: 30080
-        hostPort: 80
-        listenAddress: 127.0.0.1
-        protocol: TCP
-      - containerPort: 30443
-        hostPort: 443
-        listenAddress: 127.0.0.1
-        protocol: TCP
-      # Host ports: prod on 8080, Grafana 3000,
-      # Prometheus 9090, Alertmanager 9093, all through the Envoy Gateway.
       - {containerPort: 30808, hostPort: 8080, listenAddress: 127.0.0.1, protocol: TCP}
+      - {containerPort: 30882, hostPort: 8082, listenAddress: 127.0.0.1, protocol: TCP}
+      - {containerPort: 30883, hostPort: 8083, listenAddress: 127.0.0.1, protocol: TCP}
+      - {containerPort: 30884, hostPort: 8084, listenAddress: 127.0.0.1, protocol: TCP}
+      - {containerPort: 30881, hostPort: 8081, listenAddress: 127.0.0.1, protocol: TCP}
       - {containerPort: 30300, hostPort: 3000, listenAddress: 127.0.0.1, protocol: TCP}
       - {containerPort: 30909, hostPort: 9090, listenAddress: 127.0.0.1, protocol: TCP}
       - {containerPort: 30993, hostPort: 9093, listenAddress: 127.0.0.1, protocol: TCP}
-      # Argo CD's UI on a plain port too.
-      - {containerPort: 30881, hostPort: 8081, listenAddress: 127.0.0.1, protocol: TCP}
     kubeadmConfigPatches:
       # Expose control-plane metrics on all interfaces so Prometheus can
       # scrape them from inside the cluster.
