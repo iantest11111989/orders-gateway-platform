@@ -1,6 +1,11 @@
 # staging: promoted from dev with ./pipeline cd (only a version dev has run).
 env: staging
 
+# true: Argo CD applies every change to this file by itself (prune and
+# self-heal). false: a change waits until someone clicks Sync in Argo CD
+# (or ./pipeline cd --sync).
+autoSync: false
+
 # The published version this environment runs: image
 # localhost:30500/orders-gateway:<version> and chart orders-gateway <version>
 # from the in-stack registry. Set by ./pipeline cd; without a version (a

@@ -2,6 +2,11 @@
 # dev-only build). Overrides values.yaml next to it.
 env: dev
 
+# true: Argo CD applies every change to this file by itself (prune and
+# self-heal). false: a change waits until someone clicks Sync in Argo CD
+# (or ./pipeline cd --sync).
+autoSync: true
+
 # The published version this environment runs: image
 # localhost:30500/orders-gateway:<version> and chart orders-gateway <version>
 # from the in-stack registry. Set by ./pipeline cd; without a version (a
