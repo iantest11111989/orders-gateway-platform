@@ -9,14 +9,17 @@
 #         chart <app> V, a release; a published version is never
 #         overwritten. Without: a dev-only build, image <app>:local-<time>,
 #         which only dev can run. Remembers the build for `cd`.
-#   ./pipeline cd <app> <env> [--version V] [--force]
+#   ./pipeline cd <app> <env> [--version V] [--force] [--sync]
 #         point cd/<app>/<env>.yaml at V (default: the last `ci` build), push
 #         the checkout to the in-stack Git server and wait for Argo CD to
 #         roll <env> out. Promotion goes in order: staging takes only a
 #         version dev has run, prod one staging has run, and only while the
 #         previous environment is healthy (scripts/promotion-gate.sh).
-#         --force skips both checks, for emergencies.
-#   ./pipeline rollback <app> <env>
+#         --force skips both checks, for emergencies. dev syncs by
+#         itself and cd waits for the rollout; staging and prod don't: cd
+#         pushes the change and you click Sync in Argo CD
+#         (http://localhost:8081), or --sync syncs and waits.
+#   ./pipeline rollback <app> <env> [--sync]
 #         back to what <env> ran before its last change. Always allowed.
 #
 # <env> is dev, staging or prod; there's no default. The cluster must be up
@@ -30,7 +33,7 @@ REPO_ROOT=$(pwd)
 . scripts/lib/host.sh
 
 usage() {
-  sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -54,13 +57,14 @@ check_version() {
     die "not a version (semver, e.g. 1.2.0): '$1'"
 }
 
-# --version V and --force; set $version and $force.
+# --version V, --force and --sync; set $version, $force and $sync.
 parse_opts() {
-  version='' force=''
+  version='' force='' sync=''
   while [ $# -gt 0 ]; do
     case "$1" in
       --version) [ $# -ge 2 ] || die "--version needs a value"; version=$2; shift 2 ;;
       --force) force=--force; shift ;;
+      --sync) sync=--sync; shift ;;
       *) die "unexpected argument: $1" ;;
     esac
   done
@@ -75,7 +79,7 @@ toolbox() { TOOLBOX_EXEC="" run_toolbox env APP="$app" "$@"; }
 
 ci() {
   parse_opts "$@"
-  [ -z "$force" ] || die "--force is for cd"
+  [ -z "$force$sync" ] || die "--force and --sync are for cd"
   check_docker
   if [ -n "$version" ]; then
     tag=$version
@@ -129,21 +133,21 @@ ci() {
 }
 
 cd_env() {
-  [ $# -ge 1 ] || die "usage: ./pipeline cd <app> <env> [--version V] [--force]"
+  [ $# -ge 1 ] || die "usage: ./pipeline cd <app> <env> [--version V] [--force] [--sync]"
   env=$1; shift
   check_env "$env"
   parse_opts "$@"
   check_docker
   if [ -n "$version" ]; then
-    toolbox bash scripts/ship.sh deploy --env "$env" --version "$version" $force
+    toolbox bash scripts/ship.sh deploy --env "$env" --version "$version" $force $sync
   else
     [ -f "$(last_build_file)" ] || die "no --version and no earlier build: run ./pipeline ci $app first"
     read -r kind value <"$(last_build_file)"
     case "$kind" in
-      version) toolbox bash scripts/ship.sh deploy --env "$env" --version "$value" $force ;;
+      version) toolbox bash scripts/ship.sh deploy --env "$env" --version "$value" $force $sync ;;
       tag)
         [ -z "$force" ] || die "--force doesn't apply to a dev-only build"
-        toolbox bash scripts/ship.sh deploy --env "$env" --tag "$value" ;;
+        toolbox bash scripts/ship.sh deploy --env "$env" --tag "$value" $sync ;;
       *) die "unreadable $(last_build_file); run ./pipeline ci $app again" ;;
     esac
   fi
@@ -152,11 +156,13 @@ cd_env() {
 }
 
 rollback() {
-  [ $# -eq 1 ] || die "usage: ./pipeline rollback <app> <env>"
-  env=$1
+  [ $# -ge 1 ] || die "usage: ./pipeline rollback <app> <env> [--sync]"
+  env=$1; shift
   check_env "$env"
+  parse_opts "$@"
+  [ -z "$version$force" ] || die "rollback takes only --sync"
   check_docker
-  toolbox bash scripts/ship.sh rollback --env "$env"
+  toolbox bash scripts/ship.sh rollback --env "$env" $sync
 }
 
 [ $# -ge 1 ] || usage 1

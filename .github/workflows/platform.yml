@@ -261,13 +261,14 @@ jobs:
       - name: "Release and roll back under traffic (./pipeline)"
         run: |
           # A release, promoted in order (dev, staging, prod): the baseline.
+          # staging and prod sync on demand: --sync instead of the Sync click.
           # The cluster starts on 0.1.0 (up.sh's bootstrap build).
           ./pipeline ci orders-gateway --version 0.2.0
-          for e in dev staging prod; do ./pipeline cd orders-gateway "$e"; done
+          for e in dev staging prod; do ./pipeline cd orders-gateway "$e" --sync; done
           before=0.2.0
           # Out of order is refused: 0.3.0 hasn't run in dev or staging.
           ./pipeline ci orders-gateway --version 0.3.0
-          if ./pipeline cd orders-gateway prod; then echo "::error::prod took a version staging never ran"; exit 1; fi
+          if ./pipeline cd orders-gateway prod --sync; then echo "::error::prod took a version staging never ran"; exit 1; fi
           # rollout status returns once the new pods are ready, but an old pod
           # stays in Traefik's endpoints for its 5 s preStop, so a request
           # right after can still reach it. Wait (up to 20 s) until 5 requests
@@ -297,9 +298,9 @@ jobs:
                sleep 0.05
              done) &
           done
-          for e in dev staging prod; do ./pipeline cd orders-gateway "$e"; done
+          for e in dev staging prod; do ./pipeline cd orders-gateway "$e" --sync; done
           serves 0.3.0
-          ./pipeline rollback orders-gateway prod
+          ./pipeline rollback orders-gateway prod --sync
           serves "$before"
           touch "$RUNNER_TEMP/stop"; wait
           total=$(grep -c . "$RUNNER_TEMP/codes"); bad=$(grep -vc '^200$' "$RUNNER_TEMP/codes" || true)
@@ -308,7 +309,7 @@ jobs:
           [ "$bad" -eq 0 ]
           # A second rollback goes further back (to 0.1.0, what prod ran
           # before 0.2.0), not back to 0.3.0.
-          ./pipeline rollback orders-gateway prod
+          ./pipeline rollback orders-gateway prod --sync
           serves 0.1.0
       # Measured CPU/memory against the 6 CPU / 12 GiB budget, plus OOM kills.
       - name: "Resource budget (./platform budget)"

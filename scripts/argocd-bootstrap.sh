@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Installs Argo CD once with Helm, applies the root Application, then waits
-# until every Application is Synced and Healthy. Called by up.sh; safe to
+# until every Application is Synced and Healthy (a manual-sync app: Healthy
+# and synced once; this gives a new one its first sync). Called by up.sh; safe to
 # re-run (Argo CD manages itself after the first install).
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -60,10 +61,21 @@ drift_report() {
   warn "$1: Healthy but not Synced for ${2}s; OutOfSync resources:"
   kubectl -n argocd get applications.argoproj.io "$1" -o jsonpath='{range .status.resources[?(@.status=="OutOfSync")]}    {.group}/{.kind} {.namespace}/{.name}{"\n"}{end}' 2>/dev/null || true
 }
+# staging and prod don't sync by themselves (someone clicks Sync, or
+# ./pipeline cd --sync). One that has never synced, as on a new cluster, gets
+# its first sync here. After that, Synced isn't required of them: a change
+# may be waiting for its click, so ready means Healthy and synced once.
 while :; do
-  # name sync health operation-phase, one line per Application
-  status=$(kubectl -n argocd get applications.argoproj.io \
-    -o jsonpath='{range .items[*]}{.metadata.name} {.status.sync.status} {.status.health.status} {.status.operationState.phase}{"\n"}{end}' 2>/dev/null || true)
+  # name sync health operation-phase, one line per Application; a manual app
+  # that has synced before reads as Synced.
+  status=$(kubectl -n argocd get applications.argoproj.io -o json 2>/dev/null |
+    jq -r '.items[] | (.spec.syncPolicy.automated == null) as $manual
+      | if $manual and .status.operationState == null and .operation == null then "SYNC \(.metadata.name)" else empty end,
+        "\(.metadata.name) \(if $manual and .status.operationState.phase == "Succeeded" then "Synced" else (.status.sync.status // "") end) \(.status.health.status // "") \(.status.operationState.phase // "")"' || true)
+  while read -r name; do
+    [ -z "$name" ] || { sync_app "$name" bootstrap && ok "$name: first sync started (staging and prod sync on demand)"; }
+  done < <(sed -n 's/^SYNC //p' <<<"$status")
+  status=$(grep -v '^SYNC ' <<<"$status" || true)
   now=$(( $(date +%s) - start ))
   while read -r name sync health phase; do
     [ -n "$name" ] || continue

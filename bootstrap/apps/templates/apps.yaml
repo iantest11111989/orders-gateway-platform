@@ -12,6 +12,10 @@
 #   cd/<app>/values.yaml + <env>.yaml from Git.
 # - No version (a dev-only build, ./pipeline cd <app> dev with a local
 #   build): the chart helm/<app> as it is in Git, with the same values.
+# autoSync: true in the env file syncs automatically (with prune and
+# self-heal); false waits for someone to click Sync in Argo CD
+# (http://localhost:8081) or ./pipeline cd --sync. Without the key: dev
+# true, staging and prod false.
 # Wave 40 (apps), after the edge and monitoring.
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
@@ -51,10 +55,10 @@ spec:
       destination:
         server: https://kubernetes.default.svc
         namespace: {{ `'{{ .env }}'` }}
+      # autoSync in the env file (default: dev true, staging and prod false):
+      # true syncs by itself (templatePatch below), false waits for someone
+      # to click Sync in Argo CD (or ./pipeline cd --sync).
       syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
         # Auto-sync does not retry a failed sync of the same revision on its own;
         # this covers transient failures such as a CRD not yet Established.
         retry:
@@ -70,13 +74,24 @@ spec:
   templatePatch: |
     {{`{{- $app := .path.basename }}
     {{- $values := printf "%s/values.yaml" .path.path }}
-    {{- $env := printf "%s/%s" .path.path .path.filename }}`}}
+    {{- $env := printf "%s/%s" .path.path .path.filename }}
+    {{- $auto := eq .env "dev" }}
+    {{- if hasKey . "autoSync" }}{{ $auto = .autoSync }}{{ end }}`}}
     metadata:
+      labels:
+        # auto or manual (autoSync), for people reading Argo CD.
+        sync-mode: {{`'{{ if $auto }}auto{{ else }}manual{{ end }}'`}}
       annotations:
         # The files each rendering reads, so a commit that touches none of
         # them skips the re-render (pays off with a Git webhook).
         argocd.argoproj.io/manifest-generate-paths: {{`'{{ if hasKey . "version" }}{{ else }}/helm/{{ $app }};{{ end }}/{{ $values }};/{{ $env }}'`}}
     spec:
+    {{`{{- if $auto }}`}}
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+    {{`{{- end }}`}}
     {{`{{- if hasKey . "version" }}`}}
       sources:
         - repoURL: registry.registry.svc.cluster.local:5000/charts

@@ -58,3 +58,12 @@ hand_over_app_applications() {
     done
   done
 }
+
+# Start a sync of an Argo CD Application, as its Sync button does (with
+# prune, and the same retries as the automated syncs), by writing the
+# operation field: no argocd login needed. For the
+# staging and prod Applications, which don't sync by themselves.
+sync_app() { # sync_app <application> [who]
+  kubectl -n argocd patch applications.argoproj.io "$1" --type merge -p \
+    "{\"operation\":{\"initiatedBy\":{\"username\":\"${2:-pipeline}\"},\"sync\":{\"prune\":true},\"retry\":{\"limit\":5,\"backoff\":{\"duration\":\"5s\",\"factor\":2,\"maxDuration\":\"1m\"}}}}" >/dev/null
+}

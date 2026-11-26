@@ -4,13 +4,15 @@ What each environment runs. `values.yaml` is shared by all of them; `dev.yaml`, 
 
 An env file pins a published **version** (`version: 1.2.0`): image `localhost:30500/orders-gateway:1.2.0` and chart `orders-gateway` 1.2.0, both from the cluster's in-stack registry (`system/registry/`). `./pipeline ci orders-gateway --version 1.2.0` publishes a version; `./pipeline cd orders-gateway <env>` deploys it, in order: staging takes only a version dev has run, prod only one staging has run, while the previous environment is healthy. Without `version` (a dev-only build, `./pipeline ci` without `--version`), dev renders `helm/orders-gateway` as it is in Git. A fresh cluster starts on 0.1.0, built from the checkout by `./platform up`.
 
+Auto-sync is set per environment by `autoSync` in its file: `dev.yaml` has `true`, `staging.yaml` and `prod.yaml` `false` (the defaults when the key is missing). With `true`, Argo CD applies each change by itself, and `./pipeline cd` waits for the rollout. With `false`, `./pipeline cd` pushes the change and stops, and you click Sync on `orders-gateway-<env>` in Argo CD (http://localhost:8081); `--sync` syncs from the command line and waits for the rollout instead.
+
 | | dev | staging | prod |
 | --- | --- | --- | --- |
 | Namespace | `dev` | `staging` | `prod` |
 | Replicas | 1 | 2 | 3, HPA up to 6 on CPU |
 | PDB and topology spread | no | yes | yes |
 | URL | http://localhost:8082 | http://localhost:8083 | http://localhost:8080 |
-| Deploy | `./pipeline cd orders-gateway dev` | `./pipeline cd orders-gateway staging` (a version dev ran) | `./pipeline cd orders-gateway prod` (a version staging ran) |
+| Deploy | `./pipeline cd orders-gateway dev`; Argo CD syncs by itself | `./pipeline cd orders-gateway staging` (a version dev ran), then Sync in Argo CD | `./pipeline cd orders-gateway prod` (a version staging ran), then Sync in Argo CD |
 
 Try it (from the host, or inside `./platform shell`):
 
