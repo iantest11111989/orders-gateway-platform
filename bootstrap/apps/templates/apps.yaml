@@ -76,7 +76,7 @@ spec:
     {{- $values := printf "%s/values.yaml" .path.path }}
     {{- $env := printf "%s/%s" .path.path .path.filename }}
     {{- $auto := eq .env "dev" }}
-    {{- if hasKey . "autoSync" }}{{ $auto = .autoSync }}{{ end }}`}}
+    {{- if hasKey . "autoSync" }}{{ $auto = eq (toString .autoSync) "true" }}{{ end }}`}}
     metadata:
       labels:
         # auto or manual (autoSync), for people reading Argo CD.
