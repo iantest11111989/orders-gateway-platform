@@ -216,7 +216,7 @@ def soak_gates(prev, env, tag, prom=prometheus, kube_get=kube):
 
     states = []
     for app in (ns, target):
-        st = kube_get(f"/apis/argoproj.io/v1alpha1/namespaces/argocd/applications/{app}").get("status", {})
+        st = kube_get(f"/apis/argoproj.io/v1alpha1/namespaces/argocd/applications/orders-gateway-{app}").get("status", {})
         states.append((app, st.get("sync", {}).get("status"), st.get("health", {}).get("status")))
     gates.append(("Argo CD Synced and Healthy", all(s == "Synced" and h == "Healthy" for _, s, h in states),
                   ", ".join(f"{a} {s}/{h}" for a, s, h in states)))
@@ -294,7 +294,7 @@ def values_tag(text):
 
 def report_environment(env, gh=github_ok, kube_get=kube):
     """Report one environment; returns what was done, for the log."""
-    st = kube_get(f"/apis/argoproj.io/v1alpha1/namespaces/argocd/applications/{env}").get("status", {})
+    st = kube_get(f"/apis/argoproj.io/v1alpha1/namespaces/argocd/applications/orders-gateway-{env}").get("status", {})
     sync, health = st.get("sync", {}).get("status"), st.get("health", {}).get("status")
     rev = st.get("sync", {}).get("revision")
     state = deploy_state(sync, health)

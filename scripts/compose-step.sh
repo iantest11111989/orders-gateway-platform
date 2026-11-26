@@ -7,7 +7,7 @@
 #   argocd     Argo CD is running (and the in-stack Git server, unless
 #              Argo CD follows GitHub)
 #   platform   every platform Application is Synced and Healthy
-#   apps       dev, staging and prod are Synced and Healthy
+#   apps       orders-gateway-dev, -staging and -prod are Synced and Healthy
 # `ready` (scripts/ready-check.sh) still decides when the platform is ready.
 # Like it, a step stays healthy once passed, and then costs one `docker
 # inspect`, until the cluster is replaced: then it checks again. For the full story: docker compose logs -f ready
@@ -58,10 +58,10 @@ case "${1:-}" in
     # GitHub mode (REPO_URL set).
     case "$url" in *.git.svc*) running git/soft-serve ;; esac ;;
   platform)
-    left=$(not_ready '^(?!(dev|staging|prod)$)')
+    left=$(not_ready '^(?!orders-gateway-(dev|staging|prod)$)')
     [ -z "$left" ] || { echo "not Synced/Healthy yet: $(tr "\n" " " <<<"$left")"; exit 1; } ;;
   apps)
-    left=$(not_ready '^(dev|staging|prod)$')
+    left=$(not_ready '^orders-gateway-(dev|staging|prod)$')
     [ -z "$left" ] || { echo "not Synced/Healthy yet: $(tr "\n" " " <<<"$left")"; exit 1; } ;;
   *) echo "usage: $0 cluster|argocd|platform|apps" >&2; exit 2 ;;
 esac

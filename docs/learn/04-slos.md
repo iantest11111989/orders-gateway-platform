@@ -16,7 +16,7 @@ Never break the real environments. Make a copy in `demo` the way the demos do:
 ./platform demo rolling-update --keep
 ```
 
-This takes about 2 minutes and leaves an Argo CD Application `demo`, a copy of dev, running at `https://orders-demo.localtest.me`.
+This takes about 2 minutes and leaves an Argo CD Application `orders-gateway-demo` (namespace `demo`), a copy of dev, running at `https://orders-demo.localtest.me`.
 
 Open the **orders-gateway** dashboard in Grafana and set **environment** to `demo`. The budgets are at 100% and the burn rates at 0.
 
@@ -68,7 +68,7 @@ So the runbook leads to the cause: an injected fault.
 Remove the parameter (keep k6 running):
 
 ```sh
-kubectl -n argocd get applications.argoproj.io demo -o json |
+kubectl -n argocd get applications.argoproj.io orders-gateway-demo -o json |
   jq '{spec: {source: {helm: {parameters: [.spec.source.helm.parameters[] | select(.name != "config.faultErrorRate")]}}}}' |
   kubectl -n argocd patch applications.argoproj.io demo --type merge --patch-file /dev/stdin
 ```

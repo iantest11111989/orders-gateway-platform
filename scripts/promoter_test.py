@@ -53,6 +53,7 @@ def fake_kube(ready=True, version=TAG, sync="Synced", health="Healthy"):
         if "/pods" in path:
             return {"items": [{"metadata": {"labels": {"app.kubernetes.io/version": version}},
                                "status": {"conditions": [{"type": "Ready", "status": "True" if ready else "False"}]}}]}
+        assert "/applications/orders-gateway-" in path, path
         return {"status": {"sync": {"status": sync}, "health": {"status": health}}}
     return kube
 
@@ -183,6 +184,7 @@ def fake_deploy_world(sync="Synced", health="Healthy", rev="r2", latest_sha="r1"
     writes = []
 
     def kube_get(path):
+        assert "/applications/orders-gateway-" in path, path
         return {"status": {"sync": {"status": sync, "revision": rev}, "health": {"status": health}}}
 
     def gh(method, path, body=None):

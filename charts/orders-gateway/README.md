@@ -1,6 +1,6 @@
 # charts/orders-gateway
 
-Helm chart for `orders-gateway` (the app in `app/`). Each environment installs it with its own values file from `environments/`, through an Argo CD Application (`gitops/apps/templates/<env>.yaml`).
+Helm chart for `orders-gateway` (the app in `app/`). Each environment installs it with its own values file from `environments/`, through an Argo CD Application (`gitops/apps/templates/orders-gateway-<env>.yaml`).
 
 | Template | Always | What |
 | --- | --- | --- |

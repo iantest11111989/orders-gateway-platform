@@ -32,7 +32,7 @@
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
-APP=demo NS=demo HOST=orders-demo.localtest.me
+APP=orders-gateway-demo NS=demo HOST=orders-demo.localtest.me
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 K6_LOG=/tmp/demo-k6.log
 
@@ -64,7 +64,7 @@ create_app() { # create_app <source app> <image tag> [helm-param=value ...]
   # A copy of prod leaves out prod's hostless route on localhost:8080: the
   # Gateway's "app" listener admits only the prod namespace, so the copy's
   # route would be refused and Argo CD would call the demo Degraded.
-  [ "$src" != prod ] || set -- publicRoute.enabled=false "$@"
+  [ "$src" != orders-gateway-prod ] || set -- publicRoute.enabled=false "$@"
   # Every copy labels its pods env=demo, not the source's env, so its logs
   # (Loki's env label) and metrics never pass for the real environment's.
   set -- env=demo "$@"
@@ -131,6 +131,12 @@ wait_ns_gone() {
 }
 
 delete_app() {
+  # A copy made before the rename was called "demo". Delete it too, but only
+  # if it carries the demo=true label, so nothing else named demo is touched.
+  if [ "$(kubectl -n argocd get applications.argoproj.io demo -o jsonpath='{.metadata.labels.demo}' 2>/dev/null)" = true ]; then
+    step "Deleting the old demo copy (named demo, from before the rename)"
+    kubectl -n argocd delete applications.argoproj.io demo --wait=true --timeout=180s >/dev/null
+  fi
   app_exists || { ok "no $APP to delete"; return 0; }
   local src; src=$(app_source)
   step "Deleting $APP (the Application and everything it created)"
@@ -336,7 +342,7 @@ demo_chaos() {
   echo "  kubectl drain does): the PodDisruptionBudget (maxUnavailable 1) lets"
   echo "  only one go at a time, and the pods spread across zones keep serving."
   echo "  Only the demo's pods are evicted; nothing else on the node moves."
-  ensure_app prod v1
+  ensure_app orders-gateway-prod v1
   wait_healthy v1 600
   start_load
   where_to_watch
@@ -377,7 +383,7 @@ demo_rolling_update() {
   echo "  The Deployment replaces its 3 pods one at a time (maxSurge 1,"
   echo "  maxUnavailable 0): a new pod must pass its readiness probe before an old"
   echo "  one drains (5 s) and stops. k6 keeps sending traffic. Takes about 1 minute."
-  ensure_app dev v1 replicas=3
+  ensure_app orders-gateway-dev v1 replicas=3
   wait_healthy v1 600
   start_load
   where_to_watch
@@ -424,7 +430,7 @@ demo_gitops_revert() {
   ok "pushed $branch"
 
   delete_app
-  DEMO_REVISION=$branch create_app dev v1 replicas=3
+  DEMO_REVISION=$branch create_app orders-gateway-dev v1 replicas=3
   wait_healthy v1 600
   start_load
   where_to_watch
@@ -489,7 +495,7 @@ demo_autoscale() {
   echo "  3. Takes about 8 minutes."
   # Always a fresh copy, from prod's current values.
   delete_app
-  create_app prod v1
+  create_app orders-gateway-prod v1
   wait_healthy v1 600
   min=$(kubectl -n "$NS" get hpa app -o jsonpath='{.spec.minReplicas}')
   max=$(kubectl -n "$NS" get hpa app -o jsonpath='{.spec.maxReplicas}')
