@@ -216,6 +216,13 @@ Argo CD Agent (one UI, agents pulling in each cluster) was also considered. Revi
 
 Why: app developers can't change cluster-wide config by accident, each repo has its own history and reviewers, and the app repo's CI never writes cluster config directly. It only opens promotion PRs in the deploy repo, through a GitHub App installed there with pull-request rights only. Argo CD reads only the deploy repo and the chart registry. The promotion steps below happen in the deploy repo.
 
+**Chart templates, not one chart per service written from scratch.** The platform team owns a shared Helm **library chart** (for example `platform-service`), versioned and published to ECR like any chart. It holds what every service needs, with today's `charts/orders-gateway` as the starting point:
+- the Deployment: probes, rolling-update settings, graceful shutdown, security context, topology spread
+- the Service, HPA, PodDisruptionBudget and NetworkPolicy
+- the ServiceMonitor and the standard labels
+
+Each service's chart, `orders-gateway` included, depends on a pinned version of it and sets only its own values (image, ports, resources, endpoints). A new service gets the production defaults on day one, Kyverno's policies pass without per-service work, and a platform fix (say, a better probe default) reaches every service through a version bump and that service's normal promotion. A starter template (`helm create --starter` or a repo template) gives new services the chart, CI workflow and `cd/` files in one step.
+
 **Promotion across clusters: a Git change.**
 - A merge to the app repo's `main` → CI builds, signs and pushes to ECR → the GitHub App commits the new digest to the deploy repo's dev file (`environments/dev/values.yaml` today) → dev's Argo CD syncs it.
 - Staging and prod move by **promotion PR** (`promote/staging`, `promote/prod`). Each changes only that environment's image line, pinned to **digest + tag**, so the same image moves through every environment without a rebuild.
