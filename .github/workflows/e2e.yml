@@ -3,9 +3,10 @@ name: E2E
 # The cluster test: a fresh kind cluster on a runner, in four stages, each
 # reported in the job summary:
 #   1 · Platform build   docker compose up from a clean checkout
-#   2 · Platform verify  the kubeconfig works from the host; a restart and a
-#                        re-run of ./platform up (idempotent) come back
-#                        healthy; ./platform verify; the Argo CD health
+#   2 · Platform verify  the kubeconfig works from the host; a restart
+#                        (docker compose stop / up) comes back healthy with
+#                        its data, and a re-run of ./platform up
+#                        (idempotent) too; ./platform verify; the Argo CD health
 #                        check; the resource budget
 #   3 · App CI           ./pipeline ci: test, build, scan, load into kind
 #   4 · App CD           ./pipeline cd to dev, staging and prod, then
@@ -86,12 +87,17 @@ jobs:
       # cluster (and its data) untouched.
       - name: "2 · Platform verify: restart (stop, then up again)"
         id: s2_restart
+        # The data that matters (registry, the in-stack Git history,
+        # Prometheus) must still be there afterwards: recorded before the
+        # stop, compared after (scripts/persistence-check.sh).
         run: |
+          ./platform shell scripts/persistence-check.sh record
           docker compose stop
           docker compose up -d --wait --wait-timeout 600
           status=$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q ready)" 2>/dev/null || echo missing)
           [ "$status" = healthy ] || { echo "::error::ready is $status after the restart"; docker compose ps; docker compose logs --tail=80 ready; exit 1; }
           kubectl --kubeconfig out/kubeconfig.yaml get nodes
+          ./platform shell scripts/persistence-check.sh check
       # A cold start is mostly image pulls (nothing is cached on a runner),
       # so list the slowest: a slow `up` can be explained from this log.
       - name: "2 · Platform verify: slowest image pulls (from the start)"
