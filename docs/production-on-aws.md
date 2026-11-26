@@ -438,9 +438,9 @@ Rough monthly baseline, eu-west-1, on-demand list prices, **all approximate and 
 | WAF: ACL + rules + requests | ~$20–50 |
 | Secrets Manager, KMS, Route 53, ECR storage, CloudTrail/Config/GuardDuty/Inspector/Security Hub | ~$100–200 |
 | **AWS subtotal** | **~$1.6–2k** |
+| Datadog (§3.8) | ~$350–600+ |
 
 The table prices the fully split layout (one cluster per environment, as in the diagram in §1). With the recommended shared non-prod cluster (§3.1), drop one control plane, one set of system nodes, one NAT gateway and one ALB: about **$300–400 less**, so roughly **$1.3–1.6k** for AWS.
-| Datadog (§3.8) | ~$350–600+ |
 
 **Levers, in order of payoff:**
 - **Shared non-prod cluster** (dev+staging in one cluster and account, as the sketch had it): saves a control plane, the system nodes, a NAT and an ALB, roughly $300–400/month. It weakens dev/staging isolation, which matters less than prod's. **This is the single biggest decision; see open questions.**
