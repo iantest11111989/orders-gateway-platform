@@ -107,8 +107,8 @@ demo_alert() {
   set_fault 0.3
   sleep 5
   show "curl -s -o /dev/null -w '%{http_code} ' $URL/work   # 10 times"
-  local i codes=''
-  for i in $(seq 1 10); do codes+="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$URL/work") "; done
+  local codes=''
+  for _ in $(seq 1 10); do codes+="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$URL/work") "; done
   printf '      %s\n' "$codes"
   note "some requests now answer 500 'injected fault'; k6 keeps sending traffic"
   run kubectl -n "$NS" logs -l app.kubernetes.io/name=orders-gateway --tail=3 --prefix

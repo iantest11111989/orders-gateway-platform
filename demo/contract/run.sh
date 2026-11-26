@@ -5,6 +5,8 @@
 # UIs and their login, restart policies and what keeps data across a
 # docker compose stop/start. Read-only: it changes nothing.
 # Runs in the toolbox (host network, so localhost is the host's).
+# "check && pass || miss" is safe here: pass (ok) never fails.
+# shellcheck disable=SC2015
 # shellcheck source=demo/lib.sh
 source "$(dirname "$0")/../lib.sh"
 
