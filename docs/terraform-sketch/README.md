@@ -26,7 +26,7 @@ How it maps to the local stack:
 | Sealed Secrets with a demo key in Git | External Secrets reading AWS Secrets Manager (`platform-demo/<env>/*`) |
 | `local-path` storage | EBS volumes (gp3) for Prometheus, Loki and Grafana |
 | In-stack Git server (soft-serve) | GitHub, with promotion PRs and approvals for prod |
-| `kind load` for `./platform ship` | Only CI-built, signed images from GHCR (through ECR); `localhost/` is not admitted |
+| `./pipeline ci` publishes unsigned images to the in-stack registry (`localhost:30500`) | Only CI-built, signed images in ECR; nothing built on a laptop is admitted |
 | `admin` / `admin12345` | SSO for Argo CD, Grafana and the cluster (access entries) |
 
 Not here, and needed before this is real: remote state bootstrap (the S3 bucket itself), Karpenter or the cluster autoscaler, Prometheus long-term storage (Thanos or Amazon Managed Prometheus), and a `terraform plan` in CI with the plan posted on the PR.
