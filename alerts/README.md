@@ -9,6 +9,8 @@ PrometheusRules, loaded by Prometheus through Argo CD (the observability PR wire
 | `platform-security.yaml` | Kyverno, Sealed Secrets and Trivy Operator alerts |
 | `tests/` | promtool unit tests, one file per rule file |
 
+**Labels the promotion gate reads.** `./pipeline cd <app> <env>` refuses a promotion while an alert fires for that app in the environment it comes from (`scripts/promotion-gate.sh`: `ALERTS{namespace="<env>", service="<app>"}`). So an alert about one app keeps the `namespace` and `service` labels of its series (aggregate `by (namespace, service)`), and an alert about the platform as a whole carries neither.
+
 Test locally (needs only Docker):
 
 ```sh
