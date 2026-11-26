@@ -1,5 +1,5 @@
 # kind cluster for orders-gateway-platform: 1 control plane + 2 workers.
-# Created by `./platform up`; see docs/decisions/0004-toolbox-and-cluster.md.
+# Created by `./platform up`.
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: ogp
@@ -9,7 +9,7 @@ networking:
   # kindnet enforces NetworkPolicy (kind >= v0.24), so no extra CNI is needed.
   # kind's default pod range, set explicitly: the NetworkPolicies in
   # gitops/manifests/network-policies/ treat everything outside it as "the
-  # nodes" (decision 0017). Keep the two in step; changing it needs a new cluster.
+  # nodes". Keep the two in step; changing it needs a new cluster.
   podSubnet: 10.244.0.0/16
 nodes:
   - role: control-plane
@@ -27,13 +27,13 @@ nodes:
         hostPort: 443
         listenAddress: 127.0.0.1
         protocol: TCP
-      # The contract's ports (decision 0028): prod on 8080, Grafana 3000,
+      # Host ports: prod on 8080, Grafana 3000,
       # Prometheus 9090, Alertmanager 9093, all through the Envoy Gateway.
       - {containerPort: 30808, hostPort: 8080, listenAddress: 127.0.0.1, protocol: TCP}
       - {containerPort: 30300, hostPort: 3000, listenAddress: 127.0.0.1, protocol: TCP}
       - {containerPort: 30909, hostPort: 9090, listenAddress: 127.0.0.1, protocol: TCP}
       - {containerPort: 30993, hostPort: 9093, listenAddress: 127.0.0.1, protocol: TCP}
-      # Argo CD's UI on a plain port too (decision 0032).
+      # Argo CD's UI on a plain port too.
       - {containerPort: 30881, hostPort: 8081, listenAddress: 127.0.0.1, protocol: TCP}
     kubeadmConfigPatches:
       # Expose control-plane metrics on all interfaces so Prometheus can

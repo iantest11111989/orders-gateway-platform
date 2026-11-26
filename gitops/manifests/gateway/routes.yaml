@@ -1,7 +1,7 @@
 # HTTPS routes for the platform UIs. The app's own routes (orders.*) come
 # with its Helm chart. Prometheus and Alertmanager have no login: the
 # Gateway is bound to 127.0.0.1 only (cluster/kind.yaml), and production
-# would put SSO in front (README, production differences).
+# would put SSO in front (README, "Local vs a real cloud").
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -83,8 +83,8 @@ spec:
         - name: argo-rollouts-dashboard
           port: 3100
 ---
-# Grafana, Prometheus and Alertmanager on the contract's host ports (plain
-# HTTP, no hostname; decision 0028). The HTTPS routes above stay.
+# Grafana, Prometheus and Alertmanager on their host ports (plain
+# HTTP, no hostname). The HTTPS routes above stay.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -130,7 +130,7 @@ spec:
         - name: kube-prometheus-stack-alertmanager
           port: 9093
 ---
-# Argo CD on http://localhost:8081 (decision 0032).
+# Argo CD on http://localhost:8081.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:

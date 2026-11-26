@@ -1,5 +1,5 @@
 # kube-prometheus-stack values (chart prometheus-community/kube-prometheus-stack).
-# Sized for the 6 CPU / 12 GB budget; see decision 0007 for the numbers.
+# Sized for the 6 CPU / 12 GB budget.
 # Every pod except node-exporter runs restricted: non-root, read-only root
 # filesystem, no capabilities, RuntimeDefault seccomp.
 
@@ -31,7 +31,7 @@ alertmanager:
       runAsGroup: 65534
       fsGroup: 65534
       seccompProfile: {type: RuntimeDefault}
-  # Routing (decision 0025): every notification goes to alert-receiver
+  # Routing: every notification goes to alert-receiver
   # (gitops/manifests/monitoring/alert-receiver.yaml), which writes it as one
   # JSON log line, so alerts show up in Loki and Grafana. The path says how it
   # was routed: /page, /ticket, /log, or /watchdog for the heartbeat.
@@ -89,8 +89,8 @@ alertmanager:
 
 # ---- Grafana ----
 grafana:
-  # Login admin / admin12345 (the contract's dev UI login), from the SealedSecret
-  # gitops/manifests/monitoring/grafana-admin.sealed.yaml (decision 0018). Read it with:
+  # Login admin / admin12345 (the shared local login for every UI), from the SealedSecret
+  # gitops/manifests/monitoring/grafana-admin.sealed.yaml. Read it with:
   #   ./platform kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d
   admin:
     existingSecret: grafana-admin
@@ -116,8 +116,8 @@ grafana:
     capabilities: {drop: [ALL]}
   grafana.ini:
     server:
-      # The contract's address: http://localhost:3000, at the root, plain HTTP
-      # (decision 0028). Redirects are relative, so the TLS hostname
+      # Grafana's local address: http://localhost:3000, at the root, plain HTTP.
+      # Redirects are relative, so the TLS hostname
       # https://grafana.localtest.me keeps working too.
       root_url: http://localhost:3000/
       serve_from_sub_path: false
@@ -176,8 +176,8 @@ prometheusOperator:
 prometheus:
   prometheusSpec:
     replicas: 1
-    # 24 h (owner decision, 2026-11-23): enough for the 6 h burn-rate alerts.
-    # Production would keep 30+ days; see the README's production differences.
+    # 24 h: enough for the 6 h burn-rate alerts.
+    # Production would keep 30+ days; see the README's "Local vs a real cloud".
     retention: 24h
     retentionSize: 4GB
     scrapeInterval: 30s
@@ -232,8 +232,8 @@ kubeEtcd:
     port: 2381
     targetPort: 2381
 
-# Drop high-cardinality series nothing here uses (brief: "dropped unused
-# series"). Each saves thousands of series on this small cluster.
+# Drop high-cardinality series nothing here uses. Each saves thousands of
+# series on this small cluster.
 kubeApiServer:
   serviceMonitor:
     metricRelabelings:

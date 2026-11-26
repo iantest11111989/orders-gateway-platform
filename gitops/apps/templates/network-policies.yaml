@@ -3,7 +3,6 @@
 # and the cross-namespace flows the platform uses. The app namespaces get
 # theirs from the orders-gateway chart; Argo CD's come with its chart.
 # Wave 30: every namespace it covers exists by then (waves 10-25).
-# See decision 0017.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -13,8 +12,8 @@ metadata:
     app.kubernetes.io/part-of: orders-gateway-platform
   annotations:
     argocd.argoproj.io/sync-wave: "30"
-  # Pruning or deleting this Application also deletes what it created
-  # (decision 0031); without it, a rename orphaned the old resources (#77).
+  # Pruning or deleting this Application also deletes what it created;
+  # without it, a rename orphaned the old resources.
   finalizers: [resources-finalizer.argocd.argoproj.io]
 spec:
   project: default

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Fails if the repo holds a plain Kubernetes Secret or a private key, so
-# secrets only ever land in Git sealed (SealedSecret, decision 0018).
+# secrets only ever land in Git sealed (SealedSecret).
 # The one exception is the DEMO ONLY Sealed Secrets key, committed on
-# purpose (decision 0002) and allowlisted here by path.
+# purpose and allowlisted here by path.
 # CI runs it in the platform workflow's lint job; it needs only git and grep.
 set -euo pipefail
 cd "$(dirname "$0")/.."

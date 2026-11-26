@@ -1,6 +1,7 @@
 # Baseline for kyverno: deny ingress by default; allow its own pods and the
-# nodes (kubelet, API server webhooks and service proxy; see
-# docs/decisions/0017-network-policies.md for why "nodes" is an ipBlock).
+# nodes (kubelet, API server webhooks and service proxy). "The nodes" is an
+# ipBlock, everything outside the pod range 10.244.0.0/16: on kindnet a
+# deny-all would also drop the control-plane node's traffic to pods.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

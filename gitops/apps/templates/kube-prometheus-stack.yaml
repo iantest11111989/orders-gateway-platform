@@ -5,7 +5,7 @@
 # Pod Security: "privileged" here, because node-exporter needs the host's
 # network, PID namespace and filesystem to report node metrics. That is the
 # only exception; every other pod in this namespace is restricted-compliant
-# (enforced by Kyverno in the security PR). See decision 0007.
+# (enforced by Kyverno).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

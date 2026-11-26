@@ -1,6 +1,6 @@
 # Kyverno: admission policies (policies/, applied by kyverno-policies).
 # Admission controller only; the background, cleanup and reports controllers
-# are off to save memory (decision 0012). Values: gitops/values/kyverno.yaml.
+# are off to save memory. Values: gitops/values/kyverno.yaml.
 # Wave 20, beside observability: nothing before the policies (wave 30) needs
 # it, and its sync is slow (a pre-install check, the controller, then a
 # post-sync migration Job), so in wave 10 it held up everything after it.

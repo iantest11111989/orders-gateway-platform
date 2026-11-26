@@ -2,10 +2,10 @@
 env: dev
 
 image:
-  # Set by CI (job promote-dev, "4 · Deploy dev", in .github/workflows/cd-app.yml, decision 0014) after every
+  # Set by CI (job promote-dev, "4 · Deploy dev", in .github/workflows/cd-app.yml) after every
   # merge to main that publishes and signs a new image. Do not edit by hand.
-  tag: sha-1b4f5d84d477
-  digest: sha256:b463457d1dd62ef05d7ff7e7f42b2ef0bdb977cec3a6aac69db5d4fa85c2fcc4
+  tag: sha-97d395f2f3d5
+  digest: sha256:56cf944ed49fa2acbb35c6272c4cbcef46abc48daf51c5f183eef9dd70fe9dff
 
 replicas: 1
 

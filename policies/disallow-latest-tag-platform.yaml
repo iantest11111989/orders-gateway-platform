@@ -1,5 +1,5 @@
 # disallow-latest-tag for every namespace except the app namespaces (dev, staging, prod, demo), in Audit: the
-# third-party charts are reported, not blocked (decisions 0012 and 0022).
+# third-party charts are reported, not blocked.
 # Same checks as disallow-latest-tag.yaml; keep the two in step.
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy

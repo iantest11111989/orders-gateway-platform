@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/promotion-kind.sh <env> <to-commit>: what promoting <env> to the
 # image built from <to-commit> would ship, as Git trailers for the promotion
-# commit (decision 0015; read by the patch promoter):
+# commit (read by the patch promoter):
 #
 #   Promotion-Range: <from>..<to>   main commits since the image <env> runs now
 #   Promotion-Kind: patch | feature | unknown

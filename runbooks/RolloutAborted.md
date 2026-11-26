@@ -4,7 +4,7 @@
 
 ## What it means
 
-A canary (Argo Rollouts) outside the `demo` copy aborted. prod runs a plain Deployment, so no environment uses a Rollout today; the alert stays for any that does. At each step an AnalysisRun checks the canary's pods against the SLO: 5xx ratio at most 0.5% and p99 latency at most 300 ms, measured 4 times, 30 seconds apart. A **second** failed measurement (`failureLimit: 1`) aborts the canary and sends all traffic back to the stable version. Someone can also abort it by hand.
+A canary (Argo Rollouts) outside the `demo` copy aborted. prod runs a plain Deployment, so no environment uses a Rollout today; the alert stays for any that does. At each step an AnalysisRun checks the canary's pods against the SLO: 5xx ratio of `/work` and `/echo` at most 0.5%, and p99 latency of `/echo` and `/version` at most 250 ms, measured 4 times, 30 seconds apart. A **second** failed measurement (`failureLimit: 1`) aborts the canary and sends all traffic back to the stable version. Someone can also abort it by hand.
 
 The new version stays out until a fixed image is promoted. `demo` is excluded: the `canary-fail` demo aborts on purpose.
 
@@ -17,7 +17,7 @@ kubectl -n <namespace> get analysisruns --sort-by=.metadata.creationTimestamp
 kubectl -n <namespace> describe analysisrun <the newest one>          # which metric failed, with its values
 ```
 
-The **Argo Rollouts** dashboard in Grafana shows the same: **Recent analysis runs** and **Analysis metrics** (which of `error-ratio` or `p99-latency` failed). In Loki, `{namespace="<namespace>"} | json | level="ERROR"` shows the canary's failing requests, with their `version`.
+The **Argo Rollouts** dashboard in Grafana shows the same: **Recent analysis runs** and **Analysis metrics** (which of `error-ratio` or `p99-latency` failed). In Loki, `{namespace="<namespace>", app="app"} | json | level="error"` shows the canary's failing requests, with their `version` (the app writes `level` in lowercase).
 
 ## Fix
 

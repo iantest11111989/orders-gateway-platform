@@ -14,7 +14,7 @@ if cluster_exists; then
   step "Cluster '$CLUSTER_NAME' already exists; reusing it"
   kind export kubeconfig --name "$CLUSTER_NAME" >/dev/null
   # kind applies extraPortMappings only when it creates a cluster: one made
-  # before the contract's ports (decision 0028) or Argo CD's (0032) lacks them.
+  # before the host ports for prod, the UIs and Argo CD existed lacks them.
   for np in 30808 30881; do
     if [ -z "$(docker port "$CLUSTER_NAME-control-plane" "$np/tcp" 2>/dev/null)" ]; then
       die "this cluster was created before the host ports 8080/3000/9090/9093/8081 existed; recreate it: ./platform down && ./platform up"
@@ -87,7 +87,7 @@ kubectl -n kube-system wait --for=condition=Ready pods --all --timeout=180s >/de
 ok "kube-system healthy"
 
 # Before Argo CD installs the Sealed Secrets controller, so it finds this key
-# on first start instead of generating its own. DEMO ONLY key (decision 0018).
+# on first start instead of generating its own. DEMO ONLY key.
 # Only when it's missing: once Argo CD manages it (the sealed-secrets app), a
 # second `kubectl apply` would merge away Argo CD's tracking annotation and
 # leave the app OutOfSync, which stalled a re-run of `up` in CI.
@@ -100,7 +100,7 @@ else
 fi
 
 # Argo CD syncs from the in-stack Git server by default: the cluster runs this
-# checkout (decision 0029). REPO_URL (e.g. this repo on GitHub) switches to
+# checkout. REPO_URL (e.g. this repo on GitHub) switches to
 # GitHub mode, where CI's promotion PRs and the patch promoter apply.
 if [ -z "${REPO_URL:-}" ]; then
   bash "$(dirname "$0")/git-sync.sh"

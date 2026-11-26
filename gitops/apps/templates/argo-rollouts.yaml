@@ -1,8 +1,7 @@
 # Argo Rollouts: progressive delivery for prod (canary with traffic shifted
 # through Gateway API HTTPRoute weights). Values: gitops/values/argo-rollouts.yaml.
 # Wave 10 (controllers); its CRDs ship with the chart. Dashboard at
-# https://rollouts.localtest.me (route in gitops/manifests/gateway/). See
-# decision 0011.
+# https://rollouts.localtest.me (route in gitops/manifests/gateway/).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
