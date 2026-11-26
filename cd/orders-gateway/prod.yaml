@@ -3,7 +3,7 @@
 # once the new one is ready.
 env: prod
 
-# The chart this environment runs: tag orders-gateway-chart-<chartVersion>.
+# The chart this environment runs: releases/orders-gateway/<chartVersion>/.
 # dev runs helm/orders-gateway as it is.
 chartVersion: 0.1.0
 

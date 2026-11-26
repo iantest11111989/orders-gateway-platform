@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Renders everything Argo CD applies, so CI can validate it in seconds,
 # without a cluster (CI · platform, "Validate manifests"):
-#   - helm lint, then helm template of helm/orders-gateway for dev, staging
-#     and prod with their values files
+#   - helm lint, then helm template of the app chart for dev (helm/), staging
+#     and prod (the releases/ folder each pins) with their values files
 #   - the app-of-apps chart (bootstrap/apps)
 #   - the plain manifests under system/<component>/ (its manifests/ folder
 #     when it also has a values.yaml; Kustomize where there's a
@@ -18,29 +18,15 @@ OUT=out/rendered
 rm -rf "$OUT"; mkdir -p "$OUT"
 
 step "Helm: lint and render the app chart per environment"
-# dev runs helm/orders-gateway as it is; staging and prod the chart at the tag
-# their env file pins (orders-gateway-chart-<chartVersion>), with this
-# checkout's values, as Argo CD does.
-tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-git() { command git -c safe.directory='*' "$@"; }
+# dev runs helm/orders-gateway as it is; staging and prod the release their
+# env file pins (releases/orders-gateway/<chartVersion>/), as Argo CD does.
 pinned_chart() { # pinned_chart <app> <env>: prints the chart folder to render
-  local app=$1 v t
-  v=$(yq '.chartVersion // ""' "cd/$app/$2.yaml")
-  [ -n "$v" ] || die "cd/$app/$2.yaml has no chartVersion"
-  t="$app-chart-$v"
-  if [ ! -d "$tmp/$t" ]; then
-    if ! git rev-parse --git-dir >/dev/null 2>&1; then
-      warn "no Git history here to find $t in: rendering $2 with helm/$app as it is" >&2
-      echo "helm/$app"; return
-    fi
-    # A shallow CI checkout has no tags: fetch just this one.
-    git rev-parse -q --verify "refs/tags/$t" >/dev/null ||
-      git fetch -q --depth=1 origin "refs/tags/$t:refs/tags/$t" 2>/dev/null ||
-      die "cd/$app/$2.yaml pins chart $v, but there's no tag $t (git fetch --tags?)"
-    mkdir -p "$tmp/$t"
-    git archive "$t" "helm/$app" | tar -x -C "$tmp/$t"
-  fi
-  echo "$tmp/$t/helm/$app"
+  local v
+  v=$(yq '.chartVersion // ""' "cd/$1/$2.yaml")
+  [ -n "$v" ] || die "cd/$1/$2.yaml has no chartVersion"
+  [ -f "releases/$1/$v/Chart.yaml" ] || die "cd/$1/$2.yaml pins chart $v, but there's no releases/$1/$v/ (./pipeline ci $1 --chart $v releases it)"
+  [ "$(yq '.version' "releases/$1/$v/Chart.yaml")" = "$v" ] || die "releases/$1/$v/Chart.yaml doesn't say version: $v"
+  echo "releases/$1/$v"
 }
 for env in dev staging prod; do
   chart=helm/orders-gateway
@@ -51,7 +37,7 @@ for env in dev staging prod; do
   # Application's namespace, so set it (the policies match on namespace).
   helm template app "$chart" -f cd/orders-gateway/values.yaml -f "cd/orders-gateway/$env.yaml" --namespace "$env" |
     NS="$env" yq '(select(.metadata.namespace == null) | .metadata.namespace) = strenv(NS)' >"$OUT/app-$env.yaml"
-  ok "$env: $(grep -c '^kind:' "$OUT/app-$env.yaml") objects (chart $(yq '.version' "$chart/Chart.yaml")$([ "$env" = dev ] && echo ', as in helm/'))"
+  ok "$env: $(grep -c '^kind:' "$OUT/app-$env.yaml") objects ($chart)"
 done
 # One file for kyverno apply (its CLI takes one --resource reliably).
 mkdir -p out/policy-input

@@ -4,20 +4,11 @@ What each environment runs. `values.yaml` is shared by all of them; `dev.yaml`, 
 
 ## Chart versions
 
-dev runs `helm/orders-gateway` as it is in Git. staging and prod run a released chart: `chartVersion: 0.2.0` in `staging.yaml` means the chart as it was at Git tag `orders-gateway-chart-0.2.0`, with today's `values.yaml` and `staging.yaml`. So a chart change reaches dev on merge and staging and prod only when their files are bumped, like an image. The Applications for staging and prod come from the ApplicationSet `orders-gateway-released` (`bootstrap/apps/templates/orders-gateway-released.yaml`), which reads these two files.
+dev runs `helm/orders-gateway` as it is in Git. staging and prod run a released chart: `chartVersion: 0.2.0` in `staging.yaml` means `releases/orders-gateway/0.2.0/`, a copy of the chart made when 0.2.0 was released, with today's `values.yaml` and `staging.yaml`. So a chart change reaches dev on merge, and staging and prod only when their `chartVersion` is bumped, like an image. Their Applications come from the ApplicationSet `orders-gateway-released` (`bootstrap/apps/templates/orders-gateway-released.yaml`), which reads these two files. More in `releases/README.md`.
 
-- Release a chart: bump `version` in `helm/orders-gateway/Chart.yaml` (or `./pipeline ci orders-gateway --chart 0.2.0`). The tag is made from it: by CI on GitHub after the merge, by `scripts/git-sync.sh` on the in-stack Git server. A version is released once; tags are never moved.
-- Release first, then promote: a PR that bumps `Chart.yaml` and a `chartVersion` together fails validation, since the tag only exists once CI tags main. Bump `chartVersion` in a later PR (or the promotion).
-- Deploy it locally: `./pipeline cd orders-gateway staging --chart 0.2.0`.
-- A file that pins a version with no tag fails `scripts/validate-manifests.sh` and the push to the in-stack server (fetch the tags: `git fetch --tags`).
-
-| | dev | staging | prod |
-| --- | --- | --- | --- |
-| Namespace | `dev` | `staging` | `prod` |
-| Replicas | 1 | 2 | 3, HPA up to 6 on CPU |
-| PDB and topology spread | no | yes | yes |
-| URL | http://localhost:8082 | http://localhost:8083 | http://localhost:8080 |
-| Deploy | automatic on merge to main (CI) | promotion PR the owner approves | promotion PR the owner approves |
+- Release a chart: `./pipeline ci orders-gateway --chart 0.2.0` sets the version in `helm/orders-gateway/Chart.yaml` and copies the chart to `releases/orders-gateway/0.2.0/`. Commit both. A version is released once; its folder is never edited.
+- Deploy it locally: `./pipeline cd orders-gateway staging --chart 0.2.0`. On GitHub: a PR that changes `chartVersion`.
+- A file that pins a version without a folder fails `scripts/validate-manifests.sh`.
 
 Try it (from the host, or inside `./platform shell`):
 

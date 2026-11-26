@@ -8,8 +8,8 @@
 #         (Trivy: HIGH/CRITICAL with a fix fails) and load it into the kind
 #         nodes. Refuses a tag that's already built. Remembers T for `cd`.
 #         --chart V releases helm/<app> as chart version V: sets it in
-#         Chart.yaml (refused if tag <app>-chart-V exists); the in-stack Git
-#         server tags it on the next `cd`, CI on GitHub once it's merged.
+#         Chart.yaml and copies the chart to releases/<app>/V/ (refused if
+#         that folder exists).
 #   ./pipeline cd <app> <env> [--tag T] [--chart V]
 #         point cd/<app>/<env>.yaml at localhost/<app>:T (default: the last
 #         `ci` build) and, with --chart, staging or prod at chart V; push the
@@ -73,18 +73,14 @@ check_chart_version() {
     die "not a chart version (semver, e.g. 0.2.0): '$1'"
 }
 
-# Chart versions are Git tags <app>-chart-<version>.
-chart_tag() { echo "$app-chart-$1"; }
-has_git() { git rev-parse --git-dir >/dev/null 2>&1; }
-tag_exists() { has_git && git rev-parse -q --verify "refs/tags/$1" >/dev/null; }
-# Also asks origin, in case this checkout never fetched its tags.
-released() {
-  tag_exists "$1" || { has_git && git ls-remote --exit-code --tags origin "refs/tags/$1" >/dev/null 2>&1; }
-}
+# A released chart version is a folder: releases/<app>/<version>/, a copy
+# of helm/<app>/ that's never edited afterwards.
+release_dir() { echo "releases/$app/$1"; }
 chart_version() { sed -n 's/^version: *"\{0,1\}\([^" ]*\)"\{0,1\} *$/\1/p' "helm/$app/Chart.yaml"; }
 
-# --chart V: write V into Chart.yaml. Without it, say if helm/<app> changed
-# since its version was tagged (staging and prod won't get that change).
+# --chart V: write V into Chart.yaml and copy helm/<app> to releases/<app>/V.
+# Without it, say if helm/<app> changed since its version was released
+# (staging and prod won't get that change).
 release_chart() {
   cur=$(chart_version)
   if [ -n "$chart" ]; then
@@ -92,20 +88,19 @@ release_chart() {
       sed "s/^version: .*/version: $chart/" "helm/$app/Chart.yaml" >"helm/$app/Chart.yaml.tmp"
       cat "helm/$app/Chart.yaml.tmp" >"helm/$app/Chart.yaml"; rm -f "helm/$app/Chart.yaml.tmp"
     fi
-    ok "helm/$app/Chart.yaml: version $chart (was $cur). Pin it: ./pipeline cd $app <staging|prod> --chart $chart"
-  elif tag_exists "$(chart_tag "$cur")" &&
-       ! git diff --quiet "$(chart_tag "$cur")" -- "helm/$app" 2>/dev/null; then
-    echo "  Note: helm/$app changed since $(chart_tag "$cur"). dev runs it as it is; to"
-    echo "  release it to staging and prod: ./pipeline ci $app --chart <new version>"
+    mkdir -p "releases/$app"
+    cp -R "helm/$app" "$(release_dir "$chart")"
+    ok "released chart $chart: $(release_dir "$chart")/ (helm/$app/Chart.yaml was $cur). Commit both, then pin it: ./pipeline cd $app <staging|prod> --chart $chart"
+  elif [ -d "$(release_dir "$cur")" ] && ! diff -r -q "helm/$app" "$(release_dir "$cur")" >/dev/null 2>&1; then
+    echo "  Note: helm/$app changed since chart $cur was released. dev runs it as it is;"
+    echo "  to release it to staging and prod: ./pipeline ci $app --chart <new version>"
   fi
 }
 
-last_tag_file() { echo ".build/$app.last-tag"; }
-
 ci() {
   parse_opts "$@"
-  [ -z "$chart" ] || ! released "$(chart_tag "$chart")" ||
-    die "chart $chart is already released (tag $(chart_tag "$chart")): versions are never reused (pick another --chart)"
+  [ -z "$chart" ] || [ ! -e "$(release_dir "$chart")" ] ||
+    die "chart $chart is already released ($(release_dir "$chart")/): versions are never reused (pick another --chart)"
   tag=${tag:-local-$(date -u +%Y%m%d-%H%M%S)}
   check_tag "$tag"
   app_img="localhost/$app:$tag"
@@ -154,8 +149,8 @@ cd_env() {
   parse_opts "$@"
   if [ -n "$chart" ]; then
     [ "$env" != dev ] || die "dev runs helm/$app as it is: --chart is for staging and prod"
-    tag_exists "$(chart_tag "$chart")" || [ "$chart" = "$(chart_version)" ] ||
-      die "no chart $chart: no tag $(chart_tag "$chart") (git fetch --tags?) and helm/$app/Chart.yaml is $(chart_version)"
+    [ -f "$(release_dir "$chart")/Chart.yaml" ] ||
+      die "no chart $chart: no $(release_dir "$chart")/ (release it first: ./pipeline ci $app --chart $chart)"
   fi
   if [ -n "$chart" ] && [ -z "$tag" ]; then
     check_docker

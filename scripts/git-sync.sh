@@ -61,46 +61,10 @@ done
 remote="ssh://127.0.0.1:$port/platform.git"
 export GIT_SSH_COMMAND="ssh -i $KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
 
-git init -q "$tmp/g"
-g() { git -c safe.directory='*' --git-dir="$tmp/g/.git" --work-tree="$ROOT" "$@"; }
-# The checkout's own Git, if it has one (a zip download doesn't).
-c() { git -c safe.directory='*' -C "$ROOT" "$@"; }
-has_history=false
-c rev-parse --git-dir >/dev/null 2>&1 && has_history=true
-
-# Chart versions are Git tags <app>-chart-<version>. staging and prod run the
-# chart at the tag their cd/<app>/<env>.yaml pins (chartVersion); dev runs
-# helm/<app>/ as it is. The in-stack server gets the checkout's chart tags
-# and a tag for each chart's current version. Tags there are never moved or
-# deleted: a version means one chart.
-step "Chart versions (tags <app>-chart-<version>)"
-# A new server has no platform.git yet (the first push creates it): no tags.
-{ g ls-remote --tags "$remote" '*-chart-*' 2>/dev/null || true; } |
-  sed -n 's|.*refs/tags/\([^^]*\)$|\1|p' | sort -u >"$tmp/tags.stack"
-: >"$tmp/tags.local"
-$has_history && c tag -l '*-chart-*' | sort -u >"$tmp/tags.local"
-: >"$tmp/tags.new" # tags to create on the snapshot
-for chart in "$ROOT"/helm/*/Chart.yaml; do
-  app=$(basename "$(dirname "$chart")")
-  v=$(yq '.version' "$chart")
-  echo "$app-chart-$v" >>"$tmp/tags.new"
-done
-for f in "$ROOT"/cd/*/staging.yaml "$ROOT"/cd/*/prod.yaml; do
-  [ -f "$f" ] || continue
-  app=$(basename "$(dirname "$f")")
-  v=$(yq '.chartVersion // ""' "$f")
-  [ -n "$v" ] || die "${f#"$ROOT"/} has no chartVersion: staging and prod run a released chart (tag $app-chart-<version>)"
-  t="$app-chart-$v"
-  grep -qxF "$t" "$tmp/tags.stack" "$tmp/tags.local" "$tmp/tags.new" && continue
-  if $has_history; then
-    die "${f#"$ROOT"/} pins chart $v, but there's no tag $t here or on the in-stack server. Fetch the tags (git fetch --tags) or release it (./pipeline ci $app --chart $v)."
-  fi
-  warn "${f#"$ROOT"/} pins chart $v and this checkout has no Git history to find tag $t in; tagging this snapshot as $t, so $(basename "$f" .yaml) runs the chart as it is here"
-  echo "$t" >>"$tmp/tags.new"
-done
-
 step "Snapshot of this checkout → in-stack main"
 hand_over_released_apps
+git init -q "$tmp/g"
+g() { git -c safe.directory='*' --git-dir="$tmp/g/.git" --work-tree="$ROOT" "$@"; }
 parent=''
 if g fetch -q "$remote" main 2>/dev/null; then parent=$(g rev-parse FETCH_HEAD); fi
 g add -A
@@ -123,29 +87,6 @@ else
   ok "pushed ${commit:0:12}: snapshot of $origin"
   echo "$commit" >"$tmp/rev"
 fi
-rev=$(cat "$tmp/rev")
-
-# The checkout's chart tags the server lacks (with the commits they point at).
-for t in $(comm -23 "$tmp/tags.local" "$tmp/tags.stack"); do
-  c push -q "$remote" "refs/tags/$t:refs/tags/$t" ||
-    die "couldn't push tag $t to the in-stack Git server (a shallow clone? git fetch --unshallow --tags)"
-  echo "$t" >>"$tmp/tags.stack"
-  ok "$t (from this checkout)"
-done
-# A version nobody tagged yet: tag the snapshot. A version already tagged:
-# only check that the chart is still the same.
-sort -u "$tmp/tags.new" | while read -r t; do
-  app=${t%-chart-*}
-  if grep -qxF "$t" "$tmp/tags.stack"; then
-    g fetch -q "$remote" "refs/tags/$t:refs/tags/$t" 2>/dev/null || true
-    if [ "$(g rev-parse -q --verify "$t^{commit}:helm/$app" 2>/dev/null)" != "$(g rev-parse "$rev:helm/$app")" ]; then
-      warn "helm/$app has changed since $t: dev runs it as it is; staging and prod keep their pinned version. Release it with a new version: ./pipeline ci $app --chart <version>"
-    fi
-  else
-    g push -q "$remote" "$rev:refs/tags/$t" || die "couldn't create tag $t on the in-stack Git server"
-    ok "$t (this snapshot)"
-  fi
-done
 
 # Argo CD polls every 3 minutes; ask it to look now.
 for app in $(kubectl -n argocd get applications.argoproj.io -o name 2>/dev/null); do

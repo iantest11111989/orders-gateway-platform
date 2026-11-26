@@ -7,10 +7,10 @@
      unset, so staging and prod both render here (dev has its own template). */}}
 # The app in namespaces staging and prod: one Application per environment,
 # orders-gateway-staging and orders-gateway-prod, generated from their env
-# files. Each runs the chart RELEASED as the version its file pins
-# (chartVersion: X means Git tag orders-gateway-chart-X), with the values from
-# main: cd/orders-gateway/values.yaml + <env>.yaml. So a chart change reaches
-# staging and prod only when a promotion bumps chartVersion, like an image.
+# files. Each runs the released chart its file pins (chartVersion: X means
+# releases/orders-gateway/X/), with cd/orders-gateway/values.yaml + <env>.yaml,
+# all from the same commit. So a chart change reaches staging and prod only
+# when a promotion bumps chartVersion, like an image.
 # dev follows helm/orders-gateway as it is (orders-gateway-dev.yaml).
 # Wave 40 (apps), after the edge and monitoring.
 apiVersion: argoproj.io/v1alpha1
@@ -42,25 +42,20 @@ spec:
       labels:
         app.kubernetes.io/part-of: orders-gateway-platform
       annotations:
-        argocd.argoproj.io/manifest-generate-paths: {{ `'/cd/orders-gateway/values.yaml;/cd/orders-gateway/{{ .path.filename }}'` }}
+        argocd.argoproj.io/manifest-generate-paths: {{ `'/releases/orders-gateway/{{ .chartVersion }};/cd/orders-gateway/values.yaml;/cd/orders-gateway/{{ .path.filename }}'` }}
       # Pruning or deleting this Application also deletes what it created.
       finalizers: [resources-finalizer.argocd.argoproj.io]
     spec:
       project: default
-      sources:
-        # The chart, as released under the tag the env file pins.
-        - repoURL: {{ .Values.repo.url }}
-          targetRevision: {{ `'orders-gateway-chart-{{ .chartVersion }}'` }}
-          path: helm/orders-gateway
-          helm:
-            releaseName: app
-            valueFiles:
-              - $values/cd/orders-gateway/values.yaml
-              - {{ `'$values/cd/orders-gateway/{{ .path.filename }}'` }}
-        # The values, from main (or the branch up was given).
-        - repoURL: {{ .Values.repo.url }}
-          targetRevision: {{ .Values.repo.revision }}
-          ref: values
+      source:
+        repoURL: {{ .Values.repo.url }}
+        targetRevision: {{ .Values.repo.revision }}
+        path: {{ `'releases/orders-gateway/{{ .chartVersion }}'` }}
+        helm:
+          releaseName: app
+          valueFiles:
+            - ../../../cd/orders-gateway/values.yaml
+            - {{ `'../../../cd/orders-gateway/{{ .path.filename }}'` }}
       destination:
         server: https://kubernetes.default.svc
         namespace: {{ `'{{ .env }}'` }}

@@ -1,7 +1,7 @@
 # staging: promoted from dev by a pull request the owner approves.
 env: staging
 
-# The chart this environment runs: tag orders-gateway-chart-<chartVersion>.
+# The chart this environment runs: releases/orders-gateway/<chartVersion>/.
 # dev runs helm/orders-gateway as it is.
 chartVersion: 0.1.0
 
