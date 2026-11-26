@@ -159,16 +159,19 @@ Start with `./platform doctor` and `./platform verify`.
 
 ## Demos
 
-`./platform demo <name>` narrates each step and says where to watch. Each demo is a folder in [`demo/`](demo/README.md), which lists them all.
+Each demo runs one of the checks the brief says it will make. It prints every command it runs (`kubectl`, `curl`, `git`, `k6`, `./pipeline`) with its output, and ends with a pass or a fail. Run one with `./platform demo <name>`; each is a folder in [`demo/`](demo/README.md).
 
-| Demo | What it shows | Time |
-| --- | --- | --- |
-| `rolling-update` | v1 → v2 one pod at a time, under load, with no errors | ~2 min |
-| `chaos` | a pod deleted and a worker drained; the disruption budget keeps it serving | ~3 min |
-| `gitops-revert` | a bad commit synced by Argo CD, then healed by `git revert` | ~5 min |
-| `autoscale` | load pushes the HPA from 3 to 6 pods and back | ~8 min |
-| `policy` | Kyverno refuses an unsigned image and a `:latest` image | <1 min |
-| `hello-world` | a second app through the whole CI/CD, left running to play with (`./platform demo hello-world clean` tears it down) | ~6 min |
+| The brief asks | Demo | What it shows | Time |
+| --- | --- | --- | --- |
+| The fixed contract | `contract` | every row of the contract table, checked live: `ready`, kubeconfig, the Deployments, each endpoint on :8080, `/admin/*` refused, logins, restart policies, volumes | <1 min |
+| Ship and roll back | `hello-world` | a second app through `./pipeline`: CI, dev → staging → prod, a refused out-of-order promotion, a rollback. Left running (`./platform demo hello-world clean` tears it down) | ~6 min |
+| Rolling releases under traffic | `rolling-update` | v1 → v2 one pod at a time under load, with no errors | ~2 min |
+| Pods killed | `chaos` | a pod deleted and a worker drained; the disruption budget keeps it serving | ~3 min |
+| Platform components killed | `platform-chaos` | Traefik, CoreDNS, Argo CD, Prometheus and Kyverno pods deleted under load, one at a time | ~3 min |
+| Traffic that rises sharply | `autoscale` | load pushes the HPA from 3 to 6 pods and back | ~8 min |
+| SLOs and alerting | `alert` | the app's fault switched on: the burn-rate alert fires, reaches the receiver with its runbook, and resolves | ~15 min |
+| Promotion by Git change | `gitops-revert` | a bad commit synced by Argo CD, then healed by `git revert` | ~5 min |
+| Sensible security | `policy` | Kyverno refuses an unsigned image and a `:latest` image | <1 min |
 
 `./platform demo clean` deletes whatever a demo left. Add `--keep` to leave a demo's copy running.
 
