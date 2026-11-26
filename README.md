@@ -159,19 +159,18 @@ Start with `./platform doctor` and `./platform verify`.
 
 ## Demos
 
-`./platform demo <name>` narrates each step and tells you where to watch. Demos run in namespace `demo`, a copy of prod (or of dev for `rolling-update` and `gitops-revert`), with k6 sending traffic through <http://localhost:8084>. Details are in [`demo/`](demo/).
+`./platform demo <name>` narrates each step and says where to watch. Each demo is a folder in [`demo/`](demo/README.md), which lists them all.
 
-| Demo | What happens | Time |
+| Demo | What it shows | Time |
 | --- | --- | --- |
-| `rolling-update` | v1 → v2, one pod at a time; fails if fewer than 99.5% of requests meet the SLO | ~2 min |
-| `chaos` | delete a pod, then drain a worker; the disruption budget lets one pod go at a time | ~3 min |
-| `gitops-revert` | a bad config commit breaks 30% of requests; `git revert` heals it | ~5 min |
-| `autoscale` | CPU-heavy traffic; the HPA scales 3 → 6 pods and back | ~8 min |
-| `policy` | Kyverno refuses an unsigned image and a `:latest` image, and admits a signed one | <1 min |
-| `hello-world` | a second app through the whole `./pipeline`, dev → staging → prod, then a rollback. Stays running; `./platform demo hello-world clean` removes it | ~6 min |
-| `clean` | delete the demo copy and tear `hello-world` down | |
+| `rolling-update` | v1 → v2 one pod at a time, under load, with no errors | ~2 min |
+| `chaos` | a pod deleted and a worker drained; the disruption budget keeps it serving | ~3 min |
+| `gitops-revert` | a bad commit synced by Argo CD, then healed by `git revert` | ~5 min |
+| `autoscale` | load pushes the HPA from 3 to 6 pods and back | ~8 min |
+| `policy` | Kyverno refuses an unsigned image and a `:latest` image | <1 min |
+| `hello-world` | a second app through the whole CI/CD, left running to play with (`./platform demo hello-world clean` tears it down) | ~6 min |
 
-Add `--keep` to leave the demo copy running.
+`./platform demo clean` deletes whatever a demo left. Add `--keep` to leave a demo's copy running.
 
 ## Tests and CI
 

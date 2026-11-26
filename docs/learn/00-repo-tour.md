@@ -127,7 +127,7 @@ Then look at:
 
 ## 7. Under load and failure
 
-Open Grafana's orders-gateway dashboard with environment `demo`, then run the demos. Each runs in namespace `demo`, a copy of prod or dev, and fails if fewer than 99.5% of k6's requests meet the SLO.
+Open Grafana's orders-gateway dashboard with environment `demo`, then run the demos (each is a folder in [`demo/`](../../demo/README.md)). Each runs in namespace `demo`, a copy of prod or dev, and fails if fewer than 99.5% of k6's requests meet the SLO.
 
 ```sh
 ./platform demo rolling-update   # a release under load       (~2 min)

@@ -32,7 +32,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD":/mnt -w /mnt \
             koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d \
-            -x platform pipeline scripts/*.sh scripts/lib/host.sh toolbox/install-tools.sh
+            -x platform pipeline scripts/*.sh scripts/lib/host.sh demo/*.sh demo/*/run.sh toolbox/install-tools.sh
       - name: docker-compose.yml uses the current toolbox image
         run: sh scripts/check-compose-toolbox.sh
       - name: actionlint
