@@ -32,12 +32,14 @@ policy_pod() { # policy_pod <name> <image>
 # Creates the pod for real (no dry run) and expects Kyverno to refuse it.
 expect_denied() { # expect_denied <name> <image> <policy>
   local out
+  show "kubectl create -f -   # Pod $1, image $2"
   if out=$(policy_pod "$1" "$2" | kubectl create -f - 2>&1); then
     kubectl -n "$NS" delete pod "$1" --wait=false >/dev/null 2>&1 || true
     die "Kyverno let $2 in (is $3 in Deny? see policies/)"
   fi
   grep -q "$3" <<<"$out" || die "$2 was refused, but not by $3: $out"
   ok "refused by $3: $2"
+  note "the API server's answer:"
   sed -E 's/^Error from server[^:]*: //; s/^error when creating "[^"]*": //; s/admission webhook "[^"]*" denied the request: //' <<<"$out" | fold -s -w 76 | sed 's/^/      /' >&2
 }
 
@@ -54,12 +56,15 @@ demo_policy() {
     ok "waiting for the previous demo's namespace $NS to finish deleting"; wait_ns_gone
   fi
   if ! kubectl get namespace "$NS" >/dev/null 2>&1; then
-    kubectl create namespace "$NS" >/dev/null
-    kubectl label namespace "$NS" pod-security.kubernetes.io/enforce=restricted >/dev/null
+    run kubectl create namespace "$NS"
+    run kubectl label namespace "$NS" pod-security.kubernetes.io/enforce=restricted
     CREATED_NS=1
     ok "created namespace $NS (Pod Security restricted, like the app namespaces)"
   fi
 
+  run kubectl get clusterpolicies,imagevalidatingpolicies || true
+  note "the pod each step creates (only the name and image change):"
+  policy_pod policy-example IMAGE | yq -P | indent
   step "1. An orders-gateway image nobody signed"
   echo "  The image staging and prod ran until today, built before signing existed." >&2
   expect_denied policy-unsigned "$UNSIGNED_IMAGE" verify-image-signatures
@@ -69,7 +74,9 @@ demo_policy() {
 
   step "3. For contrast: the signed v1 image (server-side dry run, nothing starts)"
   local out
+  show "kubectl create --dry-run=server -o name -f -   # Pod policy-signed, image $SIGNED_IMAGE"
   if out=$(policy_pod policy-signed "$SIGNED_IMAGE" | kubectl create --dry-run=server -o name -f - 2>&1); then
+    printf '%s\n' "$out" | indent
     ok "admitted: $SIGNED_IMAGE carries main's signature"
   else
     die "the signed image was refused: $out"

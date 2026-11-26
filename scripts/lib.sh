@@ -25,6 +25,11 @@ ok()   { printf '  %s✓%s %s\n' "$GREEN" "$RESET" "$*"; }
 warn() { printf '  %s!%s %s\n' "$YELLOW" "$RESET" "$*"; }
 fail() { printf '  %s✗%s %s\n' "$RED" "$RESET" "$*"; }
 die()  { printf '%serror:%s %s\n' "$RED" "$RESET" "$*" >&2; exit 1; }
+# A command, printed before it runs ("$ ..."), and a note under it. On
+# stderr, so a script whose stdout is captured (registry.sh digest) stays clean.
+if [ -t 2 ]; then CMDC=$'\e[36m' DIMC=$'\e[2m' RSTC=$'\e[0m'; else CMDC='' DIMC='' RSTC=''; fi
+showcmd() { printf '  %s$ %s%s\n' "$CMDC" "$*" "$RSTC" >&2; }
+shownote() { printf '    %s# %s%s\n' "$DIMC" "$*" "$RSTC" >&2; }
 
 cluster_exists() {
   kind get clusters 2>/dev/null | grep -qx "$CLUSTER_NAME"
@@ -56,6 +61,8 @@ hand_over_app_applications() {
 sync_app() { # sync_app <application> [who]
   local opts
   opts=$(kubectl -n argocd get applications.argoproj.io "$1" -o json | jq -c '.spec.syncPolicy.syncOptions // []')
+  showcmd "kubectl -n argocd patch applications.argoproj.io $1 --type merge -p '{\"operation\":{\"sync\":{\"prune\":true,\"syncOptions\":$opts}}}'"
+  shownote "what Argo CD's Sync button does: an operation on the Application"
   kubectl -n argocd patch applications.argoproj.io "$1" --type merge -p "$(jq -nc --arg who "${2:-pipeline}" --argjson opts "$opts" '
     {operation: {initiatedBy: {username: $who},
                  sync: {prune: true, syncOptions: $opts},

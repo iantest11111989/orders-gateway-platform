@@ -15,9 +15,14 @@ demo_rolling_update() {
   start_load
   where_to_watch
   step "Rolling out v2"
-  gen0=$(kubectl -n "$NS" get deployment orders-gateway -o jsonpath='{.metadata.generation}')
+  run kubectl -n "$NS" get deployment orders-gateway -o wide
+  run kubectl -n "$NS" get deployment orders-gateway -o jsonpath='{.spec.strategy}{"\n"}'
+  gen0=$(get kubectl -n "$NS" get deployment orders-gateway -o jsonpath='{.metadata.generation}')
   set_image v2
   result=$(narrate_rolling "$gen0" 300)
+  run kubectl -n "$NS" rollout history deployment/orders-gateway
+  run kubectl -n "$NS" get pods -l app.kubernetes.io/name=orders-gateway -o wide
+  run curl -s "$URL/version"
   sleep 15 # let k6 run against the new pods for a moment before stopping it
   k6_summary
   [ "$result" = finished ] || die "the rolling update didn't finish (result: $result)"

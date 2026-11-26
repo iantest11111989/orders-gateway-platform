@@ -21,6 +21,7 @@ refused=0
 no() { fail "$*" >&2; refused=$((refused + 1)); }
 
 name="$app-$from"
+showcmd "kubectl -n argocd get applications.argoproj.io $name -o jsonpath='{.status.sync.status} {.status.health.status}'"
 if st=$(kubectl -n argocd get applications.argoproj.io "$name" \
     -o jsonpath='{.status.sync.status} {.status.health.status}' 2>/dev/null); then
   read -r sync health <<<"$st"
@@ -31,6 +32,7 @@ else
 fi
 
 q="ALERTS{alertstate=\"firing\",namespace=\"$from\",service=\"$app\"}"
+showcmd "kubectl get --raw '.../prometheus:9090/proxy/api/v1/query?query=$q'"
 url="/api/v1/namespaces/monitoring/services/kube-prometheus-stack-prometheus:9090/proxy/api/v1/query?query=$(jq -rn --arg q "$q" '$q|@uri')"
 if res=$(kubectl get --raw "$url" 2>/dev/null) && [ "$(jq -r '.status' <<<"$res")" = success ]; then
   firing=$(jq -r '[.data.result[].metric.alertname] | unique | join(", ")' <<<"$res")

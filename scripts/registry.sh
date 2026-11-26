@@ -24,6 +24,7 @@ forward() {
   kubectl -n registry get svc registry >/dev/null 2>&1 ||
     die "no in-stack registry (namespace registry): start the cluster with ./platform up"
   : >"$tmp/pf.log"
+  showcmd "kubectl -n registry port-forward svc/registry :5000 &   # reach the in-cluster registry from here"
   kubectl -n registry port-forward svc/registry :5000 >"$tmp/pf.log" 2>&1 &
   pf=$!
   local port=''
@@ -60,7 +61,9 @@ push_image() { # push_image <app> <tag>: localhost:30500/<app>:<tag>, built loca
   local local_img="$NODE_REGISTRY/$1:$2"
   docker image inspect "$local_img" >/dev/null 2>&1 || die "no local image $local_img (./pipeline ci $1 builds it)"
   forward
+  showcmd "docker tag $local_img $REG/$1:$2"
   docker tag "$local_img" "$REG/$1:$2"
+  showcmd "docker push $REG/$1:$2"
   docker push -q "$REG/$1:$2" >/dev/null || { docker image rm "$REG/$1:$2" >/dev/null 2>&1; die "push of $1:$2 to the registry failed"; }
   docker image rm "$REG/$1:$2" >/dev/null 2>&1 || true
   ok "image $local_img ($(manifest_digest "$1" "$2"))"
@@ -68,7 +71,9 @@ push_image() { # push_image <app> <tag>: localhost:30500/<app>:<tag>, built loca
 
 push_chart() { # push_chart <app> <version>: helm/<app> as <version>
   forward
+  showcmd "helm package helm/$1 --version $2 --app-version $2"
   helm package "$ROOT/helm/$1" --version "$2" --app-version "$2" -d "$tmp/chart" >/dev/null
+  showcmd "helm push $1-$2.tgz oci://$REG/charts --plain-http"
   helm push "$tmp/chart/$1-$2.tgz" "oci://$REG/charts" --plain-http >/dev/null 2>&1 ||
     die "push of chart $1 $2 to the registry failed"
   ok "chart $1 $2 (oci://registry.registry.svc.cluster.local:5000/charts/$1)"
@@ -76,6 +81,7 @@ push_chart() { # push_chart <app> <version>: helm/<app> as <version>
 
 publish() { # publish <app> <version>
   check_app "$1"; semver "$2" || die "not a version (semver, e.g. 1.2.0): '$2'"
+  showcmd "curl -I http://$NODE_REGISTRY/v2/$1/manifests/$2   # already published? (versions are never overwritten)"
   ! published "$1" "$2" || die "$1 $2 is already published: versions are never overwritten (pick another --version)"
   step "Publishing $1 $2 to the in-stack registry"
   push_image "$1" "$2"
