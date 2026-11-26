@@ -1,25 +1,24 @@
 # ArgoCDManualSyncPending
 
-**Severity: ticket.** Nothing is broken; an environment is behind Git.
+Severity: ticket. Nothing is broken.
 
-## What it means
+A manual-sync Application (an app's staging or prod, named `<app>-<env>`) has been OutOfSync for an hour. Someone ran `./pipeline cd` but nobody clicked Sync, so the environment still runs the old version.
 
-The apps' staging and prod Applications sync by hand: `./pipeline cd <app> <env>` changes the env file and pushes it, then someone clicks **Sync** in Argo CD (or the command ran with `--sync`). This one has been OutOfSync for an hour, so the change was pushed but never synced. The environment still runs what it ran before. dev and the platform components sync on their own and raise `ArgoCDAppOutOfSync` instead.
+## Check
 
-## How to check
-
-```sh
-./platform shell
-argocd login --username admin --password admin12345   # once per shell (./platform urls)
-argocd app diff <name>          # what Git would change
-git -C . log -3 -- cd/<app>/<env>.yaml   # the change waiting (in your checkout)
-```
-
-Or open `http://localhost:8081/applications/argocd/<name>`: it shows OutOfSync and the resources that would change.
+1. See what is waiting:
+   ```sh
+   ./platform shell
+   argocd login --username admin --password admin12345
+   argocd app diff <name>
+   ```
+2. On the host, see the change: `git log -3 -- cd/<app>/<env>.yaml`.
 
 ## Fix
 
-- **You meant to promote it:** click **Sync** on `<name>` at http://localhost:8081, or run `./pipeline cd <app> <env> --version <v> --sync`.
-- **You didn't:** put the env file back (`./pipeline rollback <app> <env>`, or revert the commit) so Git matches what runs.
+- To promote it: click Sync on `<name>` at http://localhost:8081, or run `./pipeline cd <app> <env> --version <v> --sync`.
+- To drop it: `./pipeline rollback <app> <env>`, so Git matches what runs.
 
-The alert clears once the Application is Synced.
+## Done when
+
+The Application shows Synced and the alert clears.

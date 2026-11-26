@@ -1,14 +1,24 @@
 # docs/learn
 
-Hands-on, roughly 15-minute exercises for Prometheus, Grafana, Loki, SLOs and Kubernetes operations, run against the live cluster.
+Short hands-on exercises, about 15 minutes each, run against your live stack.
 
-0. [A tour of the repo](00-repo-tour.md): start here. The whole platform, start-up to operations, on your own stack, pointing into 1–5 where they fit.
+0. [A tour of the repo](00-repo-tour.md). Start here.
 1. [Prometheus: your first queries](01-prometheus.md)
 2. [Grafana: build a panel, then compare it to the dashboard](02-grafana.md)
 3. [Loki: filter logs, parse JSON, turn logs into a metric](03-loki.md)
 4. [SLOs: break the app, watch the error budget burn](04-slos.md)
 5. [Kubernetes operations: Argo CD, rolling updates and Kyverno](05-k8s-operations.md)
 
-**Expected numbers:** the numbers in each exercise are for k6's traffic alone. The trickle (`system/trickle`) also sends a `GET /work?ms=10` and a `POST /echo` to every environment about twice a second, so dev's `/work` and `/echo` rates read about 2/s higher each. To see exactly how much, run `sum by (route) (rate(http_requests_total{namespace="dev"}[5m]))` in Prometheus before you start k6. (Scaling the trickle to 0 doesn't help: Argo CD's self-heal puts it back within seconds.)
+## Where things are
 
-**Where things are:** Grafana <http://localhost:3000> (`admin` / `admin12345`), Prometheus <http://localhost:9090>, Alertmanager <http://localhost:9093>, the app in prod <http://localhost:8080>. dev on <http://localhost:8082>, staging on <http://localhost:8083>, and the demo copy (exercise 4) on <http://localhost:8084>. All plain HTTP on 127.0.0.1, through Traefik.
+| | URL | Login |
+| --- | --- | --- |
+| Grafana | <http://localhost:3000> | `admin` / `admin12345` |
+| Argo CD | <http://localhost:8081> | `admin` / `admin12345` |
+| Prometheus | <http://localhost:9090> | none |
+| Alertmanager | <http://localhost:9093> | none |
+| The app | prod <http://localhost:8080>, dev <http://localhost:8082>, staging <http://localhost:8083>, demo copy <http://localhost:8084> | none |
+
+## About the numbers
+
+The expected numbers in each exercise are for k6's traffic only. A small background client (`system/trickle`) also sends `GET /work?ms=10` and `POST /echo` to every environment twice a second, so dev's `/work` and `/echo` rates read about 2/s higher each.

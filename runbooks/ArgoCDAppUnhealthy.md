@@ -1,28 +1,29 @@
 # ArgoCDAppUnhealthy
 
-**Severity: ticket.** Something an Argo CD Application deployed is failing.
+Severity: ticket. Fix today.
 
-## What it means
+An Application has been Degraded or Missing for 10 minutes. The `name` and `health_status` labels say which. Degraded: something it deployed is failing (pods crash, a Deployment can't get ready). Missing: a resource in Git doesn't exist in the cluster, usually because it was refused on apply.
 
-An Application has been **Degraded** or **Missing** for 10 minutes. The `name` and `health_status` labels say which, and how.
+## Check
 
-- **Degraded:** a resource it owns reports a failure: a Deployment that can't make its pods ready, pods crash-looping.
-- **Missing:** a resource in Git doesn't exist in the cluster, usually because it was refused when Argo CD applied it.
-
-If it's `dev`, `staging` or `prod`, the SLO alerts will page on their own if users are affected. This alert catches the cases that don't (yet) hurt traffic.
-
-## How to check
-
-```sh
-./platform shell
-argocd app get <name>                                   # which resource is Degraded or Missing, and why
-kubectl -n <namespace> get pods                         # Ready? restarts?
-kubectl -n <namespace> describe pod <pod>               # image pulls, probes, OOMKilled
-kubectl -n <namespace> get events --sort-by=.lastTimestamp | tail -20
-```
-
-In the Argo CD UI, the resource tree marks the unhealthy resource with a red heart.
+1. Find the unhealthy resource (marked red in the Argo CD UI):
+   ```sh
+   ./platform shell
+   argocd login --username admin --password admin12345
+   argocd app get <name>
+   ```
+2. Look at its pods and events:
+   ```sh
+   kubectl -n <namespace> get pods
+   kubectl -n <namespace> describe pod <pod>
+   kubectl -n <namespace> get events --sort-by=.lastTimestamp | tail -20
+   ```
+3. `./platform budget` lists OOM-killed containers.
 
 ## Fix
 
-Follow the failing resource: fix the image, config or limits in Git. `./platform budget` shows any `OOMKilled` containers.
+Fix the image, config or limits in Git. For `dev`, `staging` or `prod`, the SLO alerts page if users are affected.
+
+## Done when
+
+`argocd app get <name>` shows Healthy and the alert clears.

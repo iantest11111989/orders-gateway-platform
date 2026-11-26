@@ -1,29 +1,33 @@
 # bootstrap
 
-Everything Argo CD syncs, as an app of apps: one root Application renders one child Application per component, ordered by sync wave.
+Everything Argo CD installs, as an app of apps. One root Application renders one child Application per component.
 
-- `root.yaml`: the root Application. `./platform up` applies it, pointed at the in-stack Git server.
-- `apps/`: a Helm chart. Each template is one Argo CD Application, and every template uses `{{ .Values.repo.url }}` and `{{ .Values.repo.revision }}` for this repo.
+- `root.yaml` is the root Application. `./platform up` applies it, pointed at the in-cluster Git server.
+- `apps/` is a Helm chart. Each template is one Argo CD Application, and each uses `{{ .Values.repo.url }}` and `{{ .Values.repo.revision }}` for this repo.
 
-What the Applications deploy lives elsewhere in the repo:
+The things the Applications deploy live elsewhere:
 
-- `system/<component>/`: shared cluster components. `values.yaml` holds the Helm values; plain manifests sit next to it, or in `manifests/` when the component also has Helm values (`kube-prometheus-stack`, `sealed-secrets`).
-- `helm/orders-gateway/`: the app's chart. `cd/orders-gateway/`: what each environment runs (`values.yaml` shared, then `dev.yaml`, `staging.yaml`, `prod.yaml`).
-- `alerts/` and `policies/`: PrometheusRules and Kyverno policies, kept at the top level next to their tests.
+- `system/<component>/`: cluster components. Helm values are in `values.yaml`, with plain manifests next to it (or in `manifests/` for `kube-prometheus-stack` and `sealed-secrets`).
+- `helm/<app>/` and `cd/<app>/`: each app's chart and what each environment runs.
+- `alerts/` and `policies/`: alert rules and Kyverno policies, next to their tests.
 
-Each Application carries `argocd.argoproj.io/manifest-generate-paths`: the folders and files it renders from (`/system/<component>`; for orders-gateway, the chart plus `values.yaml` and its env file). With a Git webhook, Argo CD then skips re-rendering Applications whose paths a commit didn't touch. Locally Argo CD polls rather than taking webhooks, so the gain there is small; it matters with many Applications and a webhook, as in production.
+## Sync waves
 
-Sync waves: -10 CRDs, 0 Argo CD, 10 controllers, 20 observability, 30 policies, 40 apps. Waves wait for each child to be Healthy (Application health check in `system/argocd/values.yaml`).
+Applications start in waves. A wave waits until every Application in the one before is Healthy (the health check is in `system/argocd/values.yaml`).
 
-| Application | Wave | What |
-| --- | --- | --- |
-| `prometheus-operator-crds` | -10 | Prometheus Operator CRDs |
-| `argocd` | 0 | Argo CD, managing itself |
-| `traefik` | 10 | Ingress controller: 2 replicas + PDB, plain HTTP, one entrypoint per host port (`system/traefik/values.yaml`) |
-| `metrics-server` | 10 | CPU/memory metrics for HPAs and `kubectl top` |
-| `kube-prometheus-stack` | 20 | Prometheus, Alertmanager, Grafana, exporters |
-| `loki` | 20 | Loki, single binary |
-| `alloy` | 20 | Log collection DaemonSet |
-| `platform-alerts` | 25 | PrometheusRules from `alerts/` |
-| `edge` | 25 | Ingresses for Argo CD (:8081), Grafana (:3000), Prometheus (:9090) and Alertmanager (:9093) (`system/edge/`) |
-| `apps` (ApplicationSet) → `<app>-dev`, `-staging`, `-prod` | 40 | Each app per environment, from `cd/<app>/<env>.yaml`: the chart of the version it pins from the in-stack registry (or `helm/<app>` from Git for a dev-only build) + `cd/<app>/values.yaml` + `<env>.yaml`. auto-sync per env file (`autoSync`; by default dev on, staging and prod off: Sync in Argo CD, or `./pipeline cd --sync`) |
+| Wave | Applications |
+| --- | --- |
+| -10 | `prometheus-operator-crds` |
+| 0 | `argocd`, which manages itself |
+| 10 | `traefik` (the Ingress controller, 2 replicas), `metrics-server`, `sealed-secrets` |
+| 20 | `kube-prometheus-stack` (Prometheus, Alertmanager, Grafana), `loki`, `alloy` (log collection), `kyverno`, `trivy-operator` |
+| 25 | `platform-alerts` (rules from `alerts/`), `edge` (Ingresses for Argo CD, Grafana, Prometheus, Alertmanager) |
+| 30 | `kyverno-policies` (from `policies/`), `network-policies` (default-deny for platform namespaces) |
+| 40 | `apps`, an ApplicationSet: one `<app>-<env>` Application per env file in `cd/<app>/` |
+| 45 | `trickle`, a light stream of requests to every environment so the dashboards show live traffic |
+
+Each app Application installs the chart version its env file pins, from the in-cluster registry, with `cd/<app>/values.yaml` and the env file on top. A dev-only build without a version uses `helm/<app>/` from Git instead. Auto-sync follows `autoSync` in the env file: on for dev, off for staging and prod.
+
+## Render paths
+
+Each Application sets `argocd.argoproj.io/manifest-generate-paths` to the folders it renders from. With a Git webhook, Argo CD then skips Applications a commit didn't touch. Locally Argo CD polls instead, so this matters mostly in production.

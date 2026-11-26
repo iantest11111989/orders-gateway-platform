@@ -1,120 +1,119 @@
 # 3. Loki: filter logs, parse JSON, turn logs into a metric
 
-**Time:** about 15 minutes. **You need:** a running stack. [Exercise 1](01-prometheus.md) helps for step 5.
+Time: about 15 minutes. You need a running stack. [Exercise 1](01-prometheus.md) helps for step 5.
 
-By the end you will know how to find log lines in Loki by label, filter them by text, parse the app's JSON logs into fields, follow one request through the logs, and count logs as a metric. You'll also know why Loki's labels are kept to a short, fixed list.
+You'll select logs by label, filter by text, parse JSON fields, follow one request, and count logs as a metric.
 
-## 0. Open Explore and start some traffic
+## 0. Start some traffic
 
-1. Start traffic to dev in a second terminal (as in exercise 1):
+1. In a second terminal:
 
    ```sh
    ./platform shell
-   k6 run --quiet -e BASE_URL=http://localhost:8082 -e RATE=5 -e DURATION=15m app/k6/load.js
+   k6 run --quiet -e BASE_URL=http://localhost:8082 -e RATE=5 -e DURATION=15m apps/orders-gateway/k6/load.js
    ```
 
-2. Open <http://localhost:3000> (`admin` / `admin12345`), go to **Explore** (the compass icon), and pick the **Loki** data source at the top. Switch the query editor from **Builder** to **Code**.
+2. In Grafana (<http://localhost:3000>), open Explore, pick the Loki data source, and switch the editor to Code.
 
 Grafana Alloy collects every pod's stdout and sends it to Loki.
 
-## 1. Select a stream with labels (2 min)
+## 1. Select by label
 
 ```logql
 {namespace="dev", app="orders-gateway"}
 ```
 
-Everything inside `{}` is a **label matcher**. Loki stores logs in *streams*, one per unique set of labels, and only indexes the labels, not the text. Here there are just four: `namespace`, `app`, `env` and `pod`. Open the **Label browser** to see them.
+Loki indexes only labels, not text. There are four: `namespace`, `app`, `env` and `pod`.
 
-Each line is the app's JSON log for one request ([`apps/orders-gateway/server.js`](../../apps/orders-gateway/server.js), `log()`):
+Each line is one request, as JSON:
 
 ```json
-{"ts":"…","pod":"app-6c9f…","version":"sha-9ab553b…","level":"info","msg":"request","method":"POST","route":"/echo","status":200,"duration_ms":1}
+{"ts":"…","pod":"orders-gateway-6c9f…","version":"…","level":"info","msg":"request","method":"POST","route":"/echo","status":200,"duration_ms":1}
 ```
 
-The app doesn't log its probes or Prometheus scrapes, so every line is real traffic. It logs 5xx at `error` and everything else, 4xx included, at `info`. Levels are lowercase. It also logs `SIGTERM received, draining` and `drained, exiting` when a pod stops: try `{namespace="dev", app="orders-gateway"} |= "draining"` after a rollout.
+The app logs 5xx at `error` and everything else at `info`. It doesn't log probes or scrapes.
 
-## 2. Filter by text (2 min)
-
-Line filters run after the label selector and scan the text:
+## 2. Filter by text
 
 ```logql
 {namespace="dev", app="orders-gateway"} |= "/echo"
 ```
 
-- `|=` contains, `!=` doesn't contain, `|~` matches a regex, `!~` doesn't match one.
-- Chain them: `|= "/echo" != "\"status\":200"` shows `/echo` requests that didn't succeed.
+`|=` means contains, `!=` doesn't contain, `|~` and `!~` match a regex. Text filters are fast but blind: `|= "500"` also matches `"duration_ms":500`.
 
-Line filters are fast, but they're plain text: they don't know that `200` is a status code. `|= "500"` would also match `"duration_ms":500`.
+## 3. Parse JSON
 
-## 3. Parse JSON and filter on fields (3 min)
+1. Make a few 404s (`/echo` only takes `POST`):
 
-Send a few requests the app answers with 404 (`/echo` only takes `POST`):
+   ```sh
+   for i in 1 2 3; do curl -s -o /dev/null http://localhost:8082/echo; done
+   ```
 
-```sh
-for i in 1 2 3; do curl -s -o /dev/null http://localhost:8082/echo; done
-```
+2. Find them:
 
-```logql
-{namespace="dev", app="orders-gateway"} | json | status >= 400
-```
+   ```logql
+   {namespace="dev", app="orders-gateway"} | json | status >= 400
+   ```
 
-`| json` turns every JSON key into a field you can filter on, at query time. Now `status >= 400` is a number comparison, and your three 404s show up.
+   `| json` turns each key into a field, so `status >= 400` is a number comparison.
 
-Try a few more:
+3. Try:
+   - `... | json | route="/work" | duration_ms > 40` for slow calls.
+   - `... | json | line_format "{{.method}} {{.route}} {{.status}} {{.duration_ms}}ms"` for readable lines.
 
-- The slowest `/work` calls: `... | json | route="/work" | duration_ms > 40`
-- Make the lines readable: append `| line_format "{{.method}} {{.route}} {{.status}} {{.duration_ms}}ms {{.pod}}"`
-- Errors only: `... | json | level="error"`. It's empty unless the app returns 5xx, which you'll cause on purpose in exercise 4.
+## 4. Follow one request
 
-## 4. Follow one request (2 min)
+The app logs a `trace_id` when a request carries a `traceparent` header.
 
-The app logs a `trace_id` when the request carries a W3C `traceparent` header. Send one with an ID you choose:
+1. Send one:
 
-```sh
-curl -s -X POST http://localhost:8082/echo \
-  -H 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' -d '{"hello":"loki"}'
-```
+   ```sh
+   curl -s -X POST http://localhost:8082/echo \
+     -H 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' -d '{"hello":"loki"}'
+   ```
 
-Then find it anywhere, without knowing which environment or pod served it:
+2. Find it without knowing the environment or pod:
 
-```logql
-{namespace=~"dev|staging|prod", app="orders-gateway"} | json | trace_id="4bf92f3577b34da6a3ce929d0e0e4736"
-```
+   ```logql
+   {namespace=~"dev|staging|prod", app="orders-gateway"} | json | trace_id="4bf92f3577b34da6a3ce929d0e0e4736"
+   ```
 
-A real client (or a service mesh) would set `traceparent` on every request, and the same ID would show up in every service's logs for that request. That's why per-request values go in **logs**, not in metric or stream labels: you can search for any one of them, and they cost nothing until you do.
+Per-request values like this go in log lines, not labels. You can search for any of them, and they cost nothing until you do. There's no tracing backend; this is how you follow a request here.
 
-## 5. Turn logs into a metric (4 min)
+## 5. Logs as a metric
 
-LogQL can count and measure log lines over time, like PromQL does with samples. Switch the visualisation to **Time series**:
+Switch the visualisation to Time series.
 
-```logql
-sum by (route) (count_over_time({namespace="dev", app="orders-gateway"} | json [1m]))
-```
+1. Requests per minute by route, counted from logs:
 
-That's requests per minute by route, counted from the logs. Compare it with Prometheus (exercise 1): `/work` at about 180/min is the same as `rate(...)` at about 3/s (k6 at 5 req/s, 60% of them `/work`), plus the trickle.
+   ```logql
+   sum by (route) (count_over_time({namespace="dev", app="orders-gateway"} | json [1m]))
+   ```
 
-And a percentile from a field, with `unwrap`:
+   `/work` is about 180 a minute: the same as Prometheus's 3 a second, plus background traffic.
 
-```logql
-quantile_over_time(0.95, {namespace="dev", app="orders-gateway"} | json | route="/work" | unwrap duration_ms [5m]) by (route)
-```
+2. p95 of `/work`, in milliseconds, from every line:
 
-That's the p95 of `/work` time in milliseconds, computed from every log line. Compare it with the histogram estimate from exercise 1: `histogram_quantile(0.95, …http_request_duration_seconds_bucket…{route="/work"})` × 1000. The log version is exact (to the millisecond the app rounds to) but reads every line. The metric version is an estimate between bucket edges (here 25, 50 and 100 ms), but it's cheap, kept longer, and it's what the alerts use.
+   ```logql
+   quantile_over_time(0.95, {namespace="dev", app="orders-gateway"} | json | route="/work" | unwrap duration_ms [5m]) by (route)
+   ```
 
-## 6. Why the labels stay few (2 min)
+The log version is exact but reads every line. The histogram version from exercise 1 is an estimate between bucket edges, but it's cheap and kept longer, so alerts use it.
 
-Every unique label set is a separate **stream**, and Loki keeps an index entry and an open chunk per stream. Count the app's streams:
+## 6. Why labels stay few
+
+Each unique label set is a stream, and each stream costs Loki memory. Count the app's streams:
 
 ```logql
 count(count by (pod, namespace) (count_over_time({namespace=~"dev|staging|prod", app="orders-gateway"}[1h])))
 ```
 
-There's one per pod: a handful. If `trace_id` or `route` (which is the raw path for unknown paths) were a label, every request or every scanner probe would start a new stream, and Loki would slow down and run out of memory, the same cardinality problem as exercise 1. The rule: **labels say where a log came from** (namespace, app, pod), and **everything about the request stays in the line**, where `| json` can reach it.
+About one per pod. If `trace_id` or `route` were labels, every request or scanner probe would start a new stream. Labels say where a log came from; details stay in the line.
 
 ## Check yourself
 
-- Why is `|= "500"` a poor way to find server errors, and what would you write instead?
-- You see a slow `/echo` request on the latency panel. How do you find its log lines, and what else would you look for at the same time? (Hint: what blocks the event loop?)
-- When would you use a LogQL metric query instead of a Prometheus metric, and when not?
+- What would you write instead of `|= "500"` to find server errors?
+- A slow `/echo` shows on the latency panel. How do you find its log lines, and what else would you look for? (Hint: what blocks the event loop?)
+- When would you use a LogQL metric instead of a Prometheus one?
 
 Next: [4. SLOs](04-slos.md).

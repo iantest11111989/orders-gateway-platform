@@ -1,79 +1,69 @@
 # 1. Prometheus: your first queries
 
-**Time:** about 15 minutes. **You need:** a running stack (`docker compose up -d --wait`, then `./platform verify`).
+Time: about 15 minutes. You need a running stack.
 
-By the end you will know where the app's metrics come from, how counters and histograms differ, how to write a `rate()` query, and why the app's metrics stay small.
+You'll learn where the app's metrics come from, how counters and histograms differ, how to use `rate()`, and why the app's metrics stay small.
 
-## 0. Open Prometheus and start some traffic
+## 0. Start some traffic
 
-1. Open <http://localhost:9090>. Prometheus has no login.
-2. In a second terminal, send about 5 requests a second to dev for 10 minutes:
+1. Open Prometheus at <http://localhost:9090>.
+2. In a second terminal, send 5 requests a second to dev for 10 minutes:
 
    ```sh
    ./platform shell
-   k6 run --quiet -e BASE_URL=http://localhost:8082 -e RATE=5 -e DURATION=10m app/k6/load.js
+   k6 run --quiet -e BASE_URL=http://localhost:8082 -e RATE=5 -e DURATION=10m apps/orders-gateway/k6/load.js
    ```
 
-   The traffic is 60% `GET /work?ms=10..50` (the app burns that much CPU), 30% `POST /echo` and 10% `GET /version`. Leave it running.
+   The mix is 60% `GET /work`, 30% `POST /echo` and 10% `GET /version`. Leave it running.
 
-## 1. Where the metrics come from (3 min)
+## 1. Where the metrics come from
 
-Each app pod serves its own metrics at `/metrics` ([`apps/orders-gateway/server.js`](../../apps/orders-gateway/server.js) writes them by hand, no library). Prometheus scrapes every pod about every 30 seconds and stores each line as a time series.
+Each pod serves `/metrics`, written by hand in [`server.js`](../../apps/orders-gateway/server.js). Prometheus scrapes every pod every 30 seconds.
 
-1. Go to **Status → Targets** (or **Target health**) and find the `app` job. There is one row per pod in `dev`, `staging` and `prod`, and each should be **UP**.
-2. Back on the **Query** page, run:
+1. Open Status, then Targets. Find the `orders-gateway` targets: one per pod in dev, staging and prod, all UP.
+2. On the Query page, run:
 
    ```promql
-   http_requests_total{namespace="dev"}
+   http_requests_total{namespace="dev", service="orders-gateway"}
    ```
 
-   Each result row is one series. Its labels are `route`, `method` and `status` (set by the app) plus `namespace`, `pod`, `job` and others (added by Prometheus from Kubernetes).
+   Each row is one series. The app sets `route`, `method` and `status`. Prometheus adds `namespace`, `pod`, `service` and others.
 
-The app exports five metrics: `http_requests_total`, `http_request_duration_seconds`, `app_inflight_requests`, `app_ready` and `app_info`. It doesn't count its own probes and scrapes (`/healthz`, `/readyz`, `/metrics`), so everything you see is real traffic.
+The app doesn't count its own probes or scrapes, so every request you see is real traffic.
 
-## 2. Counters vs gauges vs histograms (4 min)
+## 2. Counters, gauges, histograms
 
-**Counter:** a number that only goes up (until the pod restarts and it starts again at 0). Run `http_requests_total{namespace="dev", route="/echo"}` and switch to the **Graph** tab. You'll see lines climbing steadily. A counter's raw value means little on its own. What you want is how fast it grows.
+- Counter: only goes up. Graph `http_requests_total{namespace="dev", route="/echo"}` and you get climbing lines. The raw value means little; you want how fast it grows.
+- Gauge: goes up and down. `app_inflight_requests` is requests in progress. `app_info` is always 1, and its `version` label says what each pod runs.
+- Histogram: counts requests into latency buckets. Run:
 
-**Gauge:** a value that goes up and down, like a reading on a meter. `app_inflight_requests` is how many requests a pod is handling right now, and `app_ready` is 1 when the pod would answer `/readyz` with 200. `app_info` is a gauge that is always 1. Its label tells you which `version` each pod runs:
+  ```promql
+  http_request_duration_seconds_bucket{namespace="dev", route="/echo"}
+  ```
 
-```promql
-app_info{namespace=~"dev|staging|prod"}
-```
+  `le="0.25"` counts requests that took at most 0.25 s. Buckets are cumulative, and `le="+Inf"` counts all of them. `_count` and `_sum` hold the total requests and total seconds.
 
-**Histogram:** counts observations in buckets. One histogram is really three series families:
+The latency SLO uses 250 ms because it's a bucket edge, so slow requests are counted exactly.
 
-```promql
-http_request_duration_seconds_bucket{namespace="dev", route="/echo"}
-```
+## 3. Your first `rate()`
 
-- `_bucket{le="0.25"}`: how many requests took **at most** 0.25 s. Buckets add up as they go: `le="0.5"` includes everything in `le="0.25"`, and `le="+Inf"` counts every request.
-- `_count`: the number of requests, the same as the `+Inf` bucket.
-- `_sum`: the total seconds spent.
+`rate(counter[5m])` is the per-second increase over the last 5 minutes. It handles counters resetting when a pod restarts.
 
-The app's buckets are 5, 10, 25, 50, 100, 250, 500 ms, 1, 2.5 and 5 s. The latency SLO uses 250 ms because that's a bucket edge, so the share of slow requests is counted exactly, not estimated. Note the histogram has only a `route` label, no `method` and no `status`.
-
-## 3. Your first `rate()` (4 min)
-
-`rate(counter[5m])` is the per-second rate of growth over the last 5 minutes. It also handles a counter going back to 0 when a pod restarts.
-
-1. Requests per second in dev, by route:
+1. Requests per second by route:
 
    ```promql
    sum by (route) (rate(http_requests_total{namespace="dev"}[5m]))
    ```
 
-   With k6 at 5 requests/s this settles at about **3** for `/work`, **1.5** for `/echo` and **0.5** for `/version`, plus the trickle (see [the README here](README.md)). It needs a few minutes of traffic first, because the window is 5 minutes.
+   After a few minutes: about 3 for `/work`, 1.5 for `/echo` and 0.5 for `/version`, plus the [background traffic](README.md#about-the-numbers).
 
-2. Requests per second by route and status:
+2. Add status. Then run `curl -s http://localhost:8082/echo` a few times (a `GET`, which `/echo` doesn't serve) and watch a `404` series appear:
 
    ```promql
    sum by (route, method, status) (rate(http_requests_total{namespace="dev"}[5m]))
    ```
 
-   `sum by (...)` adds up all the pods and keeps only the labels you name. Everything should be `200`. Try `curl -s http://localhost:8082/echo` (a `GET`, which `/echo` doesn't serve) a few times and a `404` series appears.
-
-3. The share of `/work` and `/echo` requests that failed with a 5xx. With no faults turned on this is 0, or empty if there has never been a 5xx:
+3. The share of `/work` and `/echo` failing with a 5xx. It's 0, or empty if there has never been one:
 
    ```promql
    sum(rate(http_requests_total{namespace="dev", route=~"/work|/echo", status=~"5.."}[5m]))
@@ -81,13 +71,15 @@ The app's buckets are 5, 10, 25, 50, 100, 250, 500 ms, 1, 2.5 and 5 s. The laten
    sum(rate(http_requests_total{namespace="dev", route=~"/work|/echo"}[5m]))
    ```
 
-4. The 95th percentile (p95) latency from the histogram. Keep `le`, because `histogram_quantile` needs it. Compare `/work` with `/echo`:
+4. p95 latency. Keep `le` in the `sum`, because `histogram_quantile` needs it:
 
    ```promql
    histogram_quantile(0.95, sum by (le, route) (rate(http_request_duration_seconds_bucket{namespace="dev", route=~"/work|/echo"}[5m])))
    ```
 
-   `/work` sits near 50 ms because k6 asks for 10 to 50 ms of CPU. That's the caller's choice, which is why the latency SLO leaves `/work` out. And the share of `/echo` and `/version` requests that were **fast enough** for the SLO:
+   `/work` sits near 50 ms because k6 asks for 10 to 50 ms of CPU. The caller picks that, so the latency SLO leaves `/work` out.
+
+5. The share of `/echo` and `/version` faster than 250 ms:
 
    ```promql
    sum(rate(http_request_duration_seconds_bucket{namespace="dev", route=~"/echo|/version", le="0.25"}[5m]))
@@ -95,40 +87,38 @@ The app's buckets are 5, 10, 25, 50, 100, 250, 500 ms, 1, 2.5 and 5 s. The laten
    sum(rate(http_request_duration_seconds_count{namespace="dev", route=~"/echo|/version"}[5m]))
    ```
 
-The SLO rules in [`alerts/orders-gateway-slo.yaml`](../../alerts/orders-gateway-slo.yaml) are built from these queries, saved as recording rules, with three refinements: they leave out `4xx` (the caller's mistake), they use `or 0 * ...` so a namespace that has never had a 5xx shows 0 instead of no data, and the latency rule is `1 -` the fast share, so it counts the *slow* requests. Try `slo:orders_availability_errors:ratio_rate5m`. While traffic flows, dev shows `0`.
+The SLO recording rules in [`alerts/orders-gateway-slo.yaml`](../../alerts/orders-gateway-slo.yaml) are these queries, saved. Try `slo:orders_availability_errors:ratio_rate5m`.
 
-## 4. Why cardinality matters (3 min)
+## 4. Cardinality
 
-Every unique combination of label values is its own series, and each series costs memory in Prometheus. Count them:
+Every unique set of label values is a separate series, and each costs memory.
 
-```promql
-count({__name__=~".+"})
-```
+1. Count all series, then the biggest metrics:
 
-```promql
-topk(10, count by (__name__) ({__name__=~".+"}))
-```
+   ```promql
+   count({__name__=~".+"})
+   ```
 
-The biggest are the Kubernetes API server's histograms, at thousands of series each. Now the app:
+   ```promql
+   topk(10, count by (__name__) ({__name__=~".+"}))
+   ```
 
-```promql
-count by (__name__) ({job="orders-gateway", __name__=~"http_.*|app_.*"})
-```
+2. Now hit some unknown paths:
 
-The app's metrics stay small, but not by the app's own doing. Its `route` label is the raw path for any path it doesn't know, so a scanner trying `/wp-login.php`, `/.env`, `/a1`, `/a2`, ... would create a new series for each. Try it:
+   ```sh
+   for i in 1 2 3; do curl -s -o /dev/null http://localhost:8082/nope-$i; done
+   ```
 
-```sh
-for i in 1 2 3; do curl -s -o /dev/null http://localhost:8082/nope-$i; done
-```
+3. Look for them: `http_requests_total{namespace="dev", route=~"/nope.*"}` returns nothing.
 
-Then look for them: `http_requests_total{namespace="dev", route=~"/nope.*"}` returns nothing. The ServiceMonitor keeps only the app's own routes (`/work`, `/echo`, `/version`, `/admin`) and drops the rest at scrape time. The 404s still show in the logs (exercise 3, Loki) and in Traefik's metrics (`traefik_service_requests_total`).
+The app reports any unknown path as its own `route`, so a scanner could create thousands of series. The [ServiceMonitor](../../helm/orders-gateway/templates/servicemonitor.yaml) keeps only `/work`, `/echo`, `/version` and `/admin` and drops the rest. The 404s still show in the logs (exercise 3).
 
-Rule of thumb: if a label's values can grow without limit (IDs, emails, raw URLs, timestamps), it doesn't belong on a metric. Per-request values like `trace_id` go in the logs.
+Rule of thumb: a label whose values can grow without limit (IDs, raw URLs) doesn't belong on a metric.
 
 ## Check yourself
 
-- Why is `http_requests_total` on its own a poor thing to graph, and what do you graph instead?
-- Your dev `/work` p95 is 1.8 s. Is the latency SLO in trouble? What would you look at first?
-- Why does the scrape *drop* unknown routes instead of renaming them all to `route="other"`? (Hint: two different paths, both `GET 404`.)
+- Why graph `rate(http_requests_total[5m])` and not `http_requests_total`?
+- dev's `/work` p95 is 1.8 s. Is the latency SLO in trouble?
+- Why drop unknown routes instead of renaming them all to `route="other"`? (Hint: two paths, both `GET 404`, in one scrape.)
 
 Next: [2. Grafana](02-grafana.md).

@@ -1,79 +1,76 @@
 # CI/CD in production
 
-This repo is a practice tool: whoever clones it runs the whole CI/CD loop on their own machine, for `orders-gateway` (and a second app, `hello-world`, that `./platform demo hello-world` takes through the same steps). `./pipeline ci <app> --version X` tests, builds and scans the app, then publishes image and chart as version X to a registry inside the stack. `./pipeline cd <app> <env> --version X` promotes a published version by changing `cd/<app>/<env>.yaml`, in order (dev, then staging, then prod) and through health gates. Argo CD syncs that change from the Git server inside the cluster. `./pipeline rollback` goes back the same way. GitHub only runs checks on pull requests. This page describes how a production team would run the same pipeline in CI, and why this repo runs it locally.
+Here, CI/CD runs on your machine. `./pipeline ci` tests, builds, scans and publishes an app to the registry inside the stack. `./pipeline cd` promotes it from dev to staging to prod by changing the app's env file, and Argo CD syncs the change. GitHub Actions only runs checks.
 
-The AWS side (accounts, ECR, IAM, one Argo CD per cluster) is in [`production-on-aws.md`](production-on-aws.md), §3.4 and §3.5. This page covers the pipeline itself.
+This page shows how a production team would run the same pipeline in CI. The AWS side (ECR, IAM, an Argo CD per cluster) is in [`production-on-aws.md`](production-on-aws.md), under "Images and charts" and "Releases and promotion".
 
-## 1. Choosing a CI provider
+## Why it's local here
 
-| Provider | For | Against | Verdict |
-| --- | --- | --- | --- |
-| **GitHub Actions** | The code is already on GitHub. OIDC to AWS and keyless cosign signing work without stored secrets. Environments with required reviewers serve as promotion gates. Big marketplace; actions can be pinned by SHA. | Hosted runners are small (4 CPUs) and per-minute billed. Marketplace actions are a supply-chain risk unless pinned. Complex fan-out gets verbose. | **Recommended.** It's where the repo, reviews and identities already are. Use self-hosted or larger runners for the E2E. |
-| GitLab CI | Strong pipelines, built-in registry and environments | Means moving the repo or mirroring it | Only if the organisation is on GitLab |
-| Buildkite | Your own runners, fast, good for monorepos with many apps | Another vendor and runner fleet to run | Worth it at many apps, or for heavy builds |
-| CircleCI | Fast, good caching | Another vendor; OIDC and signing need more setup | No advantage over Actions here |
-| Jenkins | Runs anywhere, fully controllable | Plugin upkeep, security patching, no keyless OIDC by default | No |
-| AWS CodeBuild / CodePipeline | Native IAM, runs in the VPC | Weak pull request UX; reviews still happen in GitHub | Only as a runner for steps that must run inside AWS |
-| Tekton / Argo Workflows | Kubernetes-native, close to Argo CD | You run the CI system on the clusters it deploys to | No: keep CI outside the clusters |
+- **So you can practise it.** Someone who clones the repo has no CI or registry of their own. If the pipeline ran only on GitHub, they could watch it but not run it. Locally they run every step: publish a version, promote it, fail a gate, roll back.
+- **Each cluster follows its own checkout.** A pipeline on GitHub would need every clone's cluster to follow GitHub's main, so everyone would run whatever was merged last.
+- **One path to test.** The E2E workflow tests the same `./pipeline` you run.
 
-## 2. The pipeline stages
+In production, CI does this instead, because builds must be reviewed, repeatable and signed by a known identity.
 
-The stages are the ones `./pipeline ci` and [`ci-app.yml`](../.github/workflows/ci-app.yml) run today. Production moves them into CI, publishes to a real registry and signs for real.
+## Which CI
 
-| Stage | Locally (`./pipeline ci`) | On a pull request (`ci-app.yml`, today) | On main (production) |
-| --- | --- | --- | --- |
-| **Lint** | `npm run lint` | `npm run lint`, hadolint (Dockerfile), plus shellcheck and actionlint in `infra.yml` | same as the pull request |
-| **Test** | `npm test` in the Dockerfile's Node image | the same, then a smoke test of the built image (non-root, read-only, endpoints, SIGTERM drain) and a 60 s k6 gate held to the SLOs | same as the pull request |
-| **Build** | `docker build` | both architectures (amd64 and arm64), pushed nowhere | both architectures, pushed by digest |
-| **Scan** | Trivy, the version CI pins; fails on a HIGH or CRITICAL with a fix | same | same, on the pushed digest. The registry rescans continuously (ECR + Inspector) for CVEs published later |
-| **Sign** | not signed: the stack's registry is admitted only locally | a rehearsal against a throwaway local registry | cosign keyless (OIDC identity = this workflow on `refs/heads/main`), an SBOM attached, then `cosign verify` |
-| **Publish** | with `--version X`: image `<app>:X` and chart `<app>` X to the stack's registry; a published version can't be overwritten. Without `--version`: a dev-only build | nothing | the image to the registry, and the chart as an OCI package when its version went up (§3) |
-| **Deploy** | `./pipeline cd <app> <env> --version X` changes the env file (through the gates, §4) and pushes it to the in-stack Git server | nothing | dev: a commit to `cd/<app>/dev.yaml`. staging and prod: a promotion PR (§4) |
+GitHub Actions. The code and reviews are already on GitHub, it gets short-lived AWS credentials through OIDC with no stored keys, and cosign can sign with its identity, also without keys. GitHub environments with required reviewers give prod an approval step.
 
-Rules that stay the same everywhere:
-- **Pull requests get no secrets and a read-only token.** Only main publishes or signs. Every job declares least-privilege permissions.
-- **Pin everything** by digest or commit SHA (actions, Trivy, the Node image), and let Renovate update the pins.
-- **Build once, promote the digest.** staging and prod run the same image that dev ran, by digest. Nothing is rebuilt for an environment.
-- **The deploy step is a Git change, not a `kubectl` command.** CI never holds cluster credentials. Argo CD in each cluster pulls.
+## The stages
 
-## 3. How the image and the chart ship together
+[`ci-app.yml`](../.github/workflows/ci-app.yml) already runs most of them on pull requests. Production adds publishing, signing and deploying on main.
 
-One version number per app covers both. Each environment's file pins it:
+| Stage | Here (`./pipeline ci`) | Production, on main |
+| --- | --- | --- |
+| Lint and test | `npm run lint`, `npm test` | The same, plus the image smoke test and a 60 s k6 gate, as `ci-app.yml` runs on pull requests today |
+| Build | `docker build` | amd64 and arm64, pushed by digest |
+| Scan | Trivy; fails on a fixable HIGH or CRITICAL | The same. The registry also rescans for CVEs found later |
+| Sign | Not signed (the local registry is trusted) | cosign keyless, plus an SBOM |
+| Publish | Image and chart version X to the in-stack registry | Image and chart to ECR, with immutable tags |
+| Deploy | `./pipeline cd` changes the env file and pushes it to the in-stack Git server | A commit to `dev.yaml`, then promotion PRs for staging and prod |
+
+Pull requests get no secrets and a read-only token. Only main publishes and signs.
+
+## Build once, promote the digest
+
+One version number covers the app's image and its chart. Each env file pins it:
 
 ```yaml
 # cd/orders-gateway/prod.yaml
 version: 1.2.0     # image orders-gateway:1.2.0 and chart orders-gateway 1.2.0
+image:
+  tag: 1.2.0
+  digest: sha256:...
 ```
 
-- **Locally:** `./pipeline ci orders-gateway --version 1.2.0` publishes image `orders-gateway:1.2.0` and chart `orders-gateway` 1.2.0 to the stack's registry, together. The Argo CD Application for that environment takes the chart from the registry at that version, and the values from Git (`cd/<app>/values.yaml` + `<env>.yaml`). dev can also run a dev-only build (no version): the chart from `helm/<app>/` as it is and an unpublished image, so a change is tried in dev before it's released.
-- **In production:** a release is a Git tag per app, `orders-gateway-v1.2.0`. CI on that tag builds and pushes the image by digest, packages the chart (`helm package`, `helm push` to `oci://<registry>/charts/<app>`), and signs both with cosign. The registry has immutable tags, and CI refuses a version that exists. Every merge to main also publishes a `sha-<commit>` build that only dev runs.
-- **Why one number:** "deploy orders-gateway 1.2.0 to staging" says everything, and the image and chart can't arrive out of order. The cost is that a chart-only change (a probe, a PDB setting) is also a new app version. Teams that need them apart pin `image` and `chartVersion` separately, at the price of a compatibility matrix.
-- **Rollback** is the previous version in the env file: image and chart go back together.
+The image is built once. `./pipeline cd` writes its digest into the env file, so staging and prod run exactly the image dev ran. Nothing is rebuilt for an environment, and a published version is never overwritten.
 
-## 4. Promotion: a pull request per environment file
+In production a release is a Git tag such as `orders-gateway-v1.2.0`. CI on that tag builds and pushes the image, packages the chart (`helm push` to the registry), and signs both.
+
+One number keeps things simple: "deploy 1.2.0 to staging" says everything. The cost is that a chart-only change, such as a probe setting, also needs a new version.
+
+## Promotion by pull request
 
 ```mermaid
 flowchart LR
-  merge["merge to main"] --> ci["CI: lint, test, build,<br/>scan, sign, publish"]
-  ci -->|"commit image to cd/app/dev.yaml"| dev(["dev"])
-  ci -->|"open PR: promote/staging"| st["PR: cd/app/staging.yaml"]
-  st -->|"checks green, reviewed, merged"| stg(["staging"])
-  stg -->|"soaked; open PR: promote/prod"| pr["PR: cd/app/prod.yaml"]
-  pr -->|"approved by the owner"| prod(["prod"])
+  merge["merge to main"] --> ci["CI: test, build,<br/>scan, sign, publish"]
+  ci -->|"commit to dev.yaml"| dev(["dev"])
+  dev -->|"PR changing staging.yaml"| stg(["staging"])
+  stg -->|"PR changing prod.yaml, approved"| prod(["prod"])
 ```
 
-- **dev** follows main: CI commits the new image to `cd/<app>/dev.yaml` right after publishing. That's the only direct push to main, made by a GitHub App with a narrow branch-protection bypass.
-- **staging and prod** move by pull request. CI opens or updates `promote/staging` with the new version. The PR changes only that environment's file, so its diff is the release. Merging it is the deploy.
-- **Gates** run as checks on the promotion PR: dev healthy and within its SLO for a soak period, no firing alerts, an E2E run against the change, then human approval for prod (a GitHub environment with required reviewers). `production-on-aws.md` §3.5 adds a patch promoter that auto-merges patch-only changes once they've soaked.
-- **The same gates locally:** `./pipeline cd` refuses a version the previous environment hasn't run (from the env files' Git history), and `scripts/promotion-gate.sh` refuses while the previous environment's Argo CD Application isn't Synced and Healthy or an alert fires there for the app. `--force` skips both, for emergencies. Human approval has no local equivalent: you are the approver.
-- **Rollback** is a revert PR of the promotion commit, back to the previous version. Argo CD syncs it like any other change. The same thing locally is `./pipeline rollback <app> <env>`.
-- **Many apps:** each app has its own `cd/<app>/` files and its own promotion PRs, so apps release on their own schedules. A pipeline triggered by `apps/<app>/**` (a matrix over changed apps) keeps one workflow for all of them.
+- **Dev** follows main. CI commits the new version to `cd/<app>/dev.yaml` right after publishing.
+- **Staging and prod** move by pull request. The PR changes only that environment's file, so its diff is the release. Merging it is the deploy.
+- **Gates** run as checks on the PR. They are the ones `./pipeline cd` applies locally: the previous environment must have run this version, and `scripts/promotion-gate.sh` requires its Argo CD app to be Synced and Healthy with no alert firing for the app. Prod also needs a reviewer's approval. Locally, you are the approver.
+- **CI never touches a cluster.** Argo CD in each cluster pulls from Git.
+- **Each app** has its own `cd/<app>/` files and its own promotion PRs, so apps release on their own schedules.
 
-## 5. Why this repo runs CI/CD locally
+A job that merges patch promotions on its own once they've soaked is described in [`production-on-aws.md`](production-on-aws.md), under "Automating patch promotions".
 
-- **It's a practice tool.** Someone who clones the repo has no CI of their own on GitHub and no write access to anyone's registry. If the pipeline only ran on GitHub, they could watch it but not practice it. Locally they run every step: change the app, publish a version, promote it, fail a gate, roll back.
-- **Nobody's cluster follows someone else's main.** Each cluster follows the checkout it was started from, through its own Git server. A GitHub-driven pipeline would need the cluster to follow GitHub, so everyone would run whatever was merged last.
-- **One mode, not two.** The repo used to have a "GitHub mode" where CI pushed to GHCR, committed to dev and opened promotion PRs. Every change had to work both ways. Now there is one path, and the E2E tests it.
-- **What stays on GitHub is what keeps the repo working:** lint, manifest validation, policy and alert tests, each app's pull request checks, security scans, and the E2E (a fresh cluster on a runner: platform build, platform verify, then both apps through `./pipeline ci` and `cd` under traffic). None of them publish or deploy, apart from the toolbox image the scripts run in.
+## Rollback
 
-So the local pipeline has the shape of production (stages, versioned and immutable releases, Git-driven deploys, ordered promotion through gates, rollback by Git change), and this page and `ci-app.yml` show what moves to CI in a real setup.
+Rollback is a Git change too. In production it's a revert PR of the promotion commit, which puts the previous version back in the env file. The image and chart go back together, and Argo CD syncs it like any other change.
+
+Locally the same thing is `./pipeline rollback <app> <env>`.
+
+Don't use `kubectl rollout undo` or `kubectl set image`: Argo CD would put back what Git says.

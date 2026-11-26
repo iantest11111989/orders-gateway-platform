@@ -1,103 +1,119 @@
 # 4. SLOs: break the app, watch the error budget burn
 
-**Time:** about 20 minutes, most of it waiting for windows to fill. **You need:** a running stack and exercises [1](01-prometheus.md) to [3](03-loki.md).
+Time: about 20 minutes, mostly waiting. You need a running stack and exercises [1](01-prometheus.md) to [3](03-loki.md).
 
-By the end you will have made the app fail on purpose, watched its error budget burn and the burn-rate alert fire, followed the runbook to the cause, fixed it, and watched the alert clear. You'll also know why the alert uses two windows.
+You'll make the app fail, watch the burn-rate alert fire, follow the runbook to the cause, fix it, and watch the alert clear.
 
-## The SLO in one paragraph
+## The SLO
 
-Two SLIs, each 99.5% over 30 days: **availability**, `/work` and `/echo` requests that don't fail with a 5xx; and **latency**, `/echo` and `/version` requests answered within 250 ms. `/work`'s latency is left out because the caller picks it with `?ms=`. The 0.5% that may fail is the **error budget**. The **burn rate** is how fast you're spending it: 1 means on pace to spend exactly the budget in 30 days, 14.4 means it's gone in about 2 days. `OrdersGatewayAvailabilityFastBurn` pages when the burn rate is over 14.4 (7.2% of requests failing) over the last **1 hour** *and* the last **5 minutes**, for 2 minutes. The rules are in [`alerts/orders-gateway-slo.yaml`](../../alerts/orders-gateway-slo.yaml).
+- Availability: 99.5% of `/work` and `/echo` requests don't return a 5xx.
+- Latency: 99.5% of `/echo` and `/version` requests finish within 250 ms.
 
-## 0. A copy of dev to break (3 min)
+The 0.5% allowed to fail is the error budget. The burn rate is how fast you spend it: 1 uses up the budget in exactly 30 days, 14.4 in about 2 days.
 
-Never break the real environments. Make a copy in `demo` the way the demos do:
+`OrdersGatewayAvailabilityFastBurn` fires when the burn rate is over 14.4 (7.2% failing) over both the last 1 hour and the last 5 minutes, for 2 minutes. The rules are in [`alerts/orders-gateway-slo.yaml`](../../alerts/orders-gateway-slo.yaml).
+
+## 0. Make a copy to break
+
+Never break the real environments. Make a copy of dev in namespace `demo`:
 
 ```sh
 ./platform demo rolling-update --keep
 ```
 
-This takes about 2 minutes and leaves an Argo CD Application `orders-gateway-demo` (namespace `demo`), a copy of dev, running at <http://localhost:8084>.
+After about 2 minutes, Argo CD Application `orders-gateway-demo` runs at <http://localhost:8084>. Open Grafana's orders-gateway dashboard and set environment to `demo`.
 
-Open the **orders-gateway** dashboard in Grafana and set **environment** to `demo`. The budgets are at 100% and the burn rates at 0.
+## 1. Break it
 
-## 1. Break it (2 min)
+1. Set the fault rate on the copy. 20% of `/work` and `/echo` requests will return 500:
 
-The app has a fault switch: `FAULT_ERROR_RATE` makes that share of `/work` and `/echo` requests return `500` (`{"error":"injected fault"}`). In Git it's `config.faultErrorRate` in `cd/orders-gateway/<env>.yaml`, and changing it through a commit is what the `gitops-revert` demo does. The copy is its own Application, so here you can set it as a Helm parameter on the Application instead:
+   ```sh
+   ./platform shell
+   kubectl -n argocd patch applications.argoproj.io orders-gateway-demo --type json \
+     -p '[{"op":"add","path":"/spec/source/helm/parameters/-","value":{"name":"config.faultErrorRate","value":"0.2"}}]'
+   ```
 
-```sh
-./platform shell
-kubectl -n argocd patch applications.argoproj.io demo --type json \
-  -p '[{"op":"add","path":"/spec/source/helm/parameters/-","value":{"name":"config.faultErrorRate","value":"0.2"}}]'
-```
+   Argo CD syncs it and the pods restart. In the real environments you'd change `config.faultErrorRate` in `cd/orders-gateway/<env>.yaml` instead. Don't `kubectl edit` the Deployment: Argo CD would undo it.
 
-Argo CD syncs the change and the pods restart with 20% of `/work` and `/echo` failing. (The app also has `POST /admin/fault` to change this at runtime, per pod. It's refused from outside the cluster, and a pod restart forgets it, so this exercise uses the configuration.) Don't `kubectl edit` the Deployment itself: Argo CD's self-heal would put it back within seconds.
+2. Send traffic from the same shell:
 
-Then send traffic, in the same shell:
+   ```sh
+   k6 run --quiet -e BASE_URL=http://localhost:8084 -e RATE=5 -e DURATION=30m apps/orders-gateway/k6/load.js
+   ```
 
-```sh
-k6 run --quiet -e BASE_URL=http://localhost:8084 -e RATE=5 -e DURATION=30m app/k6/load.js
-```
+   k6 warns that `orders_slo_good` is crossed. That's expected.
 
-k6 complains that its `orders_slo_good` threshold is crossed. That's expected: you broke it.
+## 2. Watch the budget burn
 
-## 2. Watch the budget burn (5 min)
+On the dashboard:
 
-On the dashboard (environment `demo`):
+- /work and /echo: share failing with 5xx climbs to about 20%.
+- Burn rate, availability (1 h) climbs toward 40 (20% ÷ 0.5%).
+- Availability budget left (last 24 h) drops below 0 within minutes. The copy is new, so there's little good traffic to set against the failures.
+- Firing SLO alerts shows the alert pending after about a minute, then firing a few minutes later.
 
-- **/work and /echo: share failing with 5xx** climbs to about 20%, far above the dashed 0.5% line.
-- **Burn rate, availability (1 h)** jumps to about **40** (20% ÷ 0.5%).
-- **Availability budget left (last 24 h)** drops below 0 within minutes, because the copy is new and has little good traffic in its window. On the local cluster it reached about −160% after 12 minutes of faults.
-- **Firing SLO alerts** shows `OrdersGatewayAvailabilityFastBurn` **pending**, then **firing**. On the local cluster it went pending about 1 minute after the faults started and fired about 3 minutes after.
+The alert uses two windows for a reason. The 5-minute window alone would page on short blips. The 1-hour window alone would keep paging long after a fix. Together, the alert fires fast and clears fast.
 
-Why both windows? The 5-minute rate alone would page on every short blip. The 1-hour rate alone would keep paging long after a fix. Requiring both means the alert fires quickly for real problems and stops quickly once they're fixed.
+You can see the same alert in Prometheus (<http://localhost:9090/alerts>) and Alertmanager (<http://localhost:9093>).
 
-Also look at **Prometheus → Alerts** (<http://localhost:9090/alerts>) and **Alertmanager** (<http://localhost:9093>). That's the same alert, seen from the rule's side and from the side that routes notifications.
+## 3. Follow the runbook
 
-## 3. Follow the runbook (4 min)
+Open [`runbooks/OrdersGatewayAvailabilityFastBurn.md`](../../runbooks/OrdersGatewayAvailabilityFastBurn.md) and use `demo` as the namespace.
 
-The alert carries a `runbook_url`. Open [`runbooks/OrdersGatewayAvailabilityFastBurn.md`](../../runbooks/OrdersGatewayAvailabilityFastBurn.md) and use `demo` for `<namespace>`:
+1. Where is it failing? In Prometheus:
 
-1. **How bad, and where?** `sum by (route, status) (rate(http_requests_total{namespace="demo", route=~"/work|/echo"}[5m]))` shows `500` next to `200` on both routes. `sum by (pod) (...)` shows every pod failing alike, so it isn't one bad pod (as a runtime `/admin/fault` on one pod would be).
-2. **What do the failing requests say?** In Explore, choose Loki: `{namespace="demo", app="orders-gateway"} | json | level="error"`. Each is a `500` with `duration_ms` near 0: the request failed before doing any work. (The response body says `{"error":"injected fault"}`; the log line doesn't.)
-3. **Did something just change?** The app reads its settings from a ConfigMap (`envFrom`): `kubectl -n demo get configmap app -o yaml | grep FAULT` shows `FAULT_ERROR_RATE: "0.2"`, and Argo CD shows a recent sync of `demo`.
+   ```promql
+   sum by (pod) (rate(http_requests_total{namespace="demo", service="orders-gateway", status=~"5.."}[5m]))
+   ```
 
-So the runbook leads to the cause: an injected fault.
+   Every pod fails alike, so it isn't one bad pod.
 
-## 4. Fix it and watch it clear (5 min)
+2. What do the logs say? In Loki: `{namespace="demo", app="orders-gateway"} | json | level="error"`. Each is a 500 with `duration_ms` near 0: the request failed before doing any work.
 
-Remove the parameter (keep k6 running):
+3. What changed?
 
-```sh
-kubectl -n argocd get applications.argoproj.io orders-gateway-demo -o json |
-  jq '{spec: {source: {helm: {parameters: [.spec.source.helm.parameters[] | select(.name != "config.faultErrorRate")]}}}}' |
-  kubectl -n argocd patch applications.argoproj.io demo --type merge --patch-file /dev/stdin
-```
+   ```sh
+   kubectl -n demo get configmap orders-gateway -o yaml | grep FAULT
+   ```
 
-Now watch:
+   It shows `FAULT_ERROR_RATE: "0.2"`. That's the cause.
 
-- The 5xx share and the **5 m** burn rate drop to 0 within a few minutes, as the 5-minute window forgets the failures.
-- The **1 h** burn rate falls slowly. It still remembers the bad 10 minutes.
-- The alert resolves once the 5-minute rate drops below 14.4, even though the 1-hour rate is still high. That's the short window doing its job. On the local cluster it cleared about 3½ minutes after the fix, while the 1 h burn rate was still about 32.
-- The budget doesn't come back quickly: the failures stay in its 24-hour window. The panel is so far below 0 only because the copy is new, so those failures are measured against very little good traffic. Against a real 30-day budget, 20% failing for 10 minutes costs about 1% (0.2 × 10 min ÷ (0.005 × 43,200 min)). That's small, but the alert still paged, because at that pace the whole budget would be gone in about 2 days. The budget is what tells you whether you can afford more risk this month.
+## 4. Fix it and watch it clear
+
+1. Remove the parameter. Keep k6 running:
+
+   ```sh
+   kubectl -n argocd get applications.argoproj.io orders-gateway-demo -o json |
+     jq '{spec: {source: {helm: {parameters: [.spec.source.helm.parameters[] | select(.name != "config.faultErrorRate")]}}}}' |
+     kubectl -n argocd patch applications.argoproj.io orders-gateway-demo --type merge --patch-file /dev/stdin
+   ```
+
+2. Watch:
+   - The 5xx share drops to 0 within a few minutes.
+   - The 1 h burn rate falls slowly; it still remembers the failures.
+   - The alert clears once the 5-minute rate drops, even while the 1-hour rate is high.
+   - The budget doesn't come back: the failures stay in its 24-hour window.
+
+Against a real 30-day budget, 20% failing for 10 minutes costs about 1%. It still paged, because at that pace the whole budget would be gone in 2 days.
 
 ## 5. Clean up
 
-Stop k6 (Ctrl-C), leave the shell, and delete the copy:
+Stop k6 with Ctrl-C, leave the shell, and run:
 
 ```sh
 ./platform demo clean
 ```
 
-## Try next (optional)
+## Try next
 
-- `config.faultLatencyMs` adds delay to `/work` only. Set it to `400`: `/work` gets slow on the dashboard, yet the **latency** SLO doesn't move, because `/work` isn't in it. Is that what you'd want? (Here, yes: the caller chooses how long `/work` takes, so its latency says nothing about the service.)
-- Now make the latency SLO burn the honest way: run k6 with `-e WORK_MS=1500 -e RATE=10`. Each `/work` blocks the pod's single event loop for up to 1.5 s, so `/echo` waits behind it, and `OrdersGatewayLatencyFastBurn` fires while availability stays perfect. Watch the HPA add pods (**Pods by version**) and whether that's enough.
+- Burn the latency SLO: run k6 with `-e WORK_MS=1500 -e RATE=10`. Each `/work` blocks the pod's single event loop, so `/echo` waits behind it, and `OrdersGatewayLatencyFastBurn` fires while availability stays fine.
+- Set `config.faultLatencyMs` to `400`. Only `/work` slows down, which the latency SLO leaves out, so nothing fires.
 
 ## Check yourself
 
-- Why does the fast-burn alert need both the 1 h and the 5 min window?
-- 20% of requests fail for 10 minutes, then it's fixed. Roughly how much of a 30-day budget did that cost, and why did it still page?
-- Why change `FAULT_ERROR_RATE` through the Argo CD Application (or Git) instead of `kubectl edit`?
-- A 2-second `/work` call is slow. Why isn't that a latency SLO violation, and what *would* make it one?
+- Why does the fast-burn alert need both windows?
+- 20% fail for 10 minutes. Roughly how much of a 30-day budget is that, and why did it page?
+- Why change the fault rate through Argo CD or Git and not `kubectl edit`?
+- Why isn't a 2-second `/work` call a latency SLO violation?
 
 Next: [5. Kubernetes operations](05-k8s-operations.md).

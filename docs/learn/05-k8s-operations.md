@@ -1,19 +1,18 @@
 # 5. Kubernetes operations: Argo CD, rolling updates and Kyverno
 
-**Time:** about 15 minutes. **You need:** a running stack. Exercises 1 and 2 help.
+Time: about 15 minutes. You need a running stack. Exercises 1 and 2 help.
 
-By the end you will be able to read the controllers that run this platform, each through its own UI or CLI and through its metrics in Grafana:
-- **Argo CD** keeps the cluster equal to Git.
-- **The Deployment controller** replaces pods one at a time on a release.
-- **Kyverno** decides what's allowed to run.
+You'll watch three controllers at work, each in its own UI and in Grafana:
 
-Grafana is <http://localhost:3000> (`admin` / `admin12345`); the other logins are printed by `./platform urls`.
+- Argo CD keeps the cluster equal to Git.
+- The Deployment controller replaces pods one at a time.
+- Kyverno decides what may run.
 
-## 1. Argo CD: Git is the truth (5 min)
+## 1. Argo CD: Git is the truth
 
-1. Open <http://localhost:8081> and log in as `admin` / `admin12345`. Each tile is an **Application**: a folder or chart in Git, deployed to one namespace. Open `dev` to see the tree of everything it created (Deployment, ReplicaSet, Pods, Service, HTTPRoute...).
-2. In Grafana, open the **Argo CD** dashboard (<http://localhost:3000/d/argocd>). **Out of sync** and **Not healthy** should both be 0, and **Every Application** lists the same apps as the tiles, from the `argocd_app_info` metric.
-3. Now change something behind Argo CD's back:
+1. Open <http://localhost:8081> (`admin` / `admin12345`). Each tile is an Application. Open `orders-gateway-dev` to see what it created: Deployment, ReplicaSet, Pods, Service, Ingress.
+2. Open Grafana's Argo CD dashboard (<http://localhost:3000/d/argocd>). Out of sync and Not healthy should both be 0.
+3. Change something behind Argo CD's back:
 
    ```sh
    ./platform shell
@@ -21,15 +20,15 @@ Grafana is <http://localhost:3000> (`admin` / `admin12345`); the other logins ar
    kubectl -n dev get deploy orders-gateway -w
    ```
 
-   Within seconds `replicas` goes back to `1`. On the local cluster it took 5 seconds. Argo CD saw the live state drift from Git (dev runs one replica, `cd/orders-gateway/dev.yaml`) and **self-healed** it. Press Ctrl-C. In the UI, `dev`'s **History and rollback** and the dashboard's **Syncs per Application** panel show the extra sync.
+   Within seconds it's back to 1, the value in `cd/orders-gateway/dev.yaml`. Argo CD saw the drift and self-healed. Press Ctrl-C. The Syncs per Application panel shows the extra sync.
 
-That's the rule for this whole platform: **change Git, not the cluster.** A manual change lasts seconds.
+The rule: change Git, not the cluster.
 
-## 2. A rolling update, step by step (5 min)
+## 2. A rolling update
 
-Every environment runs a plain Deployment named after its app (`orders-gateway`). A new image replaces its pods one at a time: `maxSurge: 1` adds one new pod, and `maxUnavailable: 0` removes an old one only once the new one is Ready.
+The Deployment uses `maxSurge: 1` and `maxUnavailable: 0`: it adds one new pod, and removes an old one only when the new one is Ready.
 
-1. Start the rolling-update demo in one terminal (`./platform demo rolling-update`, about 2 minutes). It makes a 3-pod copy of dev in namespace `demo` and moves it from v1 to v2 under k6 traffic.
+1. In one terminal, run `./platform demo rolling-update`. It makes a 3-pod copy of dev in namespace `demo` and moves it from v1 to v2 under traffic.
 2. In a second terminal, watch the ReplicaSets:
 
    ```sh
@@ -37,28 +36,29 @@ Every environment runs a plain Deployment named after its app (`orders-gateway`)
    kubectl -n demo get rs -l app.kubernetes.io/name=orders-gateway -w
    ```
 
-   The new ReplicaSet goes 1 → 2 → 3 while the old one goes 3 → 2 → 1 → 0, and the total never drops below 3 ready pods. Press Ctrl-C when the old one reaches 0.
-3. See the history Kubernetes keeps:
+   The new one goes 1, 2, 3 while the old one goes 3, 2, 1, 0. Ready pods never drop below 3.
+3. See the history:
 
    ```sh
    kubectl -n demo rollout history deploy/orders-gateway
    ```
 
-   Each revision is a ReplicaSet. `kubectl rollout undo` would go back one, but here Argo CD would undo *that* within seconds, which is why `./platform rollback` changes Git instead.
-4. In Grafana's **orders-gateway** dashboard (environment `demo`), **Pods by version** shows v1 handing over to v2, with a marker at the change, and the 5xx panels stay at 0.
+   Each revision is a ReplicaSet. `kubectl rollout undo` would be reverted by Argo CD, which is why `./pipeline rollback` changes Git.
+4. In Grafana's orders-gateway dashboard (environment `demo`), Pods by version shows v1 handing over to v2, and the 5xx panel stays at 0.
 
-## 3. Kyverno: what's allowed to run (5 min)
+## 3. Kyverno: what may run
 
-Kyverno checks every pod at admission. In the app namespaces (`dev`, `staging`, `prod`, `demo`), `:latest` images and unsigned app images are **refused**. Everywhere, the other policies only **audit**: they report, they don't block.
+In the app namespaces (`dev`, `staging`, `prod`, `demo`), Kyverno refuses `:latest` images and unsigned app images. Elsewhere, policies only audit: they report but don't block.
 
-1. Ask the API server to create a `:latest` pod without actually creating it (`--dry-run=server` still runs admission):
+1. Try a `:latest` pod in `default`. `--dry-run=server` runs admission without creating anything:
 
    ```sh
    kubectl -n default run try-latest --image=docker.io/library/busybox:latest --restart=Never --dry-run=server -o name
    ```
 
-   It's **admitted** (`pod/try-latest`). `default` isn't an app namespace (`dev`, `staging`, `prod`, `demo`), so `disallow-latest-tag-platform` only audits it.
-2. Now ask for the same image in an app namespace. The pod meets Pod Security `restricted`, which the app namespaces also enforce and which the API server checks before Kyverno. It also meets the Audit policies, so it doesn't add findings to the table in step 4. The image is its only problem:
+   It's admitted. `disallow-latest-tag-platform` only audits outside the app namespaces.
+
+2. Try the same image in `dev`. The overrides make the pod pass Pod Security `restricted` and the audit policies, so the image tag is its only problem:
 
    ```sh
    kubectl -n dev run try-latest --image=docker.io/library/busybox:latest --restart=Never --dry-run=server -o name --overrides='{
@@ -69,20 +69,22 @@ Kyverno checks every pod at admission. In the app namespaces (`dev`, `staging`, 
          "resources": {"requests": {"cpu": "10m", "memory": "16Mi"}, "limits": {"memory": "32Mi"}}}]}}'
    ```
 
-   It's **refused**: `Policy disallow-latest-tag failed: Images must not use the latest tag`. (`./platform verify` runs this same check, and `./platform demo policy` shows the signature policy too.)
-3. See what Audit finds without blocking:
+   It's refused by `disallow-latest-tag`: "Images must not use the latest tag". `./platform demo policy` also shows the signature policy.
+
+3. See what audit finds:
 
    ```sh
    kubectl get events -A --field-selector reason=PolicyViolation --sort-by=.lastTimestamp | tail
    ```
 
-   For example, Grafana's sidecars have no probes (`require-probes`). Those are third-party charts that would need an exception before that policy could move to Enforce.
-4. In Grafana, open the **Kyverno** dashboard (<http://localhost:3000/d/kyverno>). **Pods refused (24 h)** went up by one from step 2. **Failures by policy and namespace** is the table to read when deciding which policy is clean enough to enforce next: a policy that stays at 0 outside the test namespaces is ready.
+   For example, `require-probes` flags third-party sidecars with no probes.
+
+4. Open Grafana's Kyverno dashboard (<http://localhost:3000/d/kyverno>). Pods refused (24 h) went up by one. Failures by policy and namespace (24 h) shows which audit policy is clean enough to enforce next.
 
 ## Check yourself
 
-- You `kubectl edit` a ConfigMap in `staging` to change a setting. What happens, and what should you have done?
-- A release makes 5% of requests fail. What tells you it was the release, and how do you undo it?
-- Why do the `:latest` pods behave differently in `default` and in `dev`?
+- You `kubectl edit` a ConfigMap in `staging`. What happens, and what should you do instead?
+- A release makes 5% of requests fail. How do you know it was the release, and how do you undo it?
+- Why is the `:latest` pod admitted in `default` but refused in `dev`?
 
-That's the end of the track. Go back to the [index](README.md), or break something with `./platform demo <name>` and find out why using what you've learned.
+That's the end. Go back to the [index](README.md), or run `./platform demo <name>` and work out what happened.

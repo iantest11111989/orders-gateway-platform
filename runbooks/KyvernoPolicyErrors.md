@@ -1,39 +1,30 @@
 # KyvernoPolicyErrors
 
-**Severity: ticket.** Look at it today.
+Severity: ticket. Fix today.
 
-## What it means
+A Kyverno policy (the `policy_name` label) returned an error instead of pass or fail in the last 15 minutes. With `failurePolicy: Ignore` the request is usually admitted, so the check didn't happen.
 
-A Kyverno policy returned **error** instead of pass or fail for some admission requests in the last 15 minutes. An erroring policy doesn't judge the pod on its merits. With `failurePolicy: Ignore` the request is usually admitted, so the check it was meant to make didn't happen.
+## Check
 
-## Likely causes
+1. Find the policy and what it was checking:
+   ```promql
+   sum by (policy_name, resource_kind, resource_namespace) (
+     increase({__name__=~"kyverno_(image_)?validating_policy_results_total", result="error"}[1h]))
+   ```
+2. Read the errors and recent policy changes:
+   ```sh
+   ./platform shell
+   kubectl -n kyverno logs deploy/kyverno-admission-controller --since=30m | grep -i error | tail -20
+   kubectl get events -A --field-selector reason=PolicyError --sort-by=.lastTimestamp | tail
+   git log --oneline -5 -- policies/
+   ```
+3. The Grafana Kyverno dashboard's Policy errors panel shows when it started.
 
-- **`verify-image-signatures` can't reach the registry or Sigstore** (GHCR, Rekor, Fulcio's roots) to verify a signature: network trouble, or a rate limit.
-- **A CEL expression breaks on an object it didn't expect**, for example a field that's absent, after a policy change or a Kubernetes upgrade.
-- **A policy change** in `policies/` that passed `kyverno test` but meets a real object the tests don't cover.
+## Fix
 
-## How to check
+- `verify-image-signatures` can't reach GHCR or Sigstore: usually transient, so watch it. If it persists, check egress from the `kyverno` namespace.
+- A CEL expression breaks on an object: fix the policy in `policies/`, add a test in `policies/tests/`, and open a PR. If urgent, revert the policy change.
 
-```promql
-# Which policies, and on what?
-sum by (policy_name, resource_kind, resource_namespace) (
-  increase({__name__=~"kyverno_(image_)?validating_policy_results_total", result="error"}[1h]))
-```
+## Done when
 
-```sh
-./platform shell
-kubectl -n kyverno logs deploy/kyverno-admission-controller --since=30m | grep -i error | tail -20
-kubectl get events -A --field-selector reason=PolicyError --sort-by=.lastTimestamp | tail
-git log --oneline -5 -- policies/    # did a policy change recently?
-```
-
-The **Kyverno** dashboard's **Policy errors** panel shows when it started.
-
-## How to fix
-
-- Registry or Sigstore unreachable: it's usually transient, so wait and watch. If it keeps happening, check egress from the `kyverno` namespace.
-- A broken expression: fix the policy in `policies/`, add a test in `policies/tests/` for the object that broke it, and open a PR. If it's urgent, revert the policy change with a PR.
-
-## Verify recovery
-
-The query above stops increasing and the alert clears after its 15-minute window. `./platform verify` passes.
+The query above stops rising and the alert clears.

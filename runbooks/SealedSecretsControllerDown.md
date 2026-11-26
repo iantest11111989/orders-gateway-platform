@@ -1,37 +1,27 @@
 # SealedSecretsControllerDown
 
-**Severity: ticket.** Look at it today.
+Severity: ticket. Fix today.
 
-## What it means
+The Sealed Secrets controller in `kube-system` hasn't answered a metrics scrape for 10 minutes. Existing Secrets still work. New or changed SealedSecrets don't become Secrets until it is back.
 
-The Sealed Secrets controller in `kube-system` hasn't answered a Prometheus scrape for 10 minutes. Existing Secrets keep working. New or changed **SealedSecrets** in Git won't be decrypted into Secrets until it's back, so changes to them don't take effect.
-
-## Likely causes
-
-- The pod is crash-looping, OOM-killed or unschedulable.
-- It started without its key. The demo key (`system/sealed-secrets/manifests/demo-key.yaml`) must exist before the controller starts. If it doesn't, the controller generates a new key and can't decrypt anything in Git.
-- Only the scrape is broken (a NetworkPolicy change).
-
-## How to check
+## Check
 
 ```sh
 ./platform shell
 kubectl -n kube-system get pods -l app.kubernetes.io/name=sealed-secrets
 kubectl -n kube-system logs deploy/sealed-secrets-controller --tail=50
-kubectl -n kube-system get secrets -l sealedsecrets.bitnami.com/sealed-secrets-key   # the key(s) it has
+kubectl -n kube-system get secrets -l sealedsecrets.bitnami.com/sealed-secrets-key
 ```
 
-## How to fix
+The last command lists its keys. It must have the demo key from `system/sealed-secrets/manifests/demo-key.yaml`. Without it, the controller makes a new key and can't decrypt anything in Git.
 
-- Crash or OOM: check the logs, and raise the limit in the sealed-secrets values through a PR.
-- Wrong key: make sure the `sealed-secrets` Application synced `demo-key.yaml`, then restart the controller: `kubectl -n kube-system rollout restart deploy/sealed-secrets-controller`.
+## Fix
 
-## Verify recovery
+- Crash or OOM: read the logs, and raise the limit in `system/sealed-secrets/values.yaml` in Git.
+- Wrong key: check the `sealed-secrets` Application synced `demo-key.yaml`, then restart the controller:
+  `kubectl -n kube-system rollout restart deploy/sealed-secrets-controller`
+- Pod runs but the alert fires: the scrape is broken. Check recent NetworkPolicy changes in `system/network-policies/`.
 
-The alert clears, and every SealedSecret is synced:
+## Done when
 
-```sh
-kubectl get sealedsecrets -A
-```
-
-Each one shows `SYNCED True`.
+The alert clears and `kubectl get sealedsecrets -A` shows `SYNCED True` for each one.

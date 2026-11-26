@@ -1,28 +1,29 @@
 # ArgoCDAppOutOfSync
 
-**Severity: ticket.** Look at it today: changes merged for this application aren't reaching the cluster.
+Severity: ticket. Fix today.
 
-## What it means
+An auto-sync Application (a platform component, or an app's dev) has differed from Git for 15 minutes. Self-heal normally fixes drift in seconds, so Argo CD is failing to apply what is in Git. The `name` label is the Application. Manual-sync apps (staging, prod) raise [ArgoCDManualSyncPending](ArgoCDManualSyncPending.md) instead.
 
-The live state of an Argo CD Application has differed from Git for 15 minutes. It fires only for Applications with auto-sync (the platform components and the apps' dev); those have self-heal on, so a manual change is put back within seconds. The apps' staging and prod sync by hand and raise `ArgoCDManualSyncPending` instead. An app that *stays* OutOfSync means Argo CD keeps trying and failing to apply what's in Git. The `name` label says which one.
+## Check
 
-## Likely causes
-
-- **A manifest the API server rejects:** invalid YAML after a merge, a field the CRD doesn't know, or a Kyverno Deny in an app namespace (`dev`, `staging`, `prod`, `demo`) (a `:latest` or unsigned image).
-- **A field something else keeps changing** (a controller or a mutating webhook) that isn't in the app's `ignoreDifferences`, so every sync is immediately out of date again.
-- **The repo can't be read:** GitHub is down, or the revision the app points at doesn't exist.
-
-## How to check
-
-```sh
-./platform shell
-argocd app get <name> --show-operation      # the last sync's result and message
-argocd app diff <name>                      # what differs from Git
-kubectl -n argocd get applications.argoproj.io <name> -o jsonpath='{.status.conditions}'
-```
-
-Or open `http://localhost:8081/applications/argocd/<name>`: the sync status and the resources marked OutOfSync. The **Argo CD** dashboard in Grafana shows when it started.
+1. Read the last sync result and the diff:
+   ```sh
+   ./platform shell
+   argocd login --username admin --password admin12345
+   argocd app get <name> --show-operation
+   argocd app diff <name>
+   ```
+2. Match the message to a cause:
+   - The API server refused a manifest: bad YAML, an unknown field, or a Kyverno Deny in `dev`, `staging`, `prod` or `demo` (a `:latest` or unsigned image).
+   - The diff comes back after every sync: a controller or webhook keeps changing a field.
+   - The repo or revision can't be read.
 
 ## Fix
 
-Fix it in Git, not in the cluster: revert or correct the commit that broke the sync. If a controller keeps changing a field, add that field to the app's `ignoreDifferences` (in `bootstrap/apps/templates/<name>.yaml`). Argo CD syncs again within about 3 minutes, or right away with `argocd app sync <name>`.
+- Refused manifest: fix or revert the commit in Git.
+- A field that keeps changing: add it to `ignoreDifferences` in the Application's template in `bootstrap/apps/templates/` (`<name>.yaml`, or `apps.yaml` for the apps).
+- Then sync now with `argocd app sync <name>`, or wait about 3 minutes.
+
+## Done when
+
+`argocd app get <name>` shows Synced and the alert clears.
