@@ -77,6 +77,10 @@ check_chart_version() {
 chart_tag() { echo "$app-chart-$1"; }
 has_git() { git rev-parse --git-dir >/dev/null 2>&1; }
 tag_exists() { has_git && git rev-parse -q --verify "refs/tags/$1" >/dev/null; }
+# Also asks origin, in case this checkout never fetched its tags.
+released() {
+  tag_exists "$1" || { has_git && git ls-remote --exit-code --tags origin "refs/tags/$1" >/dev/null 2>&1; }
+}
 chart_version() { sed -n 's/^version: *"\{0,1\}\([^" ]*\)"\{0,1\} *$/\1/p' "helm/$app/Chart.yaml"; }
 
 # --chart V: write V into Chart.yaml. Without it, say if helm/<app> changed
@@ -100,7 +104,7 @@ last_tag_file() { echo ".build/$app.last-tag"; }
 
 ci() {
   parse_opts "$@"
-  [ -z "$chart" ] || ! tag_exists "$(chart_tag "$chart")" ||
+  [ -z "$chart" ] || ! released "$(chart_tag "$chart")" ||
     die "chart $chart is already released (tag $(chart_tag "$chart")): versions are never reused (pick another --chart)"
   tag=${tag:-local-$(date -u +%Y%m%d-%H%M%S)}
   check_tag "$tag"

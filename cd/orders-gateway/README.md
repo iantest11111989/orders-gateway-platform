@@ -7,6 +7,7 @@ What each environment runs. `values.yaml` is shared by all of them; `dev.yaml`, 
 dev runs `helm/orders-gateway` as it is in Git. staging and prod run a released chart: `chartVersion: 0.2.0` in `staging.yaml` means the chart as it was at Git tag `orders-gateway-chart-0.2.0`, with today's `values.yaml` and `staging.yaml`. So a chart change reaches dev on merge and staging and prod only when their files are bumped, like an image. The Applications for staging and prod come from the ApplicationSet `orders-gateway-released` (`bootstrap/apps/templates/orders-gateway-released.yaml`), which reads these two files.
 
 - Release a chart: bump `version` in `helm/orders-gateway/Chart.yaml` (or `./pipeline ci orders-gateway --chart 0.2.0`). The tag is made from it: by CI on GitHub after the merge, by `scripts/git-sync.sh` on the in-stack Git server. A version is released once; tags are never moved.
+- Release first, then promote: a PR that bumps `Chart.yaml` and a `chartVersion` together fails validation, since the tag only exists once CI tags main. Bump `chartVersion` in a later PR (or the promotion).
 - Deploy it locally: `./pipeline cd orders-gateway staging --chart 0.2.0`.
 - A file that pins a version with no tag fails `scripts/validate-manifests.sh` and the push to the in-stack server (fetch the tags: `git fetch --tags`).
 
