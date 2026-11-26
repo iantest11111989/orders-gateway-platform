@@ -149,10 +149,11 @@ jobs:
       - name: "4 · App CD: ./pipeline cd dev → staging → prod, a refused promotion, rollback, under traffic"
         id: s4_cd
         run: |
-          for e in dev staging prod; do ./pipeline cd orders-gateway "$e" --version 0.2.0; done
+          # staging and prod sync on demand: --sync stands in for the Sync click.
+          for e in dev staging prod; do ./pipeline cd orders-gateway "$e" --version 0.2.0 --sync; done
           before=0.2.0
           # Out of order is refused: 0.3.0 hasn't run in dev or staging.
-          if ./pipeline cd orders-gateway prod --version 0.3.0; then
+          if ./pipeline cd orders-gateway prod --version 0.3.0 --sync; then
             echo "::error::prod took a version staging never ran"; exit 1
           fi
           # rollout status returns once the new pods are ready, but an old pod
@@ -187,11 +188,11 @@ jobs:
           done
           ./pipeline cd orders-gateway dev --version 0.3.0
           serves 0.3.0 8082
-          ./pipeline cd orders-gateway staging --version 0.3.0
+          ./pipeline cd orders-gateway staging --version 0.3.0 --sync
           serves 0.3.0 8083
-          ./pipeline cd orders-gateway prod --version 0.3.0
+          ./pipeline cd orders-gateway prod --version 0.3.0 --sync
           serves 0.3.0
-          ./pipeline rollback orders-gateway prod
+          ./pipeline rollback orders-gateway prod --sync
           serves "$before"
           touch "$RUNNER_TEMP/stop"; wait
           total=$(grep -c . "$RUNNER_TEMP/codes"); bad=$(grep -vc '^200$' "$RUNNER_TEMP/codes" || true)
@@ -200,7 +201,7 @@ jobs:
           [ "$bad" -eq 0 ]
           # A second rollback goes further back (to 0.1.0, what prod ran
           # before 0.2.0), not back to 0.3.0.
-          ./pipeline rollback orders-gateway prod
+          ./pipeline rollback orders-gateway prod --sync
           serves 0.1.0
       - name: Stages (job summary)
         if: always()

@@ -148,6 +148,8 @@ while true; do curl -s -o /dev/null -w '%{http_code} ' 'http://localhost:8080/wo
 
 A published version is never overwritten. Without `--version`, `ci` makes a dev-only build that only dev can run. Promotion goes in order: staging takes only a version dev has run, prod only one staging has run, and only while the previous environment is healthy (Argo CD Synced and Healthy, no firing alerts for the app). `--force` skips those checks for emergencies; rollback is always allowed. The environment is always named: there's no default.
 
+**dev syncs by itself; staging and prod wait for you.** Each env file says `autoSync: true` or `false` (dev true, staging and prod false). Where it's off, `cd` and `rollback` push the change and stop: open Argo CD (http://localhost:8081), look at the diff, and click **Sync**, or rerun with `--sync` to sync from the command line and wait for the rollout. Flip `autoSync` in `cd/<app>/<env>.yaml` to change it for one app and environment.
+
 These are Git changes on purpose: `kubectl set image` or `kubectl rollout undo` would be reverted by Argo CD within seconds.
 
 **Tested with traffic flowing.** CI ships and rolls back while three clients hit `:8080` the whole time, and fails on any non-200: 2,641 requests, 0 errors ([run](https://github.com/iantest11111989/orders-gateway-platform/actions/runs/45710719231/job/139544268716)).
@@ -184,7 +186,8 @@ Start with `./platform doctor` (Docker, CPU, memory, disk, ports) and `./platfor
 | `up` fails: "nodes advertise more than their cap" | An old cluster | `./platform down && ./platform up` |
 | `budget` reports `OOMKilled` | A container hit its memory limit | `./platform kubectl -n <ns> describe pod <pod>`; limits are in `system/<component>/values.yaml` |
 | A pod in `dev`, `staging`, `prod` or `demo` is refused by `disallow-latest-tag` or `verify-image-signatures` | Working as intended | Use a tagged, signed image |
-| An app is `OutOfSync` after a manual change | Self-heal puts it back from Git | Change Git, not the cluster |
+| An app is `OutOfSync` after a manual change | Where `autoSync` is on (dev, the platform), self-heal puts it back from Git | Change Git, not the cluster |
+| staging or prod is `OutOfSync` after `./pipeline cd` | `autoSync` is off there: the change is waiting for its Sync | Click **Sync** in Argo CD, or rerun with `--sync`. `ArgoCDManualSyncPending` fires after an hour |
 | `docker compose up -d --wait` waits forever, `ready` unhealthy | The cluster was deleted while an old `ready` kept running | `docker compose down && docker compose up -d --wait` |
 | A demo was interrupted | Its copy is left in `demo` | `./platform demo clean` |
 | Under Colima, a path in `/tmp` isn't found | Colima only shares your home folder | Keep the checkout under `~` |

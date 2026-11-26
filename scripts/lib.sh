@@ -58,3 +58,18 @@ hand_over_app_applications() {
     done
   done
 }
+
+# Start a sync of an Argo CD Application, as its Sync button does: with
+# prune, the Application's own sync options (CreateNamespace=true, ...;
+# an operation written by hand doesn't pick them up by itself) and the same
+# retries as the automated syncs. Writes the operation field: no argocd
+# login needed. For the staging and prod Applications, which don't sync by
+# themselves.
+sync_app() { # sync_app <application> [who]
+  local opts
+  opts=$(kubectl -n argocd get applications.argoproj.io "$1" -o json | jq -c '.spec.syncPolicy.syncOptions // []')
+  kubectl -n argocd patch applications.argoproj.io "$1" --type merge -p "$(jq -nc --arg who "${2:-pipeline}" --argjson opts "$opts" '
+    {operation: {initiatedBy: {username: $who},
+                 sync: {prune: true, syncOptions: $opts},
+                 retry: {limit: 5, backoff: {duration: "5s", factor: 2, maxDuration: "1m"}}}}')" >/dev/null
+}

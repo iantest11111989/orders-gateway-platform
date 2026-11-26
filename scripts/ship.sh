@@ -2,7 +2,7 @@
 # The deploy half of ./pipeline cd / rollback: change what an environment
 # runs by Git change, then wait for Argo CD to roll it out.
 #
-#   deploy --env ENV --version V [--force]
+#   deploy --env ENV --version V [--force] [--sync]
 #         a published version (image and chart in the in-stack registry).
 #         staging takes only a version dev has run, prod only one staging
 #         has run (the env files' history on the in-stack Git server), and
@@ -11,10 +11,13 @@
 #   deploy --env dev --tag T
 #         a dev-only build (localhost:30500/$APP:T, already pushed): no
 #         version, so Argo CD renders helm/$APP as it is in Git.
-#   rollback --env ENV
+#   rollback --env ENV [--sync]
 #         put back the version (or build) ENV ran before its last change,
 #         read from the in-stack Git history. Always allowed.
 #
+# Where the Application auto-syncs (dev), each waits for the rollout. Where
+# it doesn't (staging, prod), each pushes the change and stops: you click
+# Sync in Argo CD. --sync starts the sync and waits for the rollout instead.
 # Each edits cd/$APP/ENV.yaml in this checkout: the change is a normal file
 # change you can see, commit or revert. Not `kubectl rollout undo` or
 # `kubectl set image`: Argo CD's self-heal would put Git's version back
@@ -30,13 +33,14 @@ DEPLOYMENT=${DEPLOYMENT:-app}
 REPO=localhost:30500/$APP
 
 cmd=${1:-}; shift || true
-env='' version='' tag='' force=false
+env='' version='' tag='' force=false sync=false
 while [ $# -gt 0 ]; do
   case "$1" in
     --env) env=${2:?--env needs dev, staging or prod}; shift 2 ;;
     --version) version=${2:?--version needs a value}; shift 2 ;;
     --tag) tag=${2:?--tag needs a value}; shift 2 ;;
     --force) force=true; shift ;;
+    --sync) sync=true; shift ;;
     *) die "unexpected argument: $1" ;;
   esac
 done
@@ -117,8 +121,30 @@ app_status() {
            (.status.operationState.message // empty | "    last sync: \(.)")' >&2 || true
 }
 
+# An Application with auto-sync (dev) rolls the change out by itself: watch
+# it. One without (staging, prod) waits for someone to click Sync in Argo
+# CD: say so and stop here, or with --sync start the sync and watch it.
+# Either way, once Argo CD has read the new commit.
+manual_sync() {
+  local app="$APP-$env" deadline=$(( $(date +%s) + 60 ))
+  [ -z "$(kubectl -n argocd get applications.argoproj.io "$app" -o jsonpath='{.spec.syncPolicy.automated}' 2>/dev/null)" ] || return 1
+  # git-sync.sh asked for a refresh; Argo CD drops the annotation when done.
+  while [ -n "$(kubectl -n argocd get applications.argoproj.io "$app" -o jsonpath='{.metadata.annotations.argocd\.argoproj\.io/refresh}' 2>/dev/null)" ] &&
+        [ "$(date +%s)" -lt "$deadline" ]; do sleep 1; done
+}
+
 roll_out() { # roll_out <image>: push the checkout, then wait for the Deployment
   bash "$(dirname "$0")/git-sync.sh"
+  if manual_sync; then
+    if $sync; then
+      sync_app "$APP-$env" && ok "sync of $APP-$env started (--sync)"
+    else
+      echo
+      echo "  auto-sync is off for $APP-$env: click Sync at http://localhost:8081"
+      echo "  (admin / admin12345), or rerun with --sync."
+      exit 0
+    fi
+  fi
   step "Waiting for Argo CD to roll $env out (Deployment $DEPLOYMENT)"
   local want=$1 img deadline=$(( $(date +%s) + 300 ))
   while :; do
@@ -201,5 +227,5 @@ case "$cmd" in
     ok "back to ${v:+version $v, }$r:$t${d:+@${d:0:19}…}"
     roll_out "$(image_ref "$r" "$t" "$d")"
     ;;
-  *) die "usage: ship.sh deploy --env ENV (--version V [--force] | --tag T) | rollback --env ENV" ;;
+  *) die "usage: ship.sh deploy --env ENV (--version V [--force] | --tag T) [--sync] | rollback --env ENV [--sync]" ;;
 esac
