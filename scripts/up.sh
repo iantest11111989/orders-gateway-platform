@@ -88,9 +88,16 @@ ok "kube-system healthy"
 
 # Before Argo CD installs the Sealed Secrets controller, so it finds this key
 # on first start instead of generating its own. DEMO ONLY key (decision 0018).
+# Only when it's missing: once Argo CD manages it (the sealed-secrets app), a
+# second `kubectl apply` would merge away Argo CD's tracking annotation and
+# leave the app OutOfSync, which stalled a re-run of `up` in CI.
 step "Loading the Sealed Secrets demo key"
-kubectl apply -f "$(dirname "$0")/../gitops/manifests/sealed-secrets/demo-key.yaml" >/dev/null
-ok "kube-system/sealed-secrets-demo-key"
+if kubectl -n kube-system get secret sealed-secrets-demo-key >/dev/null 2>&1; then
+  ok "kube-system/sealed-secrets-demo-key already there (Argo CD manages it)"
+else
+  kubectl apply -f "$(dirname "$0")/../gitops/manifests/sealed-secrets/demo-key.yaml" >/dev/null
+  ok "kube-system/sealed-secrets-demo-key"
+fi
 
 # Argo CD syncs from the in-stack Git server by default: the cluster runs this
 # checkout (decision 0029). REPO_URL (e.g. this repo on GitHub) switches to
