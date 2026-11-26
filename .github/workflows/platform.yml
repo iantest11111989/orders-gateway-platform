@@ -199,6 +199,12 @@ jobs:
         # healthy, so check it here: a slow start then fails at this step,
         # not later on a missing out/kubeconfig.yaml.
         run: |
+          # Stream the bootstrap's log while compose waits, so a slow or stuck
+          # start shows where it is now, not only after the timeout.
+          (for _ in $(seq 1 120); do docker compose ps -q ready 2>/dev/null | grep -q . && break; sleep 1; done
+           exec docker compose logs -f --no-log-prefix ready) &
+          logs=$!
+          trap 'kill "$logs" 2>/dev/null || true' EXIT
           docker compose up -d --wait --wait-timeout 1500
           status=$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q ready)" 2>/dev/null || echo missing)
           [ "$status" = healthy ] || { echo "::error::ready is $status after docker compose up --wait"; docker compose ps; exit 1; }
