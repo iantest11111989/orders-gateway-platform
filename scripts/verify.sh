@@ -20,8 +20,13 @@ miss() { fail "$*"; failed=$((failed + 1)); }
 proxy() { kubectl get --raw "/api/v1/namespaces/$1/services/$2/proxy$3"; }
 
 step "Argo CD: every Application Synced and Healthy"
-apps=$(kubectl -n argocd get applications.argoproj.io \
+# Demo copies (label demo=true, ./platform demo) aren't part of the stack:
+# a canary-fail copy is Degraded by design. Note them, don't fail on them.
+apps=$(kubectl -n argocd get applications.argoproj.io -l 'demo!=true' \
   -o jsonpath='{range .items[*]}{.metadata.name} {.status.sync.status} {.status.health.status}{"\n"}{end}')
+demos=$(kubectl -n argocd get applications.argoproj.io -l demo=true \
+  -o jsonpath='{range .items[*]}{.metadata.name} ({.status.sync.status}, {.status.health.status}) {end}' 2>/dev/null || true)
+[ -z "$demos" ] || warn "demo copy running, not checked: $demos(./platform demo clean removes it)"
 [ -n "$apps" ] || miss "no Applications found (is the cluster up?)"
 bad=$(awk '$2 != "Synced" || $3 != "Healthy"' <<<"$apps")
 if [ -z "$bad" ]; then pass "$(grep -c . <<<"$apps") Applications Synced and Healthy"
@@ -61,7 +66,7 @@ fi
 
 step "Loki: logs from every namespace that runs pods (last 24 h)"
 want=$(kubectl get pods -A --field-selector=status.phase=Running \
-  -o jsonpath='{range .items[*]}{.metadata.namespace}{"\n"}{end}' | sort -u)
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{"\n"}{end}' | grep -vx demo | sort -u)
 if have=$(proxy logging loki:3100 '/loki/api/v1/label/namespace/values?since=24h' 2>/dev/null | jq -r '.data[]?'); then
   missing=$(comm -23 <(echo "$want") <(sort -u <<<"$have"))
   if [ -z "$missing" ]; then pass "$(grep -c . <<<"$want") namespaces have logs"

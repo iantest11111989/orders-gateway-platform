@@ -8,8 +8,9 @@
 #                it serving
 #   gitops-revert  a bad config commit (30% of requests fail) on a demo branch
 #                that a copy of dev follows; Argo CD syncs it, then a
-#                `git revert` heals it. Needs GITHUB_TOKEN (push access to the
-#                repo Argo CD syncs from, e.g. your fork)
+#                `git revert` heals it. In the default mode it pushes to the
+#                in-stack Git server; in GitHub mode it needs GITHUB_TOKEN (push
+#                access to the repo Argo CD syncs from, e.g. your fork)
 #   canary       v1 -> v2 through the prod canary: 10% -> 25% -> 50% -> 100%,
 #                with the SLO analysis passing at every step
 #   canary-fail  v2 -> v2-bad: the analysis fails and Rollouts rolls back
@@ -36,6 +37,7 @@
 source "$(dirname "$0")/lib.sh"
 
 APP=demo NS=demo HOST=orders-demo.localtest.me
+INCONCLUSIVE="the analysis came back Inconclusive (no data for the canary's pods) and Rollouts paused for a human. Usually the canary got no steady traffic: check that the weights hold (kubectl -n demo get httproute app -w) and that k6 ran (/tmp/demo-k6.log). Clean up with ./platform demo clean"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 K6_LOG=/tmp/demo-k6.log
 
@@ -46,9 +48,11 @@ keep=; [ "${1:-}" = --keep ] && keep=1
 # Runs on any exit, also Ctrl-C: stop k6, uncordon a node the chaos demo
 # cordoned (so an interrupted demo never leaves a node unschedulable), and
 # remove the gitops-revert clone.
-K6_PID='' CORDONED='' GIT_WORK=''
+K6_PID='' CORDONED='' GIT_WORK='' GIT_PF='' GIT_KEYDIR=''
 cleanup() {
   [ -z "$K6_PID" ] || kill "$K6_PID" 2>/dev/null || true
+  [ -z "$GIT_PF" ] || kill "$GIT_PF" 2>/dev/null || true
+  [ -z "$GIT_KEYDIR" ] || rm -rf "$GIT_KEYDIR"
   if [ -n "$CORDONED" ]; then kubectl uncordon "$CORDONED" >/dev/null 2>&1 || true; fi
   [ -z "$GIT_WORK" ] || rm -rf "$GIT_WORK"
 }
@@ -68,6 +72,9 @@ create_app() { # create_app <source app> <image tag> [helm-param=value ...]
   # Gateway's "app" listener admits only the prod namespace, so the copy's
   # route would be refused and Argo CD would call the demo Degraded.
   [ "$src" != prod ] || set -- rollout.enabled=true publicRoute.enabled=false "$@"
+  # Every copy labels its pods env=demo, not the source's env, so its logs
+  # (Loki's env label) and metrics never pass for the real environment's.
+  set -- env=demo "$@"
   step "Creating $APP: a copy of the $src Application, image $tag"
   kubectl -n argocd get applications.argoproj.io "$src" -o json | jq --arg app "$APP" --arg ns "$NS" \
     --arg host "$HOST" --arg tag "$tag" --arg src "$src" --arg rev "${DEMO_REVISION:-}" --args '
@@ -130,12 +137,22 @@ wait_healthy() { # wait_healthy <tag> <timeout s>
   done
 }
 
+# Waits until namespace demo is fully gone. A demo that starts while it's
+# still Terminating can't create anything in it (Argo CD's sync, or the
+# policy demo's pods, fail with "being terminated").
+wait_ns_gone() {
+  kubectl get namespace "$NS" >/dev/null 2>&1 || return 0
+  kubectl wait --for=delete "namespace/$NS" --timeout=180s >/dev/null 2>&1 ||
+    die "namespace $NS is still Terminating after 180 s (kubectl get namespace $NS -o yaml shows what's holding it)"
+}
+
 delete_app() {
   app_exists || { ok "no $APP to delete"; return 0; }
   local src; src=$(app_source)
   step "Deleting $APP (the Application and everything it created)"
   kubectl -n argocd delete applications.argoproj.io "$APP" --wait=true --timeout=180s >/dev/null
   kubectl delete namespace "$NS" --ignore-not-found --wait=false >/dev/null
+  wait_ns_gone
   ok "deleted; the real ${src:-environment} was never touched"
 }
 
@@ -183,6 +200,12 @@ narrate() { # narrate <timeout s>
     if [ "$line" != "$last" ]; then printf '  %s  %s\n' "$(date +%H:%M:%S)" "$line" >&2; last=$line; fi
     # Right after the image change the Rollout can still read Healthy from
     # the previous version: only accept Healthy once the canary has started.
+    # The canary steps have no manual pauses: Paused means an analysis came
+    # back Inconclusive (no data) and Rollouts is waiting for a human. Say so
+    # now instead of waiting out the timeout.
+    if [ "$phase" = Paused ] && kubectl -n "$NS" get rollout app -o jsonpath='{.status.pauseConditions[*].reason}' 2>/dev/null | grep -q InconclusiveAnalysis; then
+      echo Inconclusive; return 0
+    fi
     case "$phase" in
       Progressing|Paused) started=1 ;;
       Degraded) echo Degraded; return 0 ;;
@@ -271,9 +294,37 @@ evict() { # evict <pod>
 
 # --- gitops-revert helpers ---------------------------------------------------
 
+# The in-stack Git server (default mode, decision 0029): Argo CD reads it at
+# this URL inside the cluster; from here it's reached over SSH through a
+# port-forward, with the bootstrap's key (Secret git/git-admin), as
+# scripts/git-sync.sh does. Sets INSTACK_REMOTE.
+IN_STACK=http://git.git.svc.cluster.local:23232/platform.git
+INSTACK_REMOTE=''
+instack_remote() {
+  [ -z "$INSTACK_REMOTE" ] || return 0
+  local log port=''
+  GIT_KEYDIR=$(mktemp -d)
+  kubectl -n git get secret git-admin -o jsonpath='{.data.private_key}' | base64 -d >"$GIT_KEYDIR/key" ||
+    die "can't read the in-stack Git server's key (Secret git/git-admin); run ./platform up"
+  chmod 600 "$GIT_KEYDIR/key"
+  log="$GIT_KEYDIR/pf.log"
+  kubectl -n git port-forward svc/git :23231 >"$log" 2>&1 &
+  GIT_PF=$!
+  for _ in $(seq 1 30); do
+    port=$(sed -n 's/^Forwarding from 127.0.0.1:\([0-9]*\) .*/\1/p' "$log" | head -1)
+    [ -n "$port" ] && break
+    sleep 0.5
+  done
+  [ -n "$port" ] || die "couldn't port-forward to the in-stack Git server: $(cat "$log")"
+  export GIT_SSH_COMMAND="ssh -i $GIT_KEYDIR/key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+  INSTACK_REMOTE="ssh://127.0.0.1:$port/platform.git"
+}
+
 # git with GITHUB_TOKEN sent as an HTTP header for this one command: it is
 # never written into the clone's config or shown in a remote URL or error.
+# Against the in-stack server the SSH key does the work instead.
 gitauth() {
+  if [ -n "$INSTACK_REMOTE" ]; then git -c safe.directory='*' "$@"; return; fi
   git -c http.extraHeader="Authorization: Basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')" "$@"
 }
 
@@ -295,11 +346,12 @@ clean_branches() {
   local repo b
   repo=$(kubectl -n argocd get applications.argoproj.io root -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || true)
   [ -n "$repo" ] || return 0
+  if [ "$repo" = "$IN_STACK" ]; then instack_remote; repo=$INSTACK_REMOTE; fi
   # Run outside /work: in a git worktree checkout, /work/.git points outside
   # the container's mount and git would refuse to start. ls-remote on a URL
   # needs no repository.
   for b in $(git -C / ls-remote --heads "$repo" 'demo/gitops-revert-*' 2>/dev/null | awk '{sub("refs/heads/", "", $2); print $2}'); do
-    if [ -n "${GITHUB_TOKEN:-}" ]; then
+    if [ -n "${GITHUB_TOKEN:-}" ] || [ -n "$INSTACK_REMOTE" ]; then
       if delete_branch "$repo" "$b"; then ok "${DRY_RUN:+would have }deleted the leftover demo branch $b"
       else warn "couldn't delete the leftover demo branch $b (token without push access?)"; fi
     else
@@ -408,17 +460,24 @@ demo_gitops_revert() {
   echo "  lands on a demo branch; Argo CD syncs it and the errors show up. Then"
   echo "  \`git revert\` and Argo CD heals it. Nothing is changed by hand in the"
   echo "  cluster. Takes about 5 minutes."
-  [ -n "${GITHUB_TOKEN:-}" ] || die "needs push access to the repo Argo CD syncs from: GITHUB_TOKEN=\$(gh auth token) ./platform demo gitops-revert"
-  local repo base branch work
+  local repo base branch work remote
   repo=$(kubectl -n argocd get applications.argoproj.io root -o jsonpath='{.spec.source.repoURL}')
   base=$(kubectl -n argocd get applications.argoproj.io root -o jsonpath='{.spec.source.targetRevision}')
-  [[ $repo == https://github.com/* ]] || die "Argo CD syncs from $repo; this demo pushes to GitHub repos over HTTPS only"
+  if [ "$repo" = "$IN_STACK" ]; then
+    # Default mode: push to the in-stack Git server; no token needed.
+    instack_remote; remote=$INSTACK_REMOTE
+  elif [[ $repo == https://github.com/* ]]; then
+    [ -n "${GITHUB_TOKEN:-}" ] || die "Argo CD syncs from GitHub ($repo): needs push access: GITHUB_TOKEN=\$(gh auth token) ./platform demo gitops-revert"
+    remote=$repo
+  else
+    die "Argo CD syncs from $repo; this demo pushes to the in-stack Git server or to GitHub over HTTPS"
+  fi
   branch="demo/gitops-revert-$(date -u +%Y%m%d-%H%M%S)"
   work=$(mktemp -d); GIT_WORK=$work
-  DEMO_BRANCH=$branch DEMO_REPO=$repo
+  DEMO_BRANCH=$branch DEMO_REPO=$remote
 
   step "Creating $branch in $repo (from $base)"
-  gitauth clone -q --depth 5 --branch "$base" "$repo" "$work"
+  gitauth clone -q --depth 5 --branch "$base" "$remote" "$work"
   git -C "$work" -c user.name="orders-gateway demo" -c user.email="demo@localhost" switch -q -c "$branch"
   gitauth -C "$work" push -q origin "$branch"
   ok "pushed $branch"
@@ -456,7 +515,8 @@ demo_canary() {
   step "Demo: canary v1 -> v2 in a copy of prod"
   echo "  Rollouts moves traffic 10% -> 25% -> 50% -> 100% through the HTTPRoute,"
   echo "  and after each step asks Prometheus whether the canary meets the SLO"
-  echo "  (5xx ratio <= 0.5%, p99 < 300 ms). Takes about 10 minutes."
+  echo "  (5xx ratio of /work and /echo <= 0.5%, p99 of /echo and /version <= 250 ms)."
+  echo "  Takes about 10 minutes."
   ensure_app prod v1
   wait_healthy v1 600
   start_load
@@ -467,14 +527,17 @@ demo_canary() {
   k6_summary
   case "$result" in
     Healthy) ok "v2 promoted: every analysis passed, 100% of traffic on v2" ;;
+    Inconclusive) die "$INCONCLUSIVE" ;;
     *) die "canary did not finish Healthy (result: $result)" ;;
   esac
 }
 
 demo_canary_fail() {
   step "Demo: canary-fail v2 -> v2-bad in a copy of prod"
-  echo "  v2-bad injects errors and latency. The first analysis fails the SLO,"
-  echo "  Rollouts aborts, and all traffic goes back to v2. Takes about 3 minutes."
+  echo "  v2-bad fails 10% of requests (and adds 400 ms to /work only, which the"
+  echo "  latency SLI leaves out, so the error-ratio check is the one that fails)."
+  echo "  Two failed measurements and Rollouts aborts: all traffic goes back to v2."
+  echo "  Takes about 3 minutes."
   ensure_app prod v2
   wait_healthy v2 600
   start_load
@@ -489,6 +552,7 @@ demo_canary_fail() {
     Degraded)
       ok "analysis failed and Rollouts aborted: $(kubectl -n "$NS" get rollout app -o jsonpath='{.status.message}')"
       ok "traffic is back on the stable version: $weights" ;;
+    Inconclusive) die "$INCONCLUSIVE" ;;
     *) die "expected the canary to abort (result: $result)" ;;
   esac
 }
@@ -601,6 +665,10 @@ demo_policy() {
   echo "  (no dry run) and meets Pod Security \"restricted\", so the image is the only"
   echo "  thing wrong with it. Takes under a minute."
   echo "  Watch: ./platform shell -c 'kubectl get events -n $NS --field-selector reason=PolicyViolation -w'"
+  # A namespace left Terminating by the previous demo can't take pods yet.
+  if [ "$(kubectl get namespace "$NS" -o jsonpath='{.status.phase}' 2>/dev/null)" = Terminating ]; then
+    ok "waiting for the previous demo's namespace $NS to finish deleting"; wait_ns_gone
+  fi
   if ! kubectl get namespace "$NS" >/dev/null 2>&1; then
     kubectl create namespace "$NS" >/dev/null
     kubectl label namespace "$NS" pod-security.kubernetes.io/enforce=restricted >/dev/null
