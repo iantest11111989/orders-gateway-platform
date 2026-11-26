@@ -22,12 +22,13 @@
 # (harmless). Running the demo again tears down the previous run first.
 # Needs a running cluster (./platform up) and the host tools ./pipeline needs
 # (Docker, curl).
-# Runs on the host, like ./pipeline (it calls it). The copied folders are
+# Runs on the host, like ./pipeline (it calls it); the other demos run in
+# the toolbox. The copied folders are
 # hidden from your own git (.git/info/exclude) while they exist, so they
 # can't be committed by accident; the in-stack Git server still gets them.
 set -eu
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 REPO_ROOT=$(pwd)
 . scripts/lib/host.sh
 

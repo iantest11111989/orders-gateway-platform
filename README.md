@@ -272,19 +272,18 @@ The largest users at idle: `kube-system` (API server, etcd) 2.3 GiB, `monitoring
 
 ## Demos
 
-`./platform demo <name>` narrates each step and says where to watch. Demos run in namespace `demo`, a copy of prod (or of dev for `rolling-update` and `gitops-revert`), so the real environments only change through Git. k6 sends traffic through Traefik (`http://localhost:8084`) the whole time.
+`./platform demo <name>` narrates each step and says where to watch. Each demo is a folder in [`demo/`](demo/README.md), which lists them all.
 
-| Demo | What happens | Time |
+| Demo | What it shows | Time |
 | --- | --- | --- |
-| `rolling-update` | v1 → v2 in a 3-pod copy of dev: pods replace one at a time; fails if fewer than 99.5% of requests meet the SLO | ~2 min |
-| `chaos` | delete a pod, then drain a worker; the disruption budget lets only one pod go at a time; fails if fewer than 99.5% of requests meet the SLO | ~3 min |
-| `gitops-revert` | a bad config commit (30% of requests fail) on a temporary branch that a copy of dev follows; Argo CD syncs it, then `git revert` heals it. Pushes to the cluster's Git server | ~5 min |
-| `autoscale` | k6 sends a fixed 20 requests/s (`AUTOSCALE_RATE`), mostly CPU-heavy `/work`; the HPA scales 3 → 6 pods, then back to 3 about 5 minutes after the load stops | ~8 min |
-| `policy` | Kyverno refuses an unsigned image and a `:latest` image, printing which policy refused each and why; a signed image is admitted | <1 min |
-| `hello-world` | a second app through the whole CI/CD, next to orders-gateway in dev, staging and prod: added to the checkout, `./pipeline ci --version`, `cd` dev → staging → prod, a refused out-of-order promotion, a rollback; then where to see its metrics and logs. It stays running to play with; `./platform demo hello-world clean` tears it down. Runs on the host (it drives `./pipeline`), not in namespace `demo` | ~6 min |
-| `clean` | delete the demo copy (after an interrupted demo, or `--keep`), and tear `hello-world` down | |
+| `rolling-update` | v1 → v2 one pod at a time, under load, with no errors | ~2 min |
+| `chaos` | a pod deleted and a worker drained; the disruption budget keeps it serving | ~3 min |
+| `gitops-revert` | a bad commit synced by Argo CD, then healed by `git revert` | ~5 min |
+| `autoscale` | load pushes the HPA from 3 to 6 pods and back | ~8 min |
+| `policy` | Kyverno refuses an unsigned image and a `:latest` image | <1 min |
+| `hello-world` | a second app through the whole CI/CD, left running to play with (`./platform demo hello-world clean` tears it down) | ~6 min |
 
-Add `--keep` to leave the copy running. Watch in Argo CD or Grafana (environment `demo`).
+`./platform demo clean` deletes whatever a demo left. Add `--keep` to leave a demo's copy running.
 
 ## Local vs a real cloud
 
