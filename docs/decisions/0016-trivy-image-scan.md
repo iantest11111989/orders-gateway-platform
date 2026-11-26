@@ -30,3 +30,5 @@ The brief (section 9.3) asks for Trivy image scanning in CI. Decision 0002 also 
 - `scripts/scan-image.sh` on dev's current image (`sha256:168023a1…`): 0 findings for both Debian (distroless) and the Go binary, exit 0.
 - On `golang:1.20-alpine` (old Go toolchain): findings, exit 1.
 - shellcheck, actionlint and `renovate-config-validator --strict` are clean. A local Renovate dry run detects the Trivy pin (0.76.2 plus digest).
+
+_Since 2026-11-25 the app workflow is split into `ci-app.yml` (pull requests) and `cd-app.yml` (main); what this record says of `app.yml` now applies to `cd-app.yml` (decision 0013's addendum)._

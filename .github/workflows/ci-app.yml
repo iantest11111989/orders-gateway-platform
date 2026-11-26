@@ -7,10 +7,9 @@ on:
   pull_request:
     paths: ["app/**", "!app/k6/**", "!app/**/*.md", ".github/workflows/ci-app.yml", ".github/workflows/cd-app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh", "scripts/promotion-kind.sh"]
 
-# Least privilege: jobs read the repo; only `publish` and `sign` may write
-# packages, only `sign` and the PR `image` job (signing rehearsal) may
-# request an OIDC token, `promote-dev` may push dev's values to main, and
-# `promote-prs` may push promote/<env> branches and open PRs from them.
+# Least privilege: jobs read the repo, and only the `image` job (the signing
+# rehearsal) may request an OIDC token. Nothing here writes packages or the
+# repo: that's CD (cd-app.yml).
 permissions:
   contents: read
 

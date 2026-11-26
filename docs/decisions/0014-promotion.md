@@ -29,3 +29,5 @@ They need a PR that `GITHUB_TOKEN` opens, which takes one repository setting the
 - `scripts/set-image.sh`: rewrote dev's tag and digest with the comments intact; rejected a tag with a space, an unknown environment, and a file with two `tag:` keys (file left unchanged).
 - shellcheck and actionlint (the pinned images CI uses): clean.
 - The job itself can only run on `main`; its first run is this PR's merge commit, which publishes because the PR changes the app workflow.
+
+_Since 2026-11-25 the app workflow is split into `ci-app.yml` (pull requests) and `cd-app.yml` (main); what this record says of `app.yml` now applies to `cd-app.yml` (decision 0013's addendum)._

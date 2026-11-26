@@ -25,3 +25,5 @@ The brief (sections 7 and 10) has CI open promotion PRs for staging and prod tha
 - actionlint 1.7.12 (the pinned CI image): clean.
 - `scripts/set-image.sh` is covered in decision 0014.
 - The job runs only on `main`. Its first run is this PR's merge commit, which publishes because the PR changes `app.yml`.
+
+_Since 2026-11-25 the app workflow is split into `ci-app.yml` (pull requests) and `cd-app.yml` (main); what this record says of `app.yml` now applies to `cd-app.yml` (decision 0013's addendum)._
