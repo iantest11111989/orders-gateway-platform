@@ -58,7 +58,7 @@ set_fault() {
 # rates every 15 s, one line per change; returns 1 on timeout.
 watch_alert() {
   local want=$1 deadline=$(( $(date +%s) + $2 )) st last=''
-  show "kubectl get --raw '.../prometheus:9090/proxy/api/v1/query?query=ALERTS{alertname=\"$ALERT\",namespace=\"$NS\"}'"
+  show "kubectl get --raw '/api/v1/namespaces/monitoring/services/kube-prometheus-stack-prometheus:9090/proxy/api/v1/query?query=ALERTS{alertname=\"$ALERT\",namespace=\"$NS\"}'   # URL-encoded when sent"
   note "every 15 s until the alert is $want (up to $(( $2 / 60 )) min), with the 5xx share over the rule's two windows"
   while :; do
     st=$(alert_state)

@@ -81,7 +81,8 @@ push_chart() { # push_chart <app> <version>: helm/<app> as <version>
 
 publish() { # publish <app> <version>
   check_app "$1"; semver "$2" || die "not a version (semver, e.g. 1.2.0): '$2'"
-  showcmd "curl -I http://$NODE_REGISTRY/v2/$1/manifests/$2   # already published? (versions are never overwritten)"
+  forward
+  showcmd "curl -fsS -I -H 'Accept: application/vnd.oci.image.index.v1+json' (and 3 more manifest types) http://$REG/v2/$1/manifests/$2   # already published? also charts/$1"
   ! published "$1" "$2" || die "$1 $2 is already published: versions are never overwritten (pick another --version)"
   step "Publishing $1 $2 to the in-stack registry"
   push_image "$1" "$2"

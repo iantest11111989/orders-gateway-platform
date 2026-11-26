@@ -345,8 +345,7 @@ narrate_git() { # narrate_git <commit> <settle s> <timeout s>
   run kubectl -n argocd annotate applications.argoproj.io "$APP" argocd.argoproj.io/refresh=normal --overwrite
   note "asks Argo CD to re-read Git now instead of at its next poll"
   show "kubectl -n argocd get applications.argoproj.io $APP -o jsonpath='{.status.sync.revision}'"
-  show "kubectl get --raw '/api/v1/namespaces/monitoring/services/kube-prometheus-stack-prometheus:9090/proxy/api/v1/query?query=<5xx share>'"
-  note "Prometheus query: sum(rate(http_requests_total{namespace=\"demo\",route=~\"/work|/echo\",status=~\"5..\"}[1m])) / sum(rate(http_requests_total{namespace=\"demo\",route=~\"/work|/echo\"}[1m]))"
+  show "kubectl get --raw '/api/v1/namespaces/monitoring/services/kube-prometheus-stack-prometheus:9090/proxy/api/v1/query?query=sum(rate(http_requests_total{namespace=\"demo\",route=~\"/work|/echo\",status=~\"5..\"}[1m])) / sum(rate(http_requests_total{namespace=\"demo\",route=~\"/work|/echo\"}[1m]))'   # URL-encoded when sent"
   note "every 10 s: which commit Argo CD has synced, and the share of requests failing"
   while :; do
     rev=$(kubectl -n argocd get applications.argoproj.io "$APP" -o jsonpath='{.status.sync.revision}' 2>/dev/null)

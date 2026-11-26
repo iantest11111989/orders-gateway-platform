@@ -105,7 +105,7 @@ ci() {
   trivy=$(sed -n 's/^ *TRIVY_IMAGE: *\([^ ]*\).*/\1/p' .github/workflows/ci-app.yml | head -1)
   [ -n "$trivy" ] || die "no TRIVY_IMAGE in .github/workflows/ci-app.yml"
   rc=0
-  showcmd "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock $trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 3 $app_img"
+  showcmd "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache/trivy $trivy image --quiet --scanners vuln --db-repository ghcr.io/aquasecurity/trivy-db:2,public.ecr.aws/aquasecurity/trivy-db:2 --skip-java-db-update --severity HIGH,CRITICAL --ignore-unfixed --exit-code 3 --format table $app_img"
   shownote "exit code 3 = a fixable HIGH or CRITICAL vulnerability: the build stops here"
   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache/trivy \
     "$trivy" image --quiet --scanners vuln \

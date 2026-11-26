@@ -80,7 +80,7 @@ set_release() { # set_release <version> <repository> <tag> <digest>
     /^image:[[:space:]]*$/ { n++; if (!hasrepo && ENVIRON["REPO"] != "") print "  repository: " ENVIRON["REPO"] }
     END { if (n != 1 || t != 1 || d != 1 || r > 1 || v > 1) { printf "expected one image: block with one tag, one digest and at most one repository line, and at most one version line; found %d, %d, %d, %d, %d\n", n, t, d, r, v > "/dev/stderr"; exit 1 } }
   ' "$values" "$values" >"$values.tmp" || { rm -f "$values.tmp"; die "couldn't update $values"; }
-  showcmd "diff -u cd/$APP/$env.yaml (before) cd/$APP/$env.yaml (after)"
+  showcmd "diff -u cd/$APP/$env.yaml cd/$APP/$env.yaml.tmp   # the file before and after the edit"
   diff -u --label "cd/$APP/$env.yaml" --label "cd/$APP/$env.yaml" "$values" "$values.tmp" | sed 's/^/      /' >&2 || true
   cat "$values.tmp" >"$values" && rm -f "$values.tmp"
 }
