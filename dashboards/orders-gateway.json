@@ -893,7 +893,7 @@
     {
       "type": "timeseries",
       "title": "Pods by version",
-      "description": "Running pods per app version (the app_info metric's version label). During a rolling update you see the new version grow while the old one shrinks (the canary does it in steps in the demo copy); during autoscaling the total grows and shrinks. Only Ready pods count: a pod draining after SIGTERM still exports app_info until it exits, and would otherwise be counted twice during a rollout.",
+      "description": "Running pods per app version (the app_info metric's version label). During a rolling update you see the new version grow while the old one shrinks; during autoscaling the total grows and shrinks. Only Ready pods count: a pod draining after SIGTERM still exports app_info until it exits, and would otherwise be counted twice during a rollout.",
       "id": 17,
       "datasource": {
         "type": "prometheus",

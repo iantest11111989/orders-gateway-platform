@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ./platform demo <name> [--keep]: narrated demos (brief, section 11).
+# ./platform demo <name> [--keep]: narrated demos.
 #
 #   rolling-update  v1 -> v2 in a copy of dev (3 replicas): pods replace one
 #                at a time and k6 sees no errors
@@ -11,9 +11,6 @@
 #                `git revert` heals it. In the default mode it pushes to the
 #                in-stack Git server; in GitHub mode it needs GITHUB_TOKEN (push
 #                access to the repo Argo CD syncs from, e.g. your fork)
-#   canary       v1 -> v2 through the prod canary: 10% -> 25% -> 50% -> 100%,
-#                with the SLO analysis passing at every step
-#   canary-fail  v2 -> v2-bad: the analysis fails and Rollouts rolls back
 #   policy       Kyverno refuses, in namespace demo, an orders-gateway image that
 #                main's app workflow didn't sign (the old staging/prod image)
 #                and a :latest image; a signed image is admitted (dry run)
@@ -23,25 +20,23 @@
 #                then back to 3 once k6 stops
 #   clean        delete the demo copy
 #
-# The demos run in namespace demo, a copy of the live prod (canary demos)
-# or dev (rolling-update) Argo CD Application: same chart, same values
-# file, same ignoreDifferences and sync options. Only the name, namespace,
+# The demos run in namespace demo, a copy of the live prod (chaos,
+# autoscale) or dev (rolling-update, gitops-revert) Argo CD Application:
+# same chart, same values file and sync options. Only the name, namespace,
 # hostname (orders-demo.localtest.me), the image under test and, for
 # rolling-update, the replica count (3, so there's something to roll)
-# differ. The real environments only ever change through Git, and reviewers
-# can't push to this repo (decision 0020). k6 sends ~10 requests/s through
-# the gateway the whole time, so the analysis has traffic to judge. --keep
-# leaves the copy running afterwards.
+# differ, so the real environments only ever change through Git. k6 sends
+# ~10 requests/s through the gateway the whole time. --keep leaves the copy
+# running afterwards.
 # Runs in the toolbox.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
 APP=demo NS=demo HOST=orders-demo.localtest.me
-INCONCLUSIVE="the analysis came back Inconclusive (no data for the canary's pods) and Rollouts paused for a human. Usually the canary got no steady traffic: check that the weights hold (kubectl -n demo get httproute app -w) and that k6 ran (/tmp/demo-k6.log). Clean up with ./platform demo clean"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 K6_LOG=/tmp/demo-k6.log
 
-usage() { die "usage: ./platform demo <rolling-update|chaos|gitops-revert|canary|canary-fail|autoscale|policy|clean> [--keep]"; }
+usage() { die "usage: ./platform demo <rolling-update|chaos|gitops-revert|autoscale|policy|clean> [--keep]"; }
 name=${1:-}; shift || true
 keep=; [ "${1:-}" = --keep ] && keep=1
 
@@ -66,12 +61,10 @@ app_source() { kubectl -n argocd get applications.argoproj.io "$APP" -o jsonpath
 
 create_app() { # create_app <source app> <image tag> [helm-param=value ...]
   local src=$1 tag=$2; shift 2
-  # prod itself is a plain Deployment (environments/prod/values.yaml); its
-  # demo copy turns the Rollout on, so the canary demos have a canary.
-  # It also leaves out prod's hostless route on localhost:8080: the
+  # A copy of prod leaves out prod's hostless route on localhost:8080: the
   # Gateway's "app" listener admits only the prod namespace, so the copy's
   # route would be refused and Argo CD would call the demo Degraded.
-  [ "$src" != prod ] || set -- rollout.enabled=true publicRoute.enabled=false "$@"
+  [ "$src" != prod ] || set -- publicRoute.enabled=false "$@"
   # Every copy labels its pods env=demo, not the source's env, so its logs
   # (Loki's env label) and metrics never pass for the real environment's.
   set -- env=demo "$@"
@@ -108,9 +101,7 @@ set_image() { # set_image <tag>
     jq --arg tag "$1" '.spec.source.helm.parameters |= map(if .name == "image.tag" then .value = $tag else . end)
                        | {spec: {source: {helm: {parameters: .spec.source.helm.parameters}}}}' |
     kubectl -n argocd patch applications.argoproj.io "$APP" --type merge --patch-file /dev/stdin >/dev/null
-  local how="the Deployment rolls its pods"
-  kubectl -n "$NS" get rollout app >/dev/null 2>&1 && how="Rollouts starts a canary"
-  ok "Git-equivalent change: $APP now wants orders-gateway:$1 (Argo CD syncs it, $how)"
+  ok "Git-equivalent change: $APP now wants orders-gateway:$1 (Argo CD syncs it, the Deployment rolls its pods)"
 }
 
 current_tag() { kubectl -n argocd get applications.argoproj.io "$APP" -o json 2>/dev/null | jq -r '.spec.source.helm.parameters[]? | select(.name == "image.tag") | .value'; }
@@ -119,16 +110,9 @@ wait_healthy() { # wait_healthy <tag> <timeout s>
   local deadline=$(( $(date +%s) + $2 )) s ready
   while :; do
     s=$(kubectl -n argocd get applications.argoproj.io "$APP" -o jsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null || true)
-    if kubectl -n "$NS" get rollout app >/dev/null 2>&1; then
-      # prod copy: the Rollout is Healthy with a stable ReplicaSet, and has
-      # scaled the Deployment it references (workloadRef) down to no pods
-      ready=$(kubectl -n "$NS" get rollout app -o jsonpath='{.status.phase}/{.status.stableRS}' 2>/dev/null | grep -E '^Healthy/.+' || true)
-      [ "$(kubectl -n "$NS" get deployment app -o jsonpath='{.status.replicas}' 2>/dev/null)" -gt 0 ] 2>/dev/null && ready=''
-    else
-      # dev copy: every Deployment replica updated and available
-      ready=$(kubectl -n "$NS" get deployment app -o json 2>/dev/null |
-        jq -r 'select(.status.observedGeneration >= .metadata.generation and (.status.updatedReplicas // 0) == .spec.replicas and (.status.availableReplicas // 0) == .spec.replicas and ((.status.replicas // 0) == .spec.replicas)) | "ok"' || true)
-    fi
+    # every Deployment replica updated and available
+    ready=$(kubectl -n "$NS" get deployment app -o json 2>/dev/null |
+      jq -r 'select(.status.observedGeneration >= .metadata.generation and (.status.updatedReplicas // 0) == .spec.replicas and (.status.availableReplicas // 0) == .spec.replicas and ((.status.replicas // 0) == .spec.replicas)) | "ok"' || true)
     if [ "$s" = Synced/Healthy ] && [ -n "$ready" ]; then
       ok "$APP Synced and Healthy, every pod on $1"; return 0
     fi
@@ -172,48 +156,9 @@ start_load() { # start_load [requests/s, default 10]
 
 where_to_watch() {
   echo "  Watch it live:"
-  kubectl -n "$NS" get rollout app >/dev/null 2>&1 &&
-    echo "    Rollouts dashboard  https://rollouts.localtest.me/rollouts/$NS"
   echo "    Argo CD             https://argocd.localtest.me/applications/argocd/$APP"
   echo "    Grafana             https://grafana.localtest.me (orders-gateway dashboard, namespace $NS)"
-  if kubectl -n "$NS" get rollout app >/dev/null 2>&1; then
-    echo "    Terminal            ./platform shell -c 'kubectl argo rollouts get rollout app -n $NS --watch'"
-  else
-    echo "    Terminal            ./platform shell -c 'kubectl -n $NS get pods -w'"
-  fi
-}
-
-# Prints one line whenever the step, weights, analysis or phase change, until
-# the rollout ends (Healthy or Degraded) or the timeout passes. Echoes the
-# final phase.
-narrate() { # narrate <timeout s>
-  local deadline=$(( $(date +%s) + $1 )) last='' line phase step weights runs started='' steps
-  steps=$(kubectl -n "$NS" get rollout app -o jsonpath='{.spec.strategy.canary.steps}' 2>/dev/null | jq length 2>/dev/null || echo '?')
-  while :; do
-    phase=$(kubectl -n "$NS" get rollout app -o jsonpath='{.status.phase}' 2>/dev/null || true)
-    step=$(kubectl -n "$NS" get rollout app -o jsonpath='{.status.currentStepIndex}' 2>/dev/null || true)
-    weights=$(kubectl -n "$NS" get httproute app \
-      -o jsonpath='{range .spec.rules[0].backendRefs[*]}{.weight}{"/"}{end}' 2>/dev/null | sed 's|/$||')
-    runs=$(kubectl -n "$NS" get analysisruns --sort-by=.metadata.creationTimestamp \
-      -o jsonpath='{range .items[*]}{.status.phase}{" "}{end}' 2>/dev/null || true)
-    line="phase=${phase:-?}  step=${step:-?}/${steps}  stable/canary weight=${weights:-?}  analysis runs: ${runs:-none}"
-    if [ "$line" != "$last" ]; then printf '  %s  %s\n' "$(date +%H:%M:%S)" "$line" >&2; last=$line; fi
-    # Right after the image change the Rollout can still read Healthy from
-    # the previous version: only accept Healthy once the canary has started.
-    # The canary steps have no manual pauses: Paused means an analysis came
-    # back Inconclusive (no data) and Rollouts is waiting for a human. Say so
-    # now instead of waiting out the timeout.
-    if [ "$phase" = Paused ] && kubectl -n "$NS" get rollout app -o jsonpath='{.status.pauseConditions[*].reason}' 2>/dev/null | grep -q InconclusiveAnalysis; then
-      echo Inconclusive; return 0
-    fi
-    case "$phase" in
-      Progressing|Paused) started=1 ;;
-      Degraded) echo Degraded; return 0 ;;
-      Healthy) [ -n "$started" ] && { echo Healthy; return 0; } ;;
-    esac
-    if [ "$(date +%s)" -ge "$deadline" ]; then echo "timeout"; return 0; fi
-    sleep 5
-  done
+  echo "    Terminal            ./platform shell -c 'kubectl -n $NS get pods -w'"
 }
 
 # Stops k6 (SIGINT makes it print its end-of-test summary) and reports the
@@ -248,11 +193,7 @@ narrate_rolling() { # narrate_rolling <generation before the change> <timeout s>
 # --- chaos helpers -----------------------------------------------------------
 
 demo_pods() { # name node phase ready, one line per demo pod
-  # With a Rollout, only its pods (they carry rollouts-pod-template-hash), not
-  # a pod of the referenced Deployment that is still scaling down.
-  local sel=app.kubernetes.io/name=app
-  kubectl -n "$NS" get rollout app >/dev/null 2>&1 && sel="$sel,rollouts-pod-template-hash"
-  kubectl -n "$NS" get pods -l "$sel" -o json |
+  kubectl -n "$NS" get pods -l app.kubernetes.io/name=app -o json |
     jq -r '.items[] | select(.metadata.deletionTimestamp == null) |
       "\(.metadata.name) \(.spec.nodeName // "-") \(.status.phase) \(([.status.conditions[]? | select(.type == "Ready") | .status][0]) // "False")"'
 }
@@ -294,7 +235,7 @@ evict() { # evict <pod>
 
 # --- gitops-revert helpers ---------------------------------------------------
 
-# The in-stack Git server (default mode, decision 0029): Argo CD reads it at
+# The in-stack Git server (default mode): Argo CD reads it at
 # this URL inside the cluster; from here it's reached over SSH through a
 # port-forward, with the bootstrap's key (Secret git/git-admin), as
 # scripts/git-sync.sh does. Sets INSTACK_REMOTE.
@@ -390,7 +331,7 @@ narrate_git() { # narrate_git <commit> <settle s> <timeout s>
 
 demo_chaos() {
   step "Demo: chaos in a copy of prod"
-  echo "  First a pod is deleted: the Rollout's ReplicaSet replaces it. Then a"
+  echo "  First a pod is deleted: its ReplicaSet replaces it. Then a"
   echo "  worker is drained (cordoned, and the demo's pods on it evicted the way"
   echo "  kubectl drain does): the PodDisruptionBudget (maxUnavailable 1) lets"
   echo "  only one go at a time, and the pods spread across zones keep serving."
@@ -399,7 +340,7 @@ demo_chaos() {
   wait_healthy v1 600
   start_load
   where_to_watch
-  want=$(kubectl -n "$NS" get rollout app -o jsonpath='{.spec.replicas}')
+  want=$(kubectl -n "$NS" get deployment app -o jsonpath='{.spec.replicas}')
   echo "  Pods (name, node, zone, phase):" >&2; show_pods
 
   step "Deleting one pod"
@@ -511,52 +452,6 @@ demo_gitops_revert() {
   ok "bad commit: ${bad} of requests failed; after the revert: ${good}. Git was the only thing changed."
 }
 
-demo_canary() {
-  step "Demo: canary v1 -> v2 in a copy of prod"
-  echo "  Rollouts moves traffic 10% -> 25% -> 50% -> 100% through the HTTPRoute,"
-  echo "  and after each step asks Prometheus whether the canary meets the SLO"
-  echo "  (5xx ratio of /work and /echo <= 0.5%, p99 of /echo and /version <= 250 ms)."
-  echo "  Takes about 10 minutes."
-  ensure_app prod v1
-  wait_healthy v1 600
-  start_load
-  where_to_watch
-  step "Promoting v2"
-  set_image v2
-  result=$(narrate 1200)
-  k6_summary
-  case "$result" in
-    Healthy) ok "v2 promoted: every analysis passed, 100% of traffic on v2" ;;
-    Inconclusive) die "$INCONCLUSIVE" ;;
-    *) die "canary did not finish Healthy (result: $result)" ;;
-  esac
-}
-
-demo_canary_fail() {
-  step "Demo: canary-fail v2 -> v2-bad in a copy of prod"
-  echo "  v2-bad fails 10% of requests (and adds 400 ms to /work only, which the"
-  echo "  latency SLI leaves out, so the error-ratio check is the one that fails)."
-  echo "  Two failed measurements and Rollouts aborts: all traffic goes back to v2."
-  echo "  Takes about 3 minutes."
-  ensure_app prod v2
-  wait_healthy v2 600
-  start_load
-  where_to_watch
-  step "Promoting v2-bad"
-  set_image v2-bad
-  result=$(narrate 900)
-  k6_summary
-  weights=$(kubectl -n "$NS" get httproute app \
-    -o jsonpath='{range .spec.rules[0].backendRefs[*]}{.name}={.weight} {end}')
-  case "$result" in
-    Degraded)
-      ok "analysis failed and Rollouts aborted: $(kubectl -n "$NS" get rollout app -o jsonpath='{.status.message}')"
-      ok "traffic is back on the stable version: $weights" ;;
-    Inconclusive) die "$INCONCLUSIVE" ;;
-    *) die "expected the canary to abort (result: $result)" ;;
-  esac
-}
-
 # --- autoscale helpers -------------------------------------------------------
 
 hpa_line() {
@@ -598,7 +493,7 @@ demo_autoscale() {
   wait_healthy v1 600
   min=$(kubectl -n "$NS" get hpa app -o jsonpath='{.spec.minReplicas}')
   max=$(kubectl -n "$NS" get hpa app -o jsonpath='{.spec.maxReplicas}')
-  ok "HPA $NS/app scales the Rollout between $min and $max pods on CPU"
+  ok "HPA $NS/app scales the Deployment between $min and $max pods on CPU"
   start_load "$rate"
   where_to_watch
   echo "    HPA                 ./platform shell -c 'kubectl -n $NS get hpa -w'"
@@ -625,7 +520,7 @@ demo_autoscale() {
 
 # --- policy helpers ----------------------------------------------------------
 
-# Built before image signing (decision 0013); staging and prod ran it until
+# Built before image signing; staging and prod ran it until
 # 2026-11-25. Still in GHCR, never signed.
 UNSIGNED_IMAGE=ghcr.io/iantest11111989/orders-gateway@sha256:09c2177caeb2c7b701c1f091fd65600065c836d4b25b930bff82cb6ec62b3476
 SIGNED_IMAGE=ghcr.io/iantest11111989/orders-gateway:v1
@@ -650,7 +545,7 @@ expect_denied() { # expect_denied <name> <image> <policy>
   local out
   if out=$(policy_pod "$1" "$2" | kubectl create -f - 2>&1); then
     kubectl -n "$NS" delete pod "$1" --wait=false >/dev/null 2>&1 || true
-    die "Kyverno let $2 in (is $3 in Deny? see decision 0022)"
+    die "Kyverno let $2 in (is $3 in Deny? see policies/)"
   fi
   grep -q "$3" <<<"$out" || die "$2 was refused, but not by $3: $out"
   ok "refused by $3: $2"
@@ -659,7 +554,7 @@ expect_denied() { # expect_denied <name> <image> <policy>
 
 demo_policy() {
   step "Demo: Kyverno refusing an unsigned image and a :latest image"
-  echo "  In the app namespaces two policies deny (decision 0022): orders-gateway"
+  echo "  In the app namespaces two policies deny: orders-gateway"
   echo "  images must carry a cosign signature from main's app workflow, and no image"
   echo "  may be :latest or untagged. Each pod below is created for real in $NS"
   echo "  (no dry run) and meets Pod Security \"restricted\", so the image is the only"
@@ -699,8 +594,6 @@ case "$name" in
   rolling-update) demo_rolling_update ;;
   chaos) demo_chaos ;;
   gitops-revert) demo_gitops_revert ;;
-  canary) demo_canary ;;
-  canary-fail) demo_canary_fail ;;
   autoscale) demo_autoscale ;;
   policy) demo_policy ;;
   clean) delete_app; clean_branches; exit 0 ;;

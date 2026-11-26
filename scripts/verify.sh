@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# ./platform verify: checks that the running stack does what the brief's
-# definition of done says (section 14), and says which check failed:
+# ./platform verify: checks that the running stack works, and says which
+# check failed:
 #   1. every Argo CD Application is Synced and Healthy
 #   2. every Prometheus scrape target is up
 #   3. Loki has logs from every namespace that runs pods
 #   4. HTTPS answers on every hostname (scripts/check-https.sh)
-#   4b. the contract's host endpoints: prod on :8080 (/admin/* refused),
+#   4b. the plain-HTTP host ports: prod on :8080 (/admin/* refused),
 #       Grafana :3000, Prometheus :9090, Alertmanager :9093
 #   5. Kyverno rejects a bad manifest at admission (a server-side dry run of
 #      a :latest pod in dev must be denied by disallow-latest-tag)
@@ -21,7 +21,7 @@ proxy() { kubectl get --raw "/api/v1/namespaces/$1/services/$2/proxy$3"; }
 
 step "Argo CD: every Application Synced and Healthy"
 # Demo copies (label demo=true, ./platform demo) aren't part of the stack:
-# a canary-fail copy is Degraded by design. Note them, don't fail on them.
+# one left with --keep may be mid-demo. Note them, don't fail on them.
 apps=$(kubectl -n argocd get applications.argoproj.io -l 'demo!=true' \
   -o jsonpath='{range .items[*]}{.metadata.name} {.status.sync.status} {.status.health.status}{"\n"}{end}')
 demos=$(kubectl -n argocd get applications.argoproj.io -l demo=true \
@@ -77,7 +77,7 @@ fi
 
 step "Alerts reach the local receiver (Watchdog heartbeat in Loki)"
 # Alertmanager sends the always-firing Watchdog to alert-receiver every
-# 5 minutes, which logs it (decision 0025): one line proves Prometheus ->
+# 5 minutes, which logs it: one line proves Prometheus ->
 # Alertmanager -> receiver -> Loki works end to end.
 q=$(jq -rn '"{namespace=\"monitoring\", app=\"alert-receiver\"} |= \"Watchdog\"" | @uri')
 n=$(proxy logging loki:3100 "/loki/api/v1/query_range?query=$q&since=1h&limit=20" 2>/dev/null |
@@ -95,7 +95,7 @@ else
   miss "HTTPS check failed (output above)"
 fi
 
-step "The contract's endpoints on the host (decision 0028)"
+step "The plain-HTTP ports on the host"
 # Runs with the host's network (the toolbox, and Compose's ready service), so
 # localhost is the host's.
 # curl prints 000 itself when it can't connect; don't add a second one.
@@ -125,7 +125,7 @@ done <<'EOF2'
 9093 /-/ready Alertmanager
 8081 /api/version Argo CD
 EOF2
-# The contract's dev UI login, admin / admin12345, on each UI that has one.
+# The demo login, admin / admin12345, on each UI that has one.
 c=$(code -u admin:admin12345 http://localhost:3000/api/user)
 if [ "$c" = 200 ]; then pass "Grafana login admin / admin12345 works"
 else miss "Grafana login admin / admin12345 answered $c"; fi

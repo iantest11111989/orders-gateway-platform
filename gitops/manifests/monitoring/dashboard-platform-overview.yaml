@@ -235,7 +235,7 @@ data:
         {
           "type": "stat",
           "title": "Argo CD apps not Healthy",
-          "description": "Applications that aren't Healthy (Progressing during a sync or canary is normal; Degraded or Missing isn't).",
+          "description": "Applications that aren't Healthy (Progressing during a sync is normal; Degraded or Missing isn't).",
           "id": 5,
           "datasource": {
             "type": "prometheus",
@@ -1351,12 +1351,6 @@ data:
           "title": "Argo CD",
           "type": "link",
           "url": "/d/argocd",
-          "targetBlank": false
-        },
-        {
-          "title": "Argo Rollouts",
-          "type": "link",
-          "url": "/d/argo-rollouts",
           "targetBlank": false
         },
         {

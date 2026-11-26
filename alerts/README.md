@@ -5,7 +5,7 @@ PrometheusRules, loaded by Prometheus through Argo CD (the observability PR wire
 | File | What it holds |
 | --- | --- |
 | `orders-gateway-slo.yaml` | SLI recording rules and multi-window burn-rate alerts for the orders-gateway SLO |
-| `platform-delivery.yaml` | Argo CD app OutOfSync or unhealthy, prod canary aborted, certificate not Ready or expiring, the stack near its 12 GiB memory budget (all `ticket`) |
+| `platform-delivery.yaml` | Argo CD app OutOfSync or unhealthy, certificate not Ready or expiring, the stack near its 12 GiB memory budget (all `ticket`) |
 | `platform-security.yaml` | Kyverno, Sealed Secrets and Trivy Operator alerts |
 | `tests/` | promtool unit tests, one file per rule file |
 

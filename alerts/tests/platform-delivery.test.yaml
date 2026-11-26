@@ -43,23 +43,6 @@ tests:
               description: "staging has been Degraded for 10 minutes."
               runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/ArgoCDAppUnhealthy.md
 
-  - name: prod canary aborts; the canary-fail demo in demo doesn't alert
-    interval: 1m
-    input_series:
-      - series: 'rollout_info{exported_namespace="prod", name="app", phase="Abort"}'
-        values: '1x5'
-      - series: 'rollout_info{exported_namespace="demo", name="app", phase="Abort"}'
-        values: '1x5'
-    alert_rule_test:
-      - eval_time: 3m
-        alertname: RolloutAborted
-        exp_alerts:
-          - exp_labels: {severity: ticket, exported_namespace: prod, name: app}
-            exp_annotations:
-              summary: "Rollout prod/app aborted its canary"
-              description: "The canary failed its analysis (or was aborted by hand) and all traffic is back on the stable version. The new version won't go further until fixed."
-              runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/RolloutAborted.md
-
   - name: certificate not Ready
     interval: 1m
     input_series:

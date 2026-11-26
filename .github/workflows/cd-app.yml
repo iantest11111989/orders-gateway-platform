@@ -262,7 +262,7 @@ jobs:
   # Opens (or refreshes) one promotion PR per environment for the image dev
   # just got: branch promote/<env>, rebuilt from main with only that env's
   # image line changed (scripts/set-image.sh). The owner approves and merges
-  # them; prod then goes through the Argo Rollouts canary.
+  # them.
   # Needs the repository setting "Allow GitHub Actions to create and approve
   # pull requests"; without it the job warns and main stays green. PRs opened
   # with GITHUB_TOKEN start no workflows, so it dispatches the platform checks
