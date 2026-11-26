@@ -148,7 +148,7 @@ start_load() { # start_load [requests/s, default 10]
   local rate=${1:-10}
   step "Starting k6: ~$rate requests/s to $URL (log: $K6_LOG)"
   k6 run --quiet --summary-mode=compact \
-    -e BASE_URL="$URL" -e RATE="$rate" -e DURATION=30m "$ROOT/app/k6/load.js" >"$K6_LOG" 2>&1 &
+    -e BASE_URL="$URL" -e RATE="$rate" -e DURATION=30m "$ROOT/apps/orders-gateway/k6/load.js" >"$K6_LOG" 2>&1 &
   K6_PID=$!
   sleep 15
   kill -0 "$K6_PID" 2>/dev/null || { cat "$K6_LOG"; die "k6 stopped (see above)"; }
@@ -433,7 +433,7 @@ demo_gitops_revert() {
   narrate_git "$(git -C "$work" rev-parse HEAD)" 30 300
 
   step "Committing a bad config change to $branch"
-  yq -i '.config.faultErrorRate = 0.3' "$work/environments/dev/values.yaml"
+  yq -i '.config.faultErrorRate = 0.3' "$work/cd/orders-gateway/dev.yaml"
   git -C "$work" -c user.name="orders-gateway demo" -c user.email="demo@localhost" \
     commit -q -am "demo: FAULT_ERROR_RATE 0.3 in dev (30% of requests fail)"
   gitauth -C "$work" push -q origin "$branch"

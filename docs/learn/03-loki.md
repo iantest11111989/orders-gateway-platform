@@ -25,7 +25,7 @@ Grafana Alloy collects every pod's stdout and sends it to Loki.
 
 Everything inside `{}` is a **label matcher**. Loki stores logs in *streams*, one per unique set of labels, and only indexes the labels, not the text. Here there are just four: `namespace`, `app`, `env` and `pod`. Open the **Label browser** to see them.
 
-Each line is the app's JSON log for one request ([`app/server.js`](../../app/server.js), `log()`):
+Each line is the app's JSON log for one request ([`apps/orders-gateway/server.js`](../../apps/orders-gateway/server.js), `log()`):
 
 ```json
 {"ts":"…","pod":"app-6c9f…","version":"sha-9ab553b…","level":"info","msg":"request","method":"POST","route":"/echo","status":200,"duration_ms":1}

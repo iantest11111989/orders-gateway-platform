@@ -10,7 +10,7 @@ Conventions: "**Recommend**" is the opinionated pick. "*(unsure)*" marks things 
 
 ## 1. Summary and target shape
 
-Production drops Docker Compose, kind and the in-stack Git server. Terraform builds an **AWS Organization with one account per environment** (dev, staging, prod), plus shared-services (ECR, CI roles, root DNS) and the usual security and log-archive accounts. Each environment account has **its own VPC across 3 AZs** (public subnets for the load balancer and NAT, private subnets for nodes) and **its own EKS cluster**, with nodes on Graviton managed by **Karpenter**. **Each cluster runs its own Argo CD**, which reconciles only that cluster from GitHub with the same `gitops/apps` app-of-apps and sync waves as today, so nothing in dev or staging can deploy to prod. CI uses **GitHub OIDC to assume short-lived roles** (no AWS keys), pushes signed, immutable images to **ECR**, and promotes by Git change as it does today. Traffic enters through an **ALB with ACM certificates and WAF**, managed by the AWS Load Balancer Controller, which terminates TLS and sends it to **Traefik**, which keeps the chart's Ingresses, the `/admin` 403 and the canary weights. **Route 53 records come from ExternalDNS**. Secrets come from **Secrets Manager through External Secrets**, encrypted with per-account KMS keys. **Datadog** replaces Prometheus, Loki, Alertmanager and Grafana for metrics, logs, APM, SLOs, monitors, dashboards and synthetics. The app keeps its Prometheus-format `/metrics`, which the Datadog Agent scrapes as OpenMetrics, so `app/server.js` stays unchanged. Prod finally runs the **Argo Rollouts canary**, with analysis driven by Datadog.
+Production drops Docker Compose, kind and the in-stack Git server. Terraform builds an **AWS Organization with one account per environment** (dev, staging, prod), plus shared-services (ECR, CI roles, root DNS) and the usual security and log-archive accounts. Each environment account has **its own VPC across 3 AZs** (public subnets for the load balancer and NAT, private subnets for nodes) and **its own EKS cluster**, with nodes on Graviton managed by **Karpenter**. **Each cluster runs its own Argo CD**, which reconciles only that cluster from GitHub with the same `bootstrap/apps` app-of-apps and sync waves as today, so nothing in dev or staging can deploy to prod. CI uses **GitHub OIDC to assume short-lived roles** (no AWS keys), pushes signed, immutable images to **ECR**, and promotes by Git change as it does today. Traffic enters through an **ALB with ACM certificates and WAF**, managed by the AWS Load Balancer Controller, which terminates TLS and sends it to **Traefik**, which keeps the chart's Ingresses, the `/admin` 403 and the canary weights. **Route 53 records come from ExternalDNS**. Secrets come from **Secrets Manager through External Secrets**, encrypted with per-account KMS keys. **Datadog** replaces Prometheus, Loki, Alertmanager and Grafana for metrics, logs, APM, SLOs, monitors, dashboards and synthetics. The app keeps its Prometheus-format `/metrics`, which the Datadog Agent scrapes as OpenMetrics, so `apps/orders-gateway/server.js` stays unchanged. Prod finally runs the **Argo Rollouts canary**, with analysis driven by Datadog.
 
 One account, one VPC, one EKS cluster and one Argo CD per environment. Nothing is shared between environments except the images in ECR and the Git repo.
 
@@ -62,9 +62,9 @@ flowchart TB
 | --- | --- | --- |
 | `docker-compose.yml`, the `ready` service and toolbox (`toolbox/`, `scripts/up.sh`) | Terraform roots run from CI, plus a one-off Argo CD install in each cluster | Compose exists locally to give one command and a health signal. In production the cluster's lifecycle belongs to IaC with reviewed plans. **Keep Compose and kind as the local dev loop and as the PR integration test** (`platform.yml`'s cluster job). |
 | kind, 1 control plane + 2 workers, fake zones (`cluster/kind.yaml`) | EKS per environment, 3 real AZs, Karpenter on Graviton | Managed control plane, real failure domains |
-| dev/staging/prod as namespaces in one cluster (`gitops/apps/templates/orders-gateway-{dev,staging,prod}.yaml`) | One cluster per environment, each in its own account | Blast radius, IAM separation, separate upgrade cadence. Not a shared non-prod cluster: dev and staging get the same isolation as prod |
-| In-stack Git server, soft-serve (`gitops/manifests/git-server/`) | GitHub only (today's "GitHub mode") | Its only purpose was offline use |
-| Root Application applied by `./platform up` (`gitops/root.yaml`) | The same root Application, created by Terraform in each cluster with that cluster's values | Keeps the app-of-apps and sync waves unchanged |
+| dev/staging/prod as namespaces in one cluster (`bootstrap/apps/templates/orders-gateway-{dev,staging,prod}.yaml`) | One cluster per environment, each in its own account | Blast radius, IAM separation, separate upgrade cadence. Not a shared non-prod cluster: dev and staging get the same isolation as prod |
+| In-stack Git server, soft-serve (`system/git-server/`) | GitHub only (today's "GitHub mode") | Its only purpose was offline use |
+| Root Application applied by `./platform up` (`bootstrap/root.yaml`) | The same root Application, created by Terraform in each cluster with that cluster's values | Keeps the app-of-apps and sync waves unchanged |
 | `./platform ship` / `rollback` with `kind load` | Promotion PRs and revert PRs. `localhost/` images are not admitted | Only CI-built, signed images run |
 | GHCR (`cd-app.yml` `IMAGE: ghcr.io/...`) | ECR in shared-services. Optionally dual-push to GHCR during migration | IAM-native pulls, no external dependency in the data path, Inspector scanning |
 | cosign keyless + BuildKit SBOM | Keep. Change the registry glob and the identity in `policies/verify-image-signatures.yaml` | Already the right design |
@@ -85,7 +85,7 @@ flowchart TB
 | `local-path` volumes | gp3 EBS through the CSI driver. Almost nothing stateful is left once Prometheus and Loki go | |
 | Rolling updates only (no canary) | Argo Rollouts canary in prod, analysis through Rollouts' Datadog provider | Every prod release should be a canary |
 | Promotion PRs that the owner merges | Add a **patch promoter**: a scheduled GitHub Actions workflow that merges patch PRs once they've soaked (§3.5). Gates read the Datadog SLO and monitor APIs, including each cluster's Argo CD health. Token from a GitHub App | It holds no cluster credentials, so it can't become a cross-cluster admin |
-| Trickle Deployment (`gitops/manifests/trickle/deployment.yaml`) | Keep it in dev/staging. In prod use Datadog Synthetics plus real traffic | |
+| Trickle Deployment (`system/trickle/deployment.yaml`) | Keep it in dev/staging. In prod use Datadog Synthetics plus real traffic | |
 | `admin` / `admin12345` | SSO everywhere (IAM Identity Center + IdP) | |
 | No pause switch (nothing merges on its own) | A `promotion/PAUSED` file the patch promoter honours, plus Argo CD sync windows for prod freezes | |
 | Renovate | Keep. Add Terraform providers and modules | |
@@ -122,10 +122,10 @@ flowchart TB
   - This replaces the sketch's fixed `platform` and `apps` node groups. Karpenter bin-packs better, and **Datadog bills per host**, so fewer, larger nodes save money twice (§3.12).
 - **EKS Auto Mode** is a serious alternative. AWS then runs Karpenter, the VPC CNI, EBS CSI and the LB controller for you, at a per-instance management fee (roughly +12% on EC2 *(unsure)*). **Recommend standard EKS + Karpenter**: the team already runs every one of those controllers through GitOps, and Auto Mode's LB controller is less configurable. Re-evaluate if nobody wants to own the add-on upgrades.
 - **Managed add-ons** through Terraform: vpc-cni (with `enableNetworkPolicy`), coredns, kube-proxy, eks-pod-identity-agent, aws-ebs-csi-driver, metrics-server *(unsure: metrics-server is available as an EKS community add-on; otherwise keep the existing Argo CD Application, minus `--kubelet-insecure-tls`)*.
-- **The app's sizing stays as charted:** 100m request, no CPU limit, 128Mi memory limit, HPA 3–6 at 70% (`charts/orders-gateway/values.yaml`). Raise `maxReplicas` in prod (e.g. 12) now that Karpenter can add nodes. 6 was the laptop's ceiling.
+- **The app's sizing stays as charted:** 100m request, no CPU limit, 128Mi memory limit, HPA 3–6 at 70% (`helm/orders-gateway/values.yaml`). Raise `maxReplicas` in prod (e.g. 12) now that Karpenter can add nodes. 6 was the laptop's ceiling.
 - **Upgrades:** follow EKS standard support. Avoid extended support (it costs 6× more for the control plane). Upgrade dev, then staging, then prod a week apart. For big jumps, build a new cluster blue/green from the same Terraform module and GitOps, then shift Route 53 weights. Statelessness makes this cheap.
 
-**Repo changes:** `gitops/values/*` gain an EKS layer (`gitops/values/eks/<component>.yaml`, as the sketch's `root.yaml` comment foresees): storage classes, tolerations for `system`, LBC/ExternalDNS/ESO/Karpenter Applications, and the removal of kind-only bits (metrics-server's insecure TLS, NodePort pins in `gitops/values/traefik.yaml`).
+**Repo changes:** `system/*/values.yaml` gain an EKS layer (`system/<component>/eks.yaml`, as the sketch's `root.yaml` comment foresees): storage classes, tolerations for `system`, LBC/ExternalDNS/ESO/Karpenter Applications, and the removal of kind-only bits (metrics-server's insecure TLS, NodePort pins in `system/traefik/values.yaml`).
 
 ### 3.3 Identity: IAM, Pod Identity, Kubernetes RBAC, SSO
 
@@ -160,7 +160,7 @@ Roles, one per controller per cluster, least privilege:
 - **CI never talks to a cluster.** Argo CD pulls, so no kube credentials exist in GitHub at all. That's the strongest property the repo already has; keep it.
 - Use a **GitHub App**, whose private key lives in Secrets Manager (shared-services account), for the patch promoter and for opening promotion PRs, instead of today's `GITHUB_TOKEN` PR-opening trick. Production needs individual human and bot identities, or approvals mean nothing.
 
-**Repo changes:** `charts/orders-gateway/templates/serviceaccount.yaml` is unchanged. New Terraform modules `pod-identity`, `github-oidc`. `gitops/values/argocd.yaml` gains OIDC, RBAC and HA.
+**Repo changes:** `helm/orders-gateway/templates/serviceaccount.yaml` is unchanged. New Terraform modules `pod-identity`, `github-oidc`. `system/argocd/values.yaml` gains OIDC, RBAC and HA.
 
 ### 3.4 Images and supply chain
 
@@ -180,7 +180,7 @@ Roles, one per controller per cluster, least privilege:
   - **cosign with a KMS key:** removes the dependency on public Sigstore (Fulcio/Rekor) at admission. Worth it if the org won't accept public transparency-log entries naming its repo. Open question.
 - **Add SLSA build provenance** (`actions/attest-build-provenance` or `cosign attest --type slsaprovenance`), and have Kyverno require it in prod. Keep the BuildKit SBOMs.
 - **Admission:** Kyverno HA (3 replicas, PDB, `system` node pool), **`failurePolicy: Fail`** on the image policies in the app namespaces. Exclude `kube-system` and `kyverno` as today. Turn on the background and reports controllers so already-running pods are re-checked (closing the gap where a pod created while Kyverno is down stays running). Every Audit policy in `policies/` moves to Enforce once clean,.
-- **CI changes in `.github/workflows/cd-app.yml`:** `aws-actions/configure-aws-credentials` with the OIDC role, then `aws-actions/amazon-ecr-login`. Push by digest, sign, verify, and fail on an empty SBOM, as now. During migration, push to both GHCR and ECR. `promote-dev` writes the ECR repository into `environments/dev/values.yaml`, and `scripts/set-image.sh` learns a repository argument.
+- **CI changes in `.github/workflows/cd-app.yml`:** `aws-actions/configure-aws-credentials` with the OIDC role, then `aws-actions/amazon-ecr-login`. Push by digest, sign, verify, and fail on an empty SBOM, as now. During migration, push to both GHCR and ECR. `promote-dev` writes the ECR repository into `cd/orders-gateway/dev.yaml`, and `scripts/set-image.sh` learns a repository argument.
 
 ### 3.5 GitOps and promotion across clusters
 
@@ -198,11 +198,11 @@ Argo CD Agent (one UI, agents pulling in each cluster) was also considered. Revi
 
 **How each cluster's Argo CD is set up:**
 - Terraform installs it once per cluster (HA, SSO through the IdP) together with the root Application. After that Argo CD manages its own release, as it does locally.
-- The root renders the existing `gitops/apps` chart with this cluster's values: `{env, aws: {...}}`, carrying Terraform's outputs (role ARNs, the ACM cert ARN, the WAF ACL ARN, the hosted zone, the cluster name). Templates keep `destination.server: https://kubernetes.default.svc`, so **the app-of-apps and its sync waves work as they do locally**.
+- The root renders the existing `bootstrap/apps` chart with this cluster's values: `{env, aws: {...}}`, carrying Terraform's outputs (role ARNs, the ACM cert ARN, the WAF ACL ARN, the hosted zone, the cluster name). Templates keep `destination.server: https://kubernetes.default.svc`, so **the app-of-apps and its sync waves work as they do locally**.
 - Only that environment's Application is on: the dev cluster runs `orders-gateway-dev`, prod runs `orders-gateway-prod`. That needs one small change: a guard in each environment's Application template that renders it only when `env` is unset or matches. Locally `env` is unset, so the three run side by side in one cluster, under the same names.
 - RBAC per Argo CD: developers can sync dev; the release group syncs staging and prod. Prod also gets sync windows (no syncs outside working hours unless labelled `hotfix`).
 - One AppProject per Argo CD restricts sources to this repo and destinations to the cluster's own namespaces.
-- `gitops/values/` splits into `base/` (today's files minus kind-isms), `eks/`, and per-env overrides where needed (e.g. `gitops/values/prod/karpenter.yaml`).
+- `system/<component>/values.yaml` splits into a base file (today's files minus kind-isms), `eks/`, and per-env overrides where needed (e.g. `system/karpenter/prod.yaml`).
 
 **One view across environments.** With no hub, two things show dev, staging and prod side by side. **argocd-notifications** in each Argo CD reports its syncs to GitHub as **Deployments** for its environment (its GitHub service has a `deployment` template, triggered on sync succeeded, failed and degraded), so the repo's **Environments** panel shows what each environment runs and since when. And the Datadog Agent's Argo CD integration puts every Application's sync and health on one Datadog dashboard.
 
@@ -216,7 +216,7 @@ Argo CD Agent (one UI, agents pulling in each cluster) was also considered. Revi
 
 Why: app developers can't change cluster-wide config by accident, each repo has its own history and reviewers, and the app repo's CI never writes cluster config directly. It only opens promotion PRs in the deploy repo, through a GitHub App installed there with pull-request rights only. Argo CD reads only the deploy repo and the chart registry. The promotion steps below happen in the deploy repo.
 
-**Chart templates, not one chart per service written from scratch.** The platform team owns a shared Helm **library chart** (for example `platform-service`), versioned and published to ECR like any chart. It holds what every service needs, with today's `charts/orders-gateway` as the starting point:
+**Chart templates, not one chart per service written from scratch.** The platform team owns a shared Helm **library chart** (for example `platform-service`), versioned and published to ECR like any chart. It holds what every service needs, with today's `helm/orders-gateway` as the starting point:
 - the Deployment: probes, rolling-update settings, graceful shutdown, security context, topology spread
 - the Service, HPA, PodDisruptionBudget and NetworkPolicy
 - the ServiceMonitor and the standard labels
@@ -224,7 +224,7 @@ Why: app developers can't change cluster-wide config by accident, each repo has 
 Each service's chart, `orders-gateway` included, depends on a pinned version of it and sets only its own values (image, ports, resources, endpoints). A new service gets the production defaults on day one, Kyverno's policies pass without per-service work, and a platform fix (say, a better probe default) reaches every service through a version bump and that service's normal promotion. A starter template (`helm create --starter` or a repo template) gives new services the chart, CI workflow and `cd/` files in one step.
 
 **Promotion across clusters: a Git change.**
-- A merge to the app repo's `main` → CI builds, signs and pushes to ECR → the GitHub App commits the new digest to the deploy repo's dev file (`environments/dev/values.yaml` today) → dev's Argo CD syncs it.
+- A merge to the app repo's `main` → CI builds, signs and pushes to ECR → the GitHub App commits the new digest to the deploy repo's dev file (`cd/orders-gateway/dev.yaml` today) → dev's Argo CD syncs it.
 - Staging and prod move by **promotion PR** (`promote/staging`, `promote/prod`). Each changes only that environment's image line, pinned to **digest + tag**, so the same image moves through every environment without a rebuild.
 - **The patch promoter** merges a patch PR once the previous environment has soaked: an hour on that exact digest, its SLO met, no alerts, its Application Synced and Healthy. Features wait for an owner approval. It runs as a **scheduled GitHub Actions workflow** and reads only Datadog (the SLO status API, the monitor search API, metric queries for request count and version, and each cluster's Argo CD health as the Agent reports it) and GitHub, so it holds no cluster credentials. Its GitHub credential is a GitHub App. A `promotion/PAUSED` file stops it.
 - **Patch or feature** is worked out by CI when it opens the promotion PR, from the commits in the range: a `Promotion-Kind: patch|feature` commit trailer, or conventional commits (`fix:` vs `feat:`). Only patches are auto-merged.
@@ -256,7 +256,7 @@ The chart's Ingresses then match on each environment's hostname instead of a por
 
 **Alternative: NLB → Traefik, with an ALB only if WAF is needed.** Traefik's Service becomes an internet-facing **NLB** through LBC (IP targets, cross-zone), with ACM on a TLS listener. One fewer hop, but no WAF. A public `orders` API should have WAF (managed rule groups, rate limits, body-size limits), so **prod gets ALB → Traefik and non-prod can use NLB → Traefik**. If the owner decides prod doesn't need WAF, NLB everywhere is simpler.
 
-Traefik (`gitops/values/traefik.yaml`) becomes `ClusterIP` with `replicas: 3`, topology spread across AZs and its PDB. Watch out: the ALB's idle timeout (60 s) must stay **below** Traefik's and the app's keep-alive (`server.keepAliveTimeout = 65000` in server.js, so that already holds) to avoid 502s on reused connections.
+Traefik (`system/traefik/values.yaml`) becomes `ClusterIP` with `replicas: 3`, topology spread across AZs and its PDB. Watch out: the ALB's idle timeout (60 s) must stay **below** Traefik's and the app's keep-alive (`server.keepAliveTimeout = 65000` in server.js, so that already holds) to avoid 502s on reused connections.
 
 **Why Ingress, not Gateway API.** Gateway API (with Envoy Gateway) was built and explored for this project, then set aside: it adds more moving parts than a single-service demo needs, and the brief asks for an Ingress. For a new production system we'd adopt it: role-based ownership, traffic splitting and portability are built into the standard. Traefik also implements Gateway API, so that move would keep the controller.
 
@@ -281,7 +281,7 @@ Traefik (`gitops/values/traefik.yaml`) becomes `ClusterIP` with `replicas: 3`, t
 
 **Recommend External Secrets Operator + AWS Secrets Manager, per-account KMS CMKs.**
 - **What actually needs secrets?** The app has none (server.js reads only `VERSION`, `PORT`, `STARTUP_DELAY_MS` and `FAULT_*`). The platform needs: the Datadog API key (per cluster), the GitHub App key for Argo CD repo access (hub), the promoter's GitHub App key (hub), Docker Hub creds for the pull-through cache (shared-services), and the PagerDuty/Slack integration keys (stored in Datadog, not Kubernetes). So: **few secrets, low churn**.
-- Path convention `ogp/<env>/<component>/<name>`, matching the sketch's IAM scope. One `ClusterSecretStore` per cluster, authenticated by Pod Identity. `ExternalSecret`s live next to their component in `gitops/manifests/<component>/`. Refresh at 1 h.
+- Path convention `ogp/<env>/<component>/<name>`, matching the sketch's IAM scope. One `ClusterSecretStore` per cluster, authenticated by Pod Identity. `ExternalSecret`s live next to their component in `system/<component>/`. Refresh at 1 h.
 - KMS: one CMK per account for Secrets Manager, one for EKS envelope encryption of Kubernetes Secrets (the cluster's `encryption_config`), one for EBS, one for ECR, plus the Terraform state key. Key policies grant use to specific roles only. Automatic rotation on.
 - Rotation: Datadog API keys rotated by hand yearly, with a runbook. GitHub App private keys every 90 days (two keys valid during overlap).
 
@@ -291,9 +291,9 @@ Traefik (`gitops/values/traefik.yaml`) becomes `ClusterIP` with `replicas: 3`, t
 - **Secrets Store CSI driver:** mounts files rather than Kubernetes Secrets. Better for "never in etcd", but Datadog/Argo CD want Secret objects.
 
 **Repo changes:**
-- Delete `gitops/manifests/sealed-secrets/` and the `sealed-secrets` Application. Remove the demo-key exception from `scripts/check-no-plain-secrets.sh`, and keep the check itself.
+- Delete `system/sealed-secrets/manifests/` and the `sealed-secrets` Application. Remove the demo-key exception from `scripts/check-no-plain-secrets.sh`, and keep the check itself.
 - Grafana's SealedSecret goes away with Grafana.
-- New `gitops/apps/templates/external-secrets.yaml` (wave 10) and a `cluster-secret-store` manifest (wave 15).
+- New `bootstrap/apps/templates/external-secrets.yaml` (wave 10) and a `cluster-secret-store` manifest (wave 15).
 - Runbooks `SealedSecret*.md` are replaced by `ExternalSecretSyncFailed.md`.
 
 ### 3.8 Observability with Datadog
@@ -490,7 +490,7 @@ The table prices the chosen layout: one account, cluster and Argo CD per environ
   - FQDN egress control for platform namespaces is an open follow-up. Options: Cilium in chaining mode (adds a CNI to operate) or AWS Network Firewall (~$300/month per AZ endpoint *(unsure)*). **Defer.** Start with security groups plus NAT egress logs and GuardDuty.
 - **Edge:** WAF as §3.6. TLS 1.2+. ALB access logs. `/metrics` and the probes not exposed.
 - **Supply chain:** as §3.4. Plus GitHub hardening:
-  - **branch protection on `main`** (`main` has none today), required reviews, and CODEOWNERS for `environments/prod/`, `policies/` and `infra/`.
+  - **branch protection on `main`** (`main` has none today), required reviews, and CODEOWNERS for `cd/*/prod.yaml`, `policies/` and `infra/`.
   - Required status checks. Secret scanning and push protection. Dependabot alerts alongside Renovate.
   - Actions pinned by SHA (already done). Environments with required reviewers for `terraform apply` in prod.
   - Note that the promotion bot's direct push to main (`promote-dev`) then needs a bypass for the GitHub App only.
@@ -551,7 +551,7 @@ infra/
 - **Handover to Argo CD (the GitOps bridge):**
   1. `eks-cluster` creates the cluster, the system node group and the Pod Identity associations, plus the AWS resources the in-cluster controllers will need (roles, ACM cert, WAF ACL, zone).
   2. `argocd-bootstrap` installs Argo CD with `helm_release` and creates the root Application, passing those outputs as Helm values: `{env: prod, aws: {lbcRole: ..., certArn: ..., wafArn: ..., zone: ..., clusterName: ...}}`.
-  3. The root renders `gitops/apps` with those values, and the existing waves install Karpenter, LBC, ExternalDNS, ESO, Kyverno, Traefik, the Datadog Operator and finally the app. Argo CD then manages its own release through its `argocd` Application, so Terraform's `helm_release` is only the first install (`lifecycle { ignore_changes = all }`).
+  3. The root renders `bootstrap/apps` with those values, and the existing waves install Karpenter, LBC, ExternalDNS, ESO, Kyverno, Traefik, the Datadog Operator and finally the app. Argo CD then manages its own release through its `argocd` Application, so Terraform's `helm_release` is only the first install (`lifecycle { ignore_changes = all }`).
   4. Terraform applies nothing else to Kubernetes, so there's one owner per object, the property the sketch's README insists on.
 - **Not in Terraform:** anything with a Kubernetes API, Helm values of platform components, the app's environments. **In Terraform even though it's "observability":** Datadog monitors, SLOs and dashboards (§3.8).
 
@@ -571,7 +571,7 @@ infra/
 
 **Phase 2: the dev account and cluster (2–3 weeks)**
 - The dev network and cluster, with its own Argo CD (HA + SSO).
-- **Repo refactor:** cluster values in `gitops/apps` (`env`, `aws`), so each cluster's root turns on only its own environment's Application; the EKS values layer; ESO, LBC, ExternalDNS and Karpenter Applications.
+- **Repo refactor:** cluster values in `bootstrap/apps` (`env`, `aws`), so each cluster's root turns on only its own environment's Application; the EKS values layer; ESO, LBC, ExternalDNS and Karpenter Applications.
 - **Keep the kind path working.** The local root keeps all three environments in one cluster, as `orders-gateway-dev`, `-staging` and `-prod`, so the Compose stack and CI's cluster job still test the same templates.
 - The Datadog Operator in dev. Run it **in parallel with** kube-prometheus-stack in dev for a couple of weeks to check that the Datadog SLO numbers match the PromQL recording rules.
 

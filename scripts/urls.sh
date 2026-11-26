@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ./platform urls: every URL and login. All plain HTTP on 127.0.0.1, through
-# Traefik (gitops/values/traefik.yaml); nothing is reachable from the LAN.
+# Traefik (system/traefik/values.yaml); nothing is reachable from the LAN.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 

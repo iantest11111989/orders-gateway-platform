@@ -18,7 +18,7 @@ By the end you will know where the app's metrics come from, how counters and his
 
 ## 1. Where the metrics come from (3 min)
 
-Each app pod serves its own metrics at `/metrics` ([`app/server.js`](../../app/server.js) writes them by hand, no library). Prometheus scrapes every pod about every 30 seconds and stores each line as a time series.
+Each app pod serves its own metrics at `/metrics` ([`apps/orders-gateway/server.js`](../../apps/orders-gateway/server.js) writes them by hand, no library). Prometheus scrapes every pod about every 30 seconds and stores each line as a time series.
 
 1. Go to **Status → Targets** (or **Target health**) and find the `app` job. There is one row per pod in `dev`, `staging` and `prod`, and each should be **UP**.
 2. Back on the **Query** page, run:

@@ -4,10 +4,10 @@ on:
   pull_request:
     # labeled: adding the run-e2e label starts the fresh-install test.
     types: [opened, synchronize, reopened, labeled]
-    paths: ["platform", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "gitops/**", "charts/**", "environments/**", "alerts/**", "policies/**", ".github/workflows/**", ".shellcheckrc"]
+    paths: ["platform", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "bootstrap/**", "system/**", "helm/**", "cd/**", "alerts/**", "policies/**", ".github/workflows/**", ".shellcheckrc"]
   push:
     branches: [main]
-    paths: ["platform", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "gitops/**", "charts/**", "environments/**", "alerts/**", "policies/**", ".github/workflows/**", ".shellcheckrc"]
+    paths: ["platform", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "bootstrap/**", "system/**", "helm/**", "cd/**", "alerts/**", "policies/**", ".github/workflows/**", ".shellcheckrc"]
   # The promotion PRs (cd-app.yml, job promote-prs) are opened with GITHUB_TOKEN,
   # which starts no pull_request workflows; that job dispatches this one on
   # the PR's branch instead, and the results show on the PR's head commit.
@@ -260,7 +260,7 @@ jobs:
       # time; any non-200 fails the step.
       - name: "Ship and roll back under traffic"
         run: |
-          # A known baseline first: environments/prod may pin an older image.
+          # A known baseline first: cd/orders-gateway/prod.yaml may pin an older image.
           ./platform ship ci-ship-0
           before=ci-ship-0
           : >"$RUNNER_TEMP/codes"

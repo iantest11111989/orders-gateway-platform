@@ -5,7 +5,7 @@ useDefault = true
 
 [[allowlists]]
 description = "The DEMO ONLY Sealed Secrets key, committed on purpose (scripts/check-no-plain-secrets.sh allowlists it the same way)"
-paths = ['''^gitops/manifests/sealed-secrets/demo-key\.yaml$''']
+paths = ['''^system/sealed-secrets/manifests/demo-key\.yaml$''']
 
 [[allowlists]]
 description = "SealedSecrets: encrypted for the cluster's controller, so their ciphertext only looks like a key"

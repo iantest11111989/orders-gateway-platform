@@ -1,13 +1,13 @@
 # CD for the app: every merge to main that touches it. Tests again, builds
 # and pushes the images, signs and scans them, deploys to dev by committing
-# the image to environments/dev (Argo CD syncs it), then opens the staging
+# the image to cd/orders-gateway/dev.yaml (Argo CD syncs it), then opens the staging
 # and prod promotion PRs (decisions 0013-0015).
 name: CD · app
 
 on:
   push:
     branches: [main]
-    paths: ["app/**", "!app/k6/**", "!app/**/*.md", ".github/workflows/cd-app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh"]
+    paths: ["apps/orders-gateway/**", "!apps/orders-gateway/k6/**", "!apps/orders-gateway/**/*.md", ".github/workflows/cd-app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh"]
   # Re-publish the images from main by hand (Actions tab, "Run workflow").
   workflow_dispatch:
 
@@ -31,7 +31,7 @@ env:
 
 defaults:
   run:
-    working-directory: app
+    working-directory: apps/orders-gateway
 
 jobs:
   # The app (server.js) has no dependencies, so its own tests run in the same
@@ -58,7 +58,7 @@ jobs:
       - run: docker run --rm -i hadolint/hadolint:v2.14.0@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e < Dockerfile
 
   # Publishes multi-arch images to GHCR from main, after the tests pass:
-  #   sha-<12 chars>, main   this commit (what environments/dev deploys)
+  #   sha-<12 chars>, main   this commit (what cd/orders-gateway/dev.yaml deploys)
   #   v1, v2                 the demo images, rebuilt from
   #                          the same commit so they stay in step with the code
   # No :latest (policy rejects it). Each push exposes its digest as a job
@@ -92,7 +92,7 @@ jobs:
       - id: main
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: app
+          context: apps/orders-gateway
           platforms: linux/amd64,linux/arm64
           push: true
           # BuildKit SBOM for each platform, stored in the image index (and so
@@ -109,7 +109,7 @@ jobs:
       - id: v1
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: app
+          context: apps/orders-gateway
           platforms: linux/amd64,linux/arm64
           push: true
           sbom: true
@@ -121,7 +121,7 @@ jobs:
       - id: v2
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: app
+          context: apps/orders-gateway
           platforms: linux/amd64,linux/arm64
           push: true
           sbom: true
@@ -199,7 +199,7 @@ jobs:
         run: scripts/scan-image.sh "$IMAGE@$DIGEST"
 
   # Points dev at the image this commit just published and signed: it bumps
-  # the image in environments/dev/values.yaml and Argo CD deploys it. It runs only after `sign` and
+  # the image in cd/orders-gateway/dev.yaml and Argo CD deploys it. It runs only after `sign` and
   # `scan`, so dev never runs an unsigned digest or one with a fixable
   # HIGH/CRITICAL vulnerability. The commit goes straight to main as
   # github-actions[bot]; a push made with GITHUB_TOKEN starts no workflows, so
@@ -211,7 +211,7 @@ jobs:
     needs: [publish, sign, scan]
     runs-on: ubuntu-24.04
     permissions:
-      contents: write # the one-line commit to environments/dev/values.yaml
+      contents: write # the one-line commit to cd/orders-gateway/dev.yaml
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

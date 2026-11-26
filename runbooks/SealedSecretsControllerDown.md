@@ -9,7 +9,7 @@ The Sealed Secrets controller in `kube-system` hasn't answered a Prometheus scra
 ## Likely causes
 
 - The pod is crash-looping, OOM-killed or unschedulable.
-- It started without its key. The demo key (`gitops/manifests/sealed-secrets/demo-key.yaml`) must exist before the controller starts. If it doesn't, the controller generates a new key and can't decrypt anything in Git.
+- It started without its key. The demo key (`system/sealed-secrets/manifests/demo-key.yaml`) must exist before the controller starts. If it doesn't, the controller generates a new key and can't decrypt anything in Git.
 - Only the scrape is broken (a NetworkPolicy change).
 
 ## How to check

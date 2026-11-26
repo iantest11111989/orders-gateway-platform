@@ -1,0 +1,38 @@
+# The trickle (system/trickle): a light, steady stream of requests
+# to dev, staging and prod, so the dashboards and SLOs show live traffic.
+# Wave 45: after the environments (40).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: trickle
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: orders-gateway-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "45"
+    argocd.argoproj.io/manifest-generate-paths: "/system/trickle"
+  # Pruning or deleting this Application also deletes what it created.
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repo.url }}
+    targetRevision: {{ .Values.repo.revision }}
+    path: system/trickle
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: trickle
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff: {duration: 5s, factor: 2, maxDuration: 1m}
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/warn: restricted
+        pod-security.kubernetes.io/audit: restricted
+    syncOptions:
+      - CreateNamespace=true
