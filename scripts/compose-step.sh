@@ -4,7 +4,8 @@
 # "Waiting" for ten minutes. step-1..step-4 each turn healthy when one stage
 # of the bootstrap is done, so the stages tick off one by one:
 #   cluster    the kind nodes are Ready
-#   argocd     the in-stack Git server and Argo CD are running
+#   argocd     Argo CD is running (and the in-stack Git server, unless
+#              Argo CD follows GitHub)
 #   platform   every platform Application is Synced and Healthy
 #   apps       dev, staging and prod are Synced and Healthy
 # `ready` (scripts/ready-check.sh) still decides when the platform is ready.
@@ -40,11 +41,18 @@ case "${1:-}" in
     n=$(kubectl get nodes --no-headers 2>/dev/null | awk '$2 == "Ready"' | wc -l)
     [ "$n" -ge 3 ] || { echo "kind nodes Ready: $n of 3"; exit 1; } ;;
   argocd)
-    for d in git/soft-serve argocd/argocd-server argocd/argocd-repo-server; do
-      r=$(kubectl -n "${d%/*}" get deploy "${d#*/}" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)
-      [ "${r:-0}" -ge 1 ] || { echo "$d not running yet"; exit 1; }
-    done
-    kubectl -n argocd get application root >/dev/null 2>&1 || { echo "root Application not created yet"; exit 1; } ;;
+    running() {
+      local r
+      r=$(kubectl -n "${1%/*}" get deploy "${1#*/}" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)
+      [ "${r:-0}" -ge 1 ] || { echo "$1 not running yet"; exit 1; }
+    }
+    running argocd/argocd-server
+    running argocd/argocd-repo-server
+    url=$(kubectl -n argocd get application root -o jsonpath='{.spec.source.repoURL}' 2>/dev/null) ||
+      { echo "root Application not created yet"; exit 1; }
+    # The in-stack Git server only exists when Argo CD follows it, not in
+    # GitHub mode (REPO_URL set, decision 0029).
+    case "$url" in *.git.svc*) running git/soft-serve ;; esac ;;
   platform)
     left=$(not_ready '^(?!(dev|staging|prod)$)')
     [ -z "$left" ] || { echo "not Synced/Healthy yet: $(tr "\n" " " <<<"$left")"; exit 1; } ;;
