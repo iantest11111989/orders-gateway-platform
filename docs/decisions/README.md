@@ -44,3 +44,4 @@ Records are not edited after they are accepted. If a decision changes, add a new
 | [0029](0029-in-stack-git-server.md) | Argo CD syncs from an in-stack Git server holding this checkout | Accepted |
 | [0030](0030-ship-and-rollback.md) | Ship and roll back by Git change, with a local image | Accepted |
 | [0031](0031-application-finalizers.md) | Which Applications delete their resources when they go | Accepted |
+| [0032](0032-every-ui-on-a-plain-port.md) | Every UI on a plain port, so nothing needs 80/443 | Accepted |

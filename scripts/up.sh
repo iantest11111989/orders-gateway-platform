@@ -14,10 +14,12 @@ if cluster_exists; then
   step "Cluster '$CLUSTER_NAME' already exists; reusing it"
   kind export kubeconfig --name "$CLUSTER_NAME" >/dev/null
   # kind applies extraPortMappings only when it creates a cluster: one made
-  # before the contract's ports (decision 0028) has no 8080/3000/9090/9093.
-  if [ -z "$(docker port "$CLUSTER_NAME-control-plane" 30808/tcp 2>/dev/null)" ]; then
-    die "this cluster was created before the host ports 8080/3000/9090/9093 existed; recreate it: ./platform down && ./platform up"
-  fi
+  # before the contract's ports (decision 0028) or Argo CD's (0032) lacks them.
+  for np in 30808 30881; do
+    if [ -z "$(docker port "$CLUSTER_NAME-control-plane" "$np/tcp" 2>/dev/null)" ]; then
+      die "this cluster was created before the host ports 8080/3000/9090/9093/8081 existed; recreate it: ./platform down && ./platform up"
+    fi
+  done
 else
   # The kubelet sees the whole Docker host (the Colima VM, or the Linux
   # machine), not the per-node cap below. Reserve the difference so each

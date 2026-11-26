@@ -110,28 +110,21 @@ for p in /x/../admin/fault //admin/fault /admin%2Ffault /%61dmin/fault /admin/./
     *) pass "POST $p refused ($c)" ;;
   esac
 done
-while read -r name port path; do
+while read -r port path name; do
   c=$(code "http://localhost:$port$path")
   if [ "$c" = 200 ]; then pass "$name on http://localhost:$port ($path 200)"
   else miss "$name at http://localhost:$port$path answered $c"; fi
 done <<'EOF2'
-Grafana 3000 /api/health
-Prometheus 9090 /-/ready
-Alertmanager 9093 /-/ready
+3000 /api/health Grafana
+9090 /-/ready Prometheus
+9093 /-/ready Alertmanager
+8081 /api/version Argo CD
 EOF2
 # The contract's dev UI login, admin / admin12345, on each UI that has one.
 c=$(code -u admin:admin12345 http://localhost:3000/api/user)
 if [ "$c" = 200 ]; then pass "Grafana login admin / admin12345 works"
 else miss "Grafana login admin / admin12345 answered $c"; fi
-pf_log=$(mktemp)
-kubectl -n argocd port-forward svc/argocd-server :80 >"$pf_log" 2>&1 & pf=$!
-port=''
-for _ in $(seq 1 20); do
-  port=$(sed -n 's/^Forwarding from 127.0.0.1:\([0-9]*\) .*/\1/p' "$pf_log" | head -1)
-  [ -n "$port" ] && break; sleep 0.5
-done
-c=$(code -X POST -H 'Content-Type: application/json' -d '{"username":"admin","password":"admin12345"}' "http://127.0.0.1:${port:-1}/api/v1/session")
-kill "$pf" 2>/dev/null || true; rm -f "$pf_log"
+c=$(code -X POST -H 'Content-Type: application/json' -d '{"username":"admin","password":"admin12345"}' http://localhost:8081/api/v1/session)
 if [ "$c" = 200 ]; then pass "Argo CD login admin / admin12345 works"
 else miss "Argo CD login admin / admin12345 answered $c"; fi
 

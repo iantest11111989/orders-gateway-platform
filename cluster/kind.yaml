@@ -33,6 +33,8 @@ nodes:
       - {containerPort: 30300, hostPort: 3000, listenAddress: 127.0.0.1, protocol: TCP}
       - {containerPort: 30909, hostPort: 9090, listenAddress: 127.0.0.1, protocol: TCP}
       - {containerPort: 30993, hostPort: 9093, listenAddress: 127.0.0.1, protocol: TCP}
+      # Argo CD's UI on a plain port too (decision 0032).
+      - {containerPort: 30881, hostPort: 8081, listenAddress: 127.0.0.1, protocol: TCP}
     kubeadmConfigPatches:
       # Expose control-plane metrics on all interfaces so Prometheus can
       # scrape them from inside the cluster.

@@ -87,3 +87,5 @@ spec:
                   nodePort: 30909
                 - port: 9093
                   nodePort: 30993
+                - port: 8081
+                  nodePort: 30881

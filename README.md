@@ -20,8 +20,8 @@ That is all it takes. Compose starts one service, `ready`, which creates a kind 
 | Kubeconfig | Written to `./out/kubeconfig.yaml`, pointing at `127.0.0.1` | `kubectl --kubeconfig out/kubeconfig.yaml get nodes` |
 | Namespaces | `dev`, `staging` and `prod` each run a Deployment `app` labelled `app.kubernetes.io/name=app`, from one Helm chart with a values file per environment | `kubectl --kubeconfig out/kubeconfig.yaml get deploy -A -l app.kubernetes.io/name=app` |
 | App endpoint | prod at `http://localhost:8080` through Envoy Gateway. It's a Gateway API `HTTPRoute`, the successor to the Ingress resource, so `kubectl get ingress` is empty on purpose ([0028](docs/decisions/0028-contract-ports-on-the-gateway.md)). `/admin/*` is answered 403 at the edge; pods inside the cluster can still reach it | `curl localhost:8080/version`; `curl -X POST localhost:8080/admin/fault` → 403 |
-| Logins | `admin` / `admin12345` for Grafana and Argo CD. Prometheus, Alertmanager and the Rollouts dashboard have no login | `./platform urls` |
-| Dashboards | Grafana `:3000`, Prometheus `:9090`, Alertmanager `:9093`, all through the same gateway | open them |
+| Logins | `admin` / `admin12345` for Grafana and Argo CD (`:3000`, `:8081`). Prometheus, Alertmanager and the Rollouts dashboard have no login | `./platform urls` |
+| Dashboards | Grafana `:3000`, Prometheus `:9090`, Alertmanager `:9093`, and Argo CD `:8081` too, all through the same gateway ([0032](docs/decisions/0032-every-ui-on-a-plain-port.md)) | open them |
 | Persistence and restarts | `ready` has `restart: unless-stopped`. The cluster lives outside Compose (kind creates its own node containers), so `docker compose stop` / `start` leaves Prometheus, Loki, Grafana and Argo CD running with their data; `start` re-runs the bootstrap, which changes nothing. Prometheus, Loki and the in-stack Git server keep their data on PersistentVolumes, so it also survives their pods restarting. The kubeconfig is kept in a named volume and rewritten on `start`. CI tests a stop/start cycle (healthy again in seconds) | `docker compose stop && docker compose start` |
 | 6 CPU / 12 GB | Each kind node is capped at 2 CPU / 4 GiB; measured peak 4.46 CPU and 62% of memory at 100 requests/s ([Resource budget](#resource-budget-measured)) | `./platform budget` |
 | Healthy in under 15 min | 9 min 43 s from `docker compose up` to healthy on a GitHub runner ([run](https://github.com/iantest11111989/orders-gateway-platform/actions/runs/45710719231/job/139544268716)) | time it |
@@ -35,7 +35,7 @@ That is all it takes. Compose starts one service, `ready`, which creates a kind 
 | | Reference machine | Development machine |
 | --- | --- | --- |
 | Hardware | 8 vCPU / 16 GB, x86-64 Linux | Apple silicon Mac (arm64), 16 GB |
-| Docker | Docker Engine | Colima: `colima start --cpu 6 --memory 12` |
+| Docker | Docker Engine with the Compose plugin | Colima: `colima start --cpu 6 --memory 12`, and `brew install docker-compose` (Colima's Docker has no `docker compose`) |
 
 The whole stack is designed to fit in **6 CPUs and 12 GB RAM**.
 
@@ -69,7 +69,7 @@ Then open Grafana at <http://localhost:3000> (`admin` / `admin12345`) and its **
 
 ### More URLs
 
-All hostnames use `*.localtest.me`, which resolves to `127.0.0.1`.
+Every UI is on a plain port above, so these are optional. All hostnames use `*.localtest.me`, which resolves to `127.0.0.1`, and need ports 80 and 443 free on the machine running the browser. **On macOS with Colima they don't reach the Mac's browser:** macOS only lets root open ports below 1024 on `127.0.0.1`, and Colima runs as you. Use the plain ports there.
 
 - `https://orders.dev.localtest.me`, `https://orders.staging.localtest.me`, `https://orders.localtest.me`
 - `https://argocd.localtest.me`, `https://grafana.localtest.me`, `https://prometheus.localtest.me`, `https://alertmanager.localtest.me`, `https://rollouts.localtest.me`
@@ -187,7 +187,7 @@ Work from the symptom inwards. Each step names where to look.
    {namespace="prod", app="app"} | json | route="/echo" | duration_ms > 250
    {namespace=~"dev|staging|prod", app="app"} | json | trace_id="<id from a traceparent header>"
    ```
-4. **Is Kubernetes happy?** `./platform shell`, then `kubectl -n prod get pods,events`, `kubectl -n prod describe pod <pod>`, and `argocd app list` (or <https://argocd.localtest.me>). `./platform verify` checks the whole platform and names what's unhealthy.
+4. **Is Kubernetes happy?** `./platform shell`, then `kubectl -n prod get pods,events`, `kubectl -n prod describe pod <pod>`, and `argocd app list` (or <http://localhost:8081>). `./platform verify` checks the whole platform and names what's unhealthy.
 5. **Was it a release?** If **Pods by version** changed when the errors began, `./platform rollback` first and investigate after.
 
 Fixes go through Git. A `kubectl edit` in an app namespace is undone by Argo CD's self-heal within seconds, by design.
@@ -201,6 +201,7 @@ Start with `./platform doctor` (Docker, CPU, memory, disk, ports) and `./platfor
 | Symptom | Likely cause | What to do |
 | --- | --- | --- |
 | `doctor`: "Port 80/443 is already in use" | Another web server on the host | Stop it, or run on a machine without one |
+| macOS: a contract port shows another app, or `ERR_SSL_PROTOCOL_ERROR` on `*.localtest.me` | A program on the Mac itself holds the port (the toolbox's checks run inside Docker's VM and can't see it) | `./platform doctor` checks the Mac's own ports and names the clash. Stop that program, then `colima restart` so the ports are forwarded again |
 | `up` waits on an app, pods in `ImagePullBackOff` | A registry rate-limited or flaked (ECR Public, Docker Hub) | Wait and re-run `./platform up`; it's safe to re-run. Kubernetes keeps retrying the pull |
 | `up` fails: "nodes advertise more than their cap" | The cluster was created before node reservations existed | `./platform down && ./platform up` |
 | `budget` reports `OOMKilled` | A container hit its memory limit (init containers too) | `./platform kubectl -n <ns> describe pod <pod>`; limits are in `gitops/values/` |

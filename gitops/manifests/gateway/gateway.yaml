@@ -68,3 +68,13 @@ spec:
       protocol: HTTP
       port: 9093
       allowedRoutes: *monitoring
+    # Argo CD's UI on a plain port (decision 0032), so every UI works from a
+    # browser without 80/443, which macOS won't let Colima open on 127.0.0.1.
+    - name: argocd
+      protocol: HTTP
+      port: 8081
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels: {kubernetes.io/metadata.name: argocd}
