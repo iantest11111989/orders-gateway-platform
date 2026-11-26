@@ -17,7 +17,7 @@ kubectl -n <namespace> get analysisruns --sort-by=.metadata.creationTimestamp
 kubectl -n <namespace> describe analysisrun <the newest one>          # which metric failed, with its values
 ```
 
-The **Argo Rollouts** dashboard in Grafana shows the same: **Recent analysis runs** and **Analysis metrics** (which of `error-ratio` or `p99-latency` failed). In Loki, `{namespace="<namespace>"} | json | level="ERROR"` shows the canary's failing requests, with their `version`.
+The **Argo Rollouts** dashboard in Grafana shows the same: **Recent analysis runs** and **Analysis metrics** (which of `error-ratio` or `p99-latency` failed). In Loki, `{namespace="<namespace>", app="app"} | json | level="error"` shows the canary's failing requests, with their `version` (the app writes `level` in lowercase).
 
 ## Fix
 
