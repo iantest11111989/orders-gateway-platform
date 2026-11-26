@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Scans an app image for known vulnerabilities with Trivy and fails on any
-# HIGH or CRITICAL one that has a fix available (decision 0016).
+# HIGH or CRITICAL one that has a fix available.
 # Exit status: 0 clean, 3 findings, anything else a scanner error (registry
 # or DB download), so callers can tell an outage from a real finding. CI runs it in
 # the app's CI and CD workflows: on pull requests against the image the PR builds, and on

@@ -1,14 +1,14 @@
 # Trivy Operator chart values (gitops/apps/templates/trivy-operator.yaml).
-# Decision 0021. Sized for the 6 CPU / 12 GiB budget: the vulnerability DB
+# Sized for the 6 CPU / 12 GiB budget: the vulnerability DB
 # lives once in the built-in Trivy server, and only one scan Job runs at a time.
 
 operator:
   scanJobsConcurrentLimit: 1
   scanJobTimeout: 10m
-  # Running images and workload configuration, as the brief asks. The rest is
+  # Running images and workload configuration. The rest is
   # off to save CPU and memory: RBAC and node (infra) assessments, the
   # compliance reports, secrets baked into images, and SBOM reports (the app's
-  # SBOM is in its image index, decision 0013).
+  # SBOM is in its image index).
   vulnerabilityScannerEnabled: true
   configAuditScannerEnabled: true
   rbacAssessmentScannerEnabled: false
@@ -54,7 +54,7 @@ trivy:
   image:
     registry: docker.io
     repository: aquasec/trivy
-  # Same gate as CI (decision 0016): report everything, but the dashboards and
+  # Same gate as CI: report everything, but the dashboards and
   # alerts care about fixable HIGH/CRITICAL.
   severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
   # Scan Jobs are clients of the server: no DB in memory. No CPU limit: Helm

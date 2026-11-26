@@ -1,6 +1,6 @@
 # Images may come only from this repo's GHCR namespace and the upstream
 # registries the platform's pinned charts use. The list comes from every
-# image running on a full cluster (decision 0012).
+# image running on a full cluster.
 # localhost/orders-gateway:<tag> is the app built on the host and loaded
 # into kind by the README's "ship a new version" (no registry involved). Only
 # that one name, with a tag: not all of localhost/. verify-image-signatures

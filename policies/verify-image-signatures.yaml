@@ -1,6 +1,6 @@
 # The app image must carry a keyless cosign signature from this repo's app
-# workflow on main (decision 0013), so only reviewed code can run. Enforced
-# (decision 0022). Other images (third-party charts) aren't matched.
+# workflow on main, so only reviewed code can run. Enforced (Deny).
+# Other images (third-party charts) aren't matched.
 apiVersion: policies.kyverno.io/v1
 kind: ImageValidatingPolicy
 metadata:
@@ -12,8 +12,7 @@ metadata:
       app workflow on main (keyless cosign, GitHub OIDC).
 spec:
   validationActions: [Deny]
-  # One Kyverno replica: a Kyverno outage must not block every orders pod
-  # (decision 0022).
+  # One Kyverno replica: a Kyverno outage must not block every orders pod.
   failurePolicy: Ignore
   evaluation:
     background:
@@ -48,5 +47,4 @@ spec:
     - expression: >-
         images.containers.map(image, verifyImageSignatures(image, [attestors.cosign])).all(e, e > 0)
       message: >-
-        The orders-gateway image must be signed by the app's CD workflow on main
-        (see docs/decisions/0013-image-signing.md).
+        The orders-gateway image must be signed by the app's CD workflow on main.

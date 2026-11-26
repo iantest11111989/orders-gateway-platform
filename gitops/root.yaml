@@ -1,7 +1,7 @@
 # Root Application (app-of-apps). ./platform up applies this once. It renders
 # the gitops/apps Helm chart, where each template is one child Application.
 # For forks and branches, up.sh sets repoURL/targetRevision here and the
-# repo.* values, which every child uses (see decision 0005).
+# repo.* values, which every child uses.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

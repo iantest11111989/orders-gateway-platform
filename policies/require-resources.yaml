@@ -1,6 +1,6 @@
 # Every container declares CPU and memory requests and a memory limit, so the
 # scheduler can place it and one leak can't take a node down. CPU limits are
-# not required: they throttle without protecting anything (decision 0012).
+# not required: they throttle without protecting anything.
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:

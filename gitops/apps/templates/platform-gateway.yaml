@@ -7,7 +7,6 @@
 # failed with 'namespaces "monitoring" not found' and only got through on
 # retries that happened to outlast wave 20's start. Nothing before wave 40
 # (the apps) needs the Gateway.
-# See decision 0008.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -17,8 +16,8 @@ metadata:
     app.kubernetes.io/part-of: orders-gateway-platform
   annotations:
     argocd.argoproj.io/sync-wave: "25"
-  # Pruning or deleting this Application also deletes what it created
-  # (decision 0031); without it, a rename orphaned the old resources (#77).
+  # Pruning or deleting this Application also deletes what it created;
+  # without it, a rename orphaned the old resources.
   finalizers: [resources-finalizer.argocd.argoproj.io]
 spec:
   project: default

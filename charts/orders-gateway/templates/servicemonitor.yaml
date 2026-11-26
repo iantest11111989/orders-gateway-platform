@@ -24,7 +24,7 @@ spec:
       interval: {{ .Values.serviceMonitor.interval }}
       # Unknown paths (scanners, typos) arrive with their raw path as
       # `route`. Keep only the app's own routes, so they can't explode
-      # cardinality (decision 0027); they stay in the logs. Dropped, not
+      # cardinality; they stay in the logs. Dropped, not
       # renamed: renaming would collide series within one scrape.
       metricRelabelings:
         - sourceLabels: [__name__, route]

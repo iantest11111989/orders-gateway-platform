@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ./platform ship [--env ENV] [TAG] / ./platform rollback [--env ENV]: ship a
-# new version of the app, or roll back the last one, by Git change (decision
-# 0030). ENV defaults to prod.
+# new version of the app, or roll back the last one, by Git change. ENV
+# defaults to prod.
 #
 #   ship      build app/ as localhost/orders-gateway:TAG (default
 #             local-YYYYMMDD-HHMMSS), load it into every kind node, point
@@ -14,7 +14,7 @@
 # normal file change you can see, commit or revert. Not `kubectl rollout
 # undo` or `kubectl set image`: Argo CD's self-heal would put Git's version
 # back within seconds.
-# Needs the default in-stack mode (decision 0029). In GitHub mode, commit the
+# Needs the default in-stack mode. In GitHub mode, commit the
 # values change and push it to GitHub instead. Runs in the toolbox.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -90,7 +90,7 @@ roll_out() { # push the checkout, then wait for the Deployment
 case "$cmd" in
   ship)
     tag=${1:-local-$(date -u +%Y%m%d-%H%M%S)}
-    [[ $tag != latest ]] || die "pick a real tag: :latest is refused in the app namespaces (decision 0022)"
+    [[ $tag != latest ]] || die "pick a real tag: :latest is refused in the app namespaces"
     step "Building app/ as $LOCAL_REPO:$tag"
     docker build -q -t "$LOCAL_REPO:$tag" --build-arg "VERSION=$tag" "$ROOT/app" >/dev/null
     ok "built"

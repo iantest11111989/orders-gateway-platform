@@ -1,6 +1,6 @@
 # DEMO ONLY: the Sealed Secrets private key, committed on purpose so every
-# fresh cluster (a laptop, CI) can unseal the SealedSecrets in this repo
-# (decision 0002). Anyone with this repo can decrypt them, so they must
+# fresh cluster (a laptop, CI) can unseal the SealedSecrets in this repo.
+# Anyone with this repo can decrypt them, so they must
 # never hold a real secret. A real deployment keeps the key out of Git
 # (backed up offline) or uses External Secrets with a vault.
 # The only plain Secret allowed in this repo (scripts/check-no-plain-secrets.sh).

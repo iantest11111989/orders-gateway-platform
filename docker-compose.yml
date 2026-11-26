@@ -2,7 +2,7 @@
 #
 # Compose is only the outer shell: the one service that does the work, `ready`,
 # runs the toolbox (every pinned tool) and bootstraps a kind cluster in which
-# Argo CD installs everything else from Git (decision 0026). Its healthcheck
+# Argo CD installs everything else from Git. Its healthcheck
 # passes only when every Argo CD Application is Synced and Healthy and prod is
 # serving, so `--wait` returns when the platform is really up.
 #
@@ -89,7 +89,7 @@ services:
       interval: 30s
       timeout: 25s
       retries: 3
-      # A cold start pulls about 60 images; the brief allows 15 minutes.
+      # A cold start pulls about 60 images; allow 15 minutes.
       start_period: 20m
       start_interval: 10s
 

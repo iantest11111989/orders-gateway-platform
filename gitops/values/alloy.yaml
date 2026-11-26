@@ -3,7 +3,7 @@
 # Kubernetes API (loki.source.kubernetes), so it needs no host paths and runs
 # as a non-root user under Pod Security "restricted".
 #
-# Loki labels are kept to four, as the brief asks (low cardinality):
+# Loki labels are kept to four (low cardinality):
 #   namespace  the pod's namespace
 #   app        app.kubernetes.io/name, else app, else k8s-app, else component
 #   env        the pod's env label (dev/staging/prod), else "platform"

@@ -6,7 +6,7 @@ set -euo pipefail
 
 CLUSTER_NAME=ogp
 KIND_CONFIG=cluster/kind.yaml
-# Budget for the whole stack (brief, section 3).
+# Budget for the whole stack.
 BUDGET_CPUS=6
 BUDGET_MEM_GB=12
 # Per kind node container cap: 3 nodes x 2 CPU / 4 GiB = the budget.

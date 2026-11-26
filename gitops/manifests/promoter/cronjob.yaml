@@ -1,5 +1,5 @@
 # One promoter pass every 10 minutes (scripts/promoter.py run). Dry run until
-# the owner creates Secret promoter-github (docs/decisions/0024).
+# the owner creates Secret promoter-github.
 apiVersion: batch/v1
 kind: CronJob
 metadata:

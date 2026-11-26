@@ -4,7 +4,7 @@
 # (gitops/manifests/sealed-secrets/demo-cert.pem), so no cluster is needed.
 # Runs in the toolbox (kubeseal, kubectl):
 #   ./platform shell scripts/seal.sh monitoring grafana-admin admin-user=admin admin-password=...
-# Output goes to stdout; commit it under gitops/manifests/. Decision 0018.
+# Output goes to stdout; commit it under gitops/manifests/.
 # DEMO ONLY: the matching private key is committed too, so these values are
 # readable by anyone with the repo.
 set -euo pipefail

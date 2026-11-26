@@ -1,7 +1,7 @@
 {{- if .Values.rollout.enabled }}
 {{- $a := .Values.rollout.analysis }}
 {{- $pod := printf "namespace=%q, rollouts_pod_template_hash=\"{{args.canary-hash}}\"" .Release.Namespace }}
-{{- /* The SLIs of decision 0027: availability on /work and /echo, latency on
+{{- /* The two SLIs: availability on /work and /echo, latency on
      /echo and /version (/work's latency is chosen by the caller). */ -}}
 {{- $sel := printf "%s, route=~\"/work|/echo\"" $pod }}
 {{- $fast := printf "%s, route=~\"/echo|/version\"" $pod }}

@@ -1,7 +1,7 @@
 # cert-manager issues the demo CA and the *.localtest.me certificate
 # (gitops/manifests/gateway/). Values: gitops/values/cert-manager.yaml.
 # Wave 10 (controllers). Its CRDs ship with the chart (crds.enabled), so it
-# has no separate CRD Application. See decision 0008.
+# has no separate CRD Application.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

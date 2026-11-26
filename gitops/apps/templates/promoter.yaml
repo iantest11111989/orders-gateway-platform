@@ -1,4 +1,4 @@
-# The patch promoter (gitops/manifests/promoter, decision 0024): merges
+# The patch promoter (gitops/manifests/promoter): merges
 # patch-only promotion PRs once the environment before has soaked for an hour
 # with its SLO met, and keeps a light trickle of requests flowing so that soak
 # means something (and the dashboards show traffic). The promoter itself runs
@@ -13,8 +13,8 @@ metadata:
     app.kubernetes.io/part-of: orders-gateway-platform
   annotations:
     argocd.argoproj.io/sync-wave: "45"
-  # Pruning or deleting this Application also deletes what it created
-  # (decision 0031); without it, a rename orphaned the old resources (#77).
+  # Pruning or deleting this Application also deletes what it created;
+  # without it, a rename orphaned the old resources.
   finalizers: [resources-finalizer.argocd.argoproj.io]
 spec:
   project: default
