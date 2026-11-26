@@ -16,4 +16,4 @@ What's protected, and what isn't:
 - Charts are pulled by version tag (Argo CD has no digest pin for Helm OCI charts). `./pipeline` never re-publishes a version and deletes are off, but the registry has no login: anything in the cluster, or anyone with `kubectl port-forward`, could push over a tag. Fine for a local practice cluster; production uses a registry with access control and immutable tags.
 - The versions a fresh cluster builds at `./platform up` (0.1.0) run by tag until their first `./pipeline cd`.
 
-In production the registry is ECR (or GHCR) and CI publishes: see `docs/ci-cd-in-production.md`.
+In production the registry is ECR (or GHCR) and CI publishes: see `docs/production.md`.
