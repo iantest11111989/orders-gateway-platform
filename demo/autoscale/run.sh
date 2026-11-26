@@ -21,6 +21,8 @@ hpa_replicas() { kubectl -n "$NS" get hpa orders-gateway -o jsonpath='{.status.c
 # call it directly, not in $(...)).
 narrate_hpa() { # narrate_hpa <test: ge N | le N> <timeout s>
   local op=$1 want=$2 deadline=$(( $(date +%s) + $3 )) last='' line n
+  show "kubectl -n $NS get hpa orders-gateway -o json   # current/desired replicas and CPU"
+  note "every 5 s, one line per change"
   while :; do
     line=$(hpa_line); n=$(hpa_replicas); n=${n:-0}
     [ "$n" -gt "${PEAK:-0}" ] && PEAK=$n
@@ -46,8 +48,11 @@ demo_autoscale() {
   delete_app
   create_app orders-gateway-prod v1
   wait_healthy v1 600
-  min=$(kubectl -n "$NS" get hpa orders-gateway -o jsonpath='{.spec.minReplicas}')
-  max=$(kubectl -n "$NS" get hpa orders-gateway -o jsonpath='{.spec.maxReplicas}')
+  run kubectl -n "$NS" get hpa orders-gateway
+  min=$(get kubectl -n "$NS" get hpa orders-gateway -o jsonpath='{.spec.minReplicas}')
+  max=$(get kubectl -n "$NS" get hpa orders-gateway -o jsonpath='{.spec.maxReplicas}')
+  run kubectl -n "$NS" get deployment orders-gateway -o jsonpath='{.spec.template.spec.containers[0].resources}{"\n"}'
+  note "the HPA's CPU % is of the 100m request above"
   ok "HPA $NS/orders-gateway scales the Deployment between $min and $max pods on CPU"
   start_load "$rate"
   where_to_watch
@@ -57,6 +62,8 @@ demo_autoscale() {
   PEAK=0
   narrate_hpa ge "$max" 420
   echo "  Pods (name, node, zone, phase):" >&2; show_pods
+  run kubectl -n "$NS" top pods -l app.kubernetes.io/name=orders-gateway || true
+  run kubectl -n "$NS" describe hpa orders-gateway
   k6_summary
   [ "$PEAK" -gt "$min" ] || die "the HPA didn't scale up (still $PEAK pods); try a higher AUTOSCALE_RATE"
   if [ "$HPA_RESULT" = reached ]; then ok "scaled $min -> $PEAK pods under load"

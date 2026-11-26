@@ -13,8 +13,9 @@ demo_gitops_revert() {
   echo "  \`git revert\` and Argo CD heals it. Nothing is changed by hand in the"
   echo "  cluster. Takes about 5 minutes."
   local repo base branch work remote
-  repo=$(kubectl -n argocd get applications.argoproj.io root -o jsonpath='{.spec.source.repoURL}')
-  base=$(kubectl -n argocd get applications.argoproj.io root -o jsonpath='{.spec.source.targetRevision}')
+  repo=$(get kubectl -n argocd get applications.argoproj.io root -o jsonpath='{.spec.source.repoURL}')
+  base=$(get kubectl -n argocd get applications.argoproj.io root -o jsonpath='{.spec.source.targetRevision}')
+  note "the Git repo and branch Argo CD deploys from (the in-stack Git server)"
   [ "$repo" = "$IN_STACK" ] || die "Argo CD syncs from $repo, not the in-stack Git server: run ./platform up, which points it back at this checkout"
   instack_remote; remote=$INSTACK_REMOTE
   branch="demo/gitops-revert-$(date -u +%Y%m%d-%H%M%S)"
@@ -22,9 +23,9 @@ demo_gitops_revert() {
   DEMO_BRANCH=$branch DEMO_REPO=$remote
 
   step "Creating $branch in $repo (from $base)"
-  gitauth clone -q --depth 5 --branch "$base" "$remote" "$work"
-  git -C "$work" -c user.name="orders-gateway demo" -c user.email="demo@localhost" switch -q -c "$branch"
-  gitauth -C "$work" push -q origin "$branch"
+  run gitauth clone --depth 5 --branch "$base" "$remote" "$work"
+  run git -C "$work" switch -c "$branch"
+  run gitauth -C "$work" push origin "$branch"
   ok "pushed $branch"
 
   delete_app
@@ -35,17 +36,22 @@ demo_gitops_revert() {
   narrate_git "$(git -C "$work" rev-parse HEAD)" 30 300
 
   step "Committing a bad config change to $branch"
-  yq -i '.config.faultErrorRate = 0.3' "$work/cd/orders-gateway/dev.yaml"
-  git -C "$work" -c user.name="orders-gateway demo" -c user.email="demo@localhost" \
-    commit -q -am "demo: FAULT_ERROR_RATE 0.3 in dev (30% of requests fail)"
-  gitauth -C "$work" push -q origin "$branch"
+  run yq -i '.config.faultErrorRate = 0.3' "$work/cd/orders-gateway/dev.yaml"
+  note "the chart turns config.faultErrorRate into the app's FAULT_ERROR_RATE env var (an app setting, no code change)"
+  run git -C "$work" --no-pager diff
+  run git -C "$work" -c user.name="orders-gateway demo" -c user.email="demo@localhost" \
+    commit -am "demo: FAULT_ERROR_RATE 0.3 in dev (30% of requests fail)"
+  run gitauth -C "$work" push origin "$branch"
   ok "pushed $(git -C "$work" log -1 --format='%h %s')"
   narrate_git "$(git -C "$work" rev-parse HEAD)" 60 400
   bad=$(error_ratio)
+  run curl -s -o /dev/null -w '%{http_code}\n' -X POST -d '{}' "$URL/echo"
+  note "some requests now answer 500 (30% of /work and /echo)"
 
   step "Reverting it in Git"
-  git -C "$work" -c user.name="orders-gateway demo" -c user.email="demo@localhost" revert --no-edit HEAD >/dev/null
-  gitauth -C "$work" push -q origin "$branch"
+  run git -C "$work" -c user.name="orders-gateway demo" -c user.email="demo@localhost" revert --no-edit HEAD
+  run git -C "$work" --no-pager show --format='%h %s' HEAD
+  run gitauth -C "$work" push origin "$branch"
   ok "pushed $(git -C "$work" log -1 --format='%h %s')"
   narrate_git "$(git -C "$work" rev-parse HEAD)" 70 400
   good=$(error_ratio)

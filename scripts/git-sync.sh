@@ -69,6 +69,9 @@ else
   commit=$(GIT_AUTHOR_NAME="platform-demo bootstrap" GIT_AUTHOR_EMAIL="bootstrap@localhost" \
     GIT_COMMITTER_NAME="platform-demo bootstrap" GIT_COMMITTER_EMAIL="bootstrap@localhost" \
     g commit-tree "$tree" ${parent:+-p "$parent"} -m "Snapshot of the checkout ($origin)")
+  showcmd "git add -A && git write-tree   # git --git-dir=<temp> --work-tree=<checkout>: your own .git isn't touched"
+  showcmd "git commit-tree $tree${parent:+ -p ${parent:0:12}} -m 'Snapshot of the checkout ($origin)'"
+  showcmd "git push $remote ${commit:0:12}:refs/heads/main"
   g push -q "$remote" "$commit:refs/heads/main" ||
     die "push to the in-stack Git server refused; if its admin key changed, reset it: kubectl -n git delete secret git-admin, then run ./platform up again"
   ok "pushed ${commit:0:12}: snapshot of $origin"
