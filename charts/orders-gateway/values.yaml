@@ -6,7 +6,7 @@ env: dev
 
 image:
   repository: ghcr.io/iantest11111989/orders-gateway
-  # Required. A sha-<12> tag from CI (or a demo tag: v1, v2, v2-bad).
+  # Required. A sha-<12> tag from CI (or a demo tag: v1, v2).
   # Promotion between environments changes only this line.
   tag: ""
   # Optional sha256:... digest. When set, the pod runs repository@digest,
@@ -18,8 +18,7 @@ image:
 replicas: 1
 
 # App settings: the environment variables server.js reads. FAULT_* are left
-# unset unless given here, so an image's own defaults (the v2-bad demo)
-# still apply; startupDelayMs unset keeps the app's 3 s warm-up.
+# unset unless given here, so the app's own defaults (no faults) apply; startupDelayMs unset keeps the app's 3 s warm-up.
 config:
   faultErrorRate: null
   faultLatencyMs: null
@@ -71,31 +70,6 @@ networkPolicy:
   enabled: true
   gatewayNamespace: envoy-gateway-system
   monitoringNamespace: monitoring
-
-# Canary releases with Argo Rollouts (prod). The Deployment stays the source
-# of truth; a Rollout points at it (workloadRef), scales it to zero and runs
-# the pods itself, shifting traffic through the HTTPRoute's backend weights.
-# At each step an AnalysisTemplate checks the canary pods against the SLO.
-rollout:
-  enabled: false
-  steps:
-    - setWeight: 10
-    - analysis: {}
-    - setWeight: 25
-    - analysis: {}
-    - setWeight: 50
-    - analysis: {}
-  analysis:
-    prometheusAddress: http://kube-prometheus-stack-prometheus.monitoring.svc:9090
-    # Wait for the canary to fill the queries' 1-minute rate window first,
-    # so the first measurement has real samples.
-    initialDelay: 60s
-    interval: 30s
-    count: 4          # 4 measurements (2 minutes) per analysis step
-    failureLimit: 1   # a second failed measurement aborts and rolls back
-    inconclusiveLimit: 1  # a second no-data measurement pauses for a human
-    maxErrorRatio: 0.005        # SLO: 99.5% of /work and /echo non-5xx
-    maxP99LatencySeconds: 0.25  # SLO: /echo and /version under 250 ms (the app has no 0.3 bucket)
 
 # preStop sleep (5 s, so endpoints drop the pod before it stops accepting)
 # + the app's own 25 s hard exit after SIGTERM + margin.

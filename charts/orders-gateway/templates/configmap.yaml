@@ -6,8 +6,7 @@ metadata:
     {{- include "orders-gateway.labels" . | nindent 4 }}
 data:
   {{- /* Only the settings that are set (not null). Not `with`: it skips 0,
-       so faultErrorRate: 0 couldn't switch off the v2-bad image's built-in
-       FAULT_ERROR_RATE=0.1, and startupDelayMs: 0 was ignored. */}}
+       so faultErrorRate: 0 or startupDelayMs: 0 would be dropped. */}}
   {{- range $key, $env := dict "faultErrorRate" "FAULT_ERROR_RATE" "faultLatencyMs" "FAULT_LATENCY_MS" "startupDelayMs" "STARTUP_DELAY_MS" }}
   {{- $v := index $.Values.config $key }}
   {{- if not (kindIs "invalid" $v) }}

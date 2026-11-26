@@ -8,7 +8,7 @@ One `values.yaml` per environment. Each overrides `charts/orders-gateway/values.
 | Replicas | 1 | 2 | 3, HPA up to 6 on CPU |
 | PDB and topology spread | no | yes | yes |
 | URL | https://orders.dev.localtest.me | https://orders.staging.localtest.me | https://orders.localtest.me |
-| Deploy | automatic on merge to main (CI) | promotion PR the owner approves | promotion PR the owner approves; canary |
+| Deploy | automatic on merge to main (CI) | promotion PR the owner approves | promotion PR the owner approves |
 
 Try it (inside `./platform shell`, or from the host with the demo CA):
 
