@@ -23,7 +23,7 @@ for env in dev staging prod; do
     die "helm lint failed for $env"
   # helm template leaves metadata.namespace unset; Argo CD applies into the
   # Application's namespace, so set it (the policies match on namespace).
-  helm template app helm/orders-gateway -f cd/orders-gateway/values.yaml -f "cd/orders-gateway/$env.yaml" --namespace "$env" |
+  helm template orders-gateway helm/orders-gateway -f cd/orders-gateway/values.yaml -f "cd/orders-gateway/$env.yaml" --namespace "$env" |
     NS="$env" yq '(select(.metadata.namespace == null) | .metadata.namespace) = strenv(NS)' >"$OUT/app-$env.yaml"
   ok "$env: $(grep -c '^kind:' "$OUT/app-$env.yaml") objects"
 done

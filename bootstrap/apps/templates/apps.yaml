@@ -6,7 +6,8 @@
      unset, so every environment renders. */}}
 # The apps: one Application per app and environment, <app>-<env> (e.g.
 # orders-gateway-staging), generated from each env file cd/<app>/<env>.yaml.
-# The app runs in the namespace of the same name as the environment.
+# The app runs in the namespace of the same name as the environment, as Helm
+# release <app>, so every object it makes is named <app>.
 # - The env file pins a published version (version: X, by ./pipeline cd):
 #   the chart <app> X from the in-stack registry, with
 #   cd/<app>/values.yaml + <env>.yaml from Git.
@@ -71,6 +72,10 @@ spec:
             pod-security.kubernetes.io/audit: restricted
         syncOptions:
           - CreateNamespace=true
+          # Remove what Git no longer has only after everything else is
+          # synced and healthy: renaming an object (app -> orders-gateway)
+          # never leaves the environment without one.
+          - PruneLast=true
   templatePatch: |
     {{`{{- $app := .path.basename }}
     {{- $values := printf "%s/values.yaml" .path.path }}
@@ -98,7 +103,7 @@ spec:
           chart: {{`'{{ $app }}'`}}
           targetRevision: {{`'{{ .version }}'`}}
           helm:
-            releaseName: app
+            releaseName: {{`'{{ $app }}'`}}
             valueFiles:
               - {{`'$values/{{ $values }}'`}}
               - {{`'$values/{{ $env }}'`}}
@@ -111,7 +116,7 @@ spec:
           targetRevision: {{ .Values.repo.revision }}
           path: {{`'helm/{{ $app }}'`}}
           helm:
-            releaseName: app
+            releaseName: {{`'{{ $app }}'`}}
             valueFiles:
               - {{`'../../{{ $values }}'`}}
               - {{`'../../{{ $env }}'`}}

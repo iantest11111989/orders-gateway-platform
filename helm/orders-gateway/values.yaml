@@ -39,6 +39,12 @@ ingress:
   enabled: true
   className: traefik
   entrypoint: dev
+  # Hostnames that reach the app on its entrypoint, e.g.
+  # orders-gateway.localhost (any *.localhost resolves to 127.0.0.1).
+  hosts: []
+  # Also the app for requests without a matching host (plain
+  # localhost:<port>). One app per entrypoint.
+  default: false
 
 autoscaling:
   enabled: false

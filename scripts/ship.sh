@@ -28,8 +28,8 @@ source "$(dirname "$0")/lib.sh"
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 IN_STACK=http://git.git.svc.cluster.local:23232/platform.git
 APP=${APP:-orders-gateway}
-# The app's Deployment in each environment's namespace.
-DEPLOYMENT=${DEPLOYMENT:-app}
+# The app's Deployment in each environment's namespace: named after the app.
+DEPLOYMENT=${DEPLOYMENT:-$APP}
 REPO=localhost:30500/$APP
 
 cmd=${1:-}; shift || true

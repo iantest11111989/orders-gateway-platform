@@ -11,6 +11,10 @@ image:
 # Traefik serves every environment (system/traefik/values.yaml).
 ingress:
   className: traefik
+  # http://orders-gateway.localhost:<port>, and plain http://localhost:<port>
+  # (prod 8080, dev 8082, staging 8083).
+  hosts: [orders-gateway.localhost]
+  default: true
 
 # staging and prod keep a pod up through node drains and spread over nodes
 # and zones; dev, with one pod, turns both off.
