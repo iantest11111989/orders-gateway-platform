@@ -9,6 +9,9 @@
 #   - SIGTERM drains: an in-flight request finishes with 200, /readyz turns
 #     503, and the process exits 0 well inside the 35 s grace period
 # Usage: scripts/smoke-test-image.sh <image>   (expects VERSION=ci baked in)
+# `check && ok ... || bad ...` is safe here: ok only prints, so it never
+# fails and bad can't run after ok.
+# shellcheck disable=SC2015
 set -euo pipefail
 IMAGE=${1:?usage: $0 <image>}
 NAME=smoke-$$
