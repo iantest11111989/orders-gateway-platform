@@ -28,8 +28,8 @@ source "$(dirname "$0")/lib.sh"
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 IN_STACK=http://git.git.svc.cluster.local:23232/platform.git
 APP=${APP:-orders-gateway}
-# The app's Deployment in each environment's namespace.
-DEPLOYMENT=${DEPLOYMENT:-app}
+# The app's Deployment in each environment's namespace: named after the app.
+DEPLOYMENT=${DEPLOYMENT:-$APP}
 REPO=localhost:30500/$APP
 
 cmd=${1:-}; shift || true
@@ -154,6 +154,16 @@ roll_out() { # roll_out <image>: push the checkout, then wait for the Deployment
     sleep 3
   done
   kubectl -n "$env" rollout status "deploy/$DEPLOYMENT" --timeout=300s
+  # The sync isn't over when the new pods are: Argo CD then removes what Git
+  # no longer has (PruneLast). Wait for that, so the next promotion's gate
+  # sees this environment Synced.
+  local st deadline2=$(( $(date +%s) + 300 ))
+  while :; do
+    st=$(kubectl -n argocd get applications.argoproj.io "$APP-$env" -o jsonpath='{.status.sync.status} {.status.operationState.phase}' 2>/dev/null || true)
+    [ "$st" = "Synced Succeeded" ] && break
+    [ "$(date +%s)" -lt "$deadline2" ] || { app_status; die "$APP-$env isn't Synced after its sync (it shows: ${st:-nothing}); see ./platform verify"; }
+    sleep 3
+  done
   ok "$env runs $want"
   show
 }

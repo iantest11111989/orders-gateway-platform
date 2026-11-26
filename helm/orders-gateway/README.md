@@ -1,6 +1,6 @@
 # helm/orders-gateway
 
-Helm chart for `orders-gateway` (the app in `apps/orders-gateway/`). Each environment installs it with `cd/orders-gateway/values.yaml` plus its own file from `cd/orders-gateway/`, through an Argo CD Application (`bootstrap/apps/templates/orders-gateway-<env>.yaml`).
+Helm chart for `orders-gateway` (the app in `apps/orders-gateway/`). Every object is named after the Helm release, which Argo CD sets to the app's name (`orders-gateway`); its Ingresses route `ingress.hosts` (e.g. `orders-gateway.localhost`) and, with `ingress.default: true`, plain `localhost:<port>`. Each environment installs it with `cd/orders-gateway/values.yaml` plus its own file from `cd/orders-gateway/`, through an Argo CD Application (`bootstrap/apps/templates/orders-gateway-<env>.yaml`).
 
 | Template | Always | What |
 | --- | --- | --- |

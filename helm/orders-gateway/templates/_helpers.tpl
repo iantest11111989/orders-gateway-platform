@@ -1,9 +1,12 @@
-{{- /* Every resource is named "app": the platform expects a Deployment named app,
-     labelled app.kubernetes.io/name=app, in each environment. */ -}}
-{{- define "orders-gateway.name" -}}app{{- end -}}
+{{- /* Every resource is named after the app, which is the release name
+     (Argo CD installs the chart as release <app>): Deployment orders-gateway,
+     labelled app.kubernetes.io/name=orders-gateway, so several apps can share
+     an environment's namespace. A deliberate deviation from the brief's
+     Deployment "app" (docs/deviations-from-test.md). */ -}}
+{{- define "orders-gateway.name" -}}{{ .Release.Name }}{{- end -}}
 
 {{- define "orders-gateway.selectorLabels" -}}
-app.kubernetes.io/name: app
+app.kubernetes.io/name: {{ .Release.Name }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 

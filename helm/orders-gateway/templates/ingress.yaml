@@ -1,7 +1,11 @@
 {{- if .Values.ingress.enabled }}
+{{- if not (or .Values.ingress.hosts .Values.ingress.default) }}{{ fail "ingress needs ingress.hosts or ingress.default: true" }}{{ end }}
 {{- $name := include "orders-gateway.name" . }}
 {{- /* Two Ingresses on the same Traefik entrypoint: everything goes to the app,
      except /admin/*, which goes through a deny-all IPAllowList and gets a 403.
+     Each takes a rule per host in ingress.hosts (e.g. orders-gateway.localhost),
+     plus one without a host when ingress.default is true: the app that plain
+     localhost:<port> reaches (one per entrypoint).
      The app's runtime fault switch (POST /admin/fault) has no auth, so it must
      only be reachable inside the cluster. Traefik ranks routers by rule length,
      so the longer /admin rule wins for /admin/*. */}}
@@ -13,9 +17,25 @@ metadata:
     {{- include "orders-gateway.labels" . | nindent 4 }}
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: {{ .Values.ingress.entrypoint }}
+    # After the Deployment is healthy (wave 0): a new or renamed app gets
+    # traffic only once its pods are ready.
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ . | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $name }}
+                port:
+                  name: http
+    {{- end }}
+    {{- if .Values.ingress.default }}
     - http:
         paths:
           - path: /
@@ -25,6 +45,7 @@ spec:
                 name: {{ $name }}
                 port:
                   name: http
+    {{- end }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -35,9 +56,23 @@ metadata:
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: {{ .Values.ingress.entrypoint }}
     traefik.ingress.kubernetes.io/router.middlewares: {{ .Release.Namespace }}-{{ $name }}-admin-deny@kubernetescrd
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ . | quote }}
+      http:
+        paths:
+          - path: /admin
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $name }}
+                port:
+                  name: http
+    {{- end }}
+    {{- if .Values.ingress.default }}
     - http:
         paths:
           - path: /admin
@@ -47,6 +82,7 @@ spec:
                 name: {{ $name }}
                 port:
                   name: http
+    {{- end }}
 ---
 # Allows no source address, so every request it sees gets 403 Forbidden.
 apiVersion: traefik.io/v1alpha1
