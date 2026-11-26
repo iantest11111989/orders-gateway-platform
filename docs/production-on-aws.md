@@ -12,6 +12,8 @@ Conventions: "**Recommend**" is the opinionated pick. "*(unsure)*" marks things 
 
 Production drops Docker Compose, kind and the in-stack Git server. Terraform builds an **AWS Organization with one account per environment** (dev, staging, prod), plus shared-services (ECR, CI roles, root DNS), a tooling account for the **Argo CD hub**, and the usual security and log-archive accounts. Each environment account has **its own VPC across 3 AZs** (public subnets for the load balancer and NAT, private subnets for nodes) and **its own EKS cluster**, with nodes on Graviton managed by **Karpenter**. One **Argo CD hub** in the tooling account reconciles every spoke cluster from GitHub. **ApplicationSets** generate one per-cluster copy of today's `gitops/apps` app-of-apps, so the sync-wave design in ADR 0005 survives. CI uses **GitHub OIDC to assume short-lived roles** (no AWS keys), pushes signed, immutable images to **ECR**, and promotes by Git change as it does today (ADRs 0014, 0015, 0024). Traffic enters through an **ALB with ACM certificates and WAF**, managed by the AWS Load Balancer Controller, and goes to **Envoy Gateway**, which keeps the Gateway API routes, the `/admin` 403 and the canary weights. **Route 53 records come from ExternalDNS**. Secrets come from **Secrets Manager through External Secrets**, encrypted with per-account KMS keys. **Datadog** replaces Prometheus, Loki, Alertmanager and Grafana for metrics, logs, APM, SLOs, monitors, dashboards and synthetics. The app keeps its Prometheus-format `/metrics`, which the Datadog Agent scrapes as OpenMetrics, so `app/server.js` stays unchanged. Prod finally runs the **Argo Rollouts canary**, with analysis driven by Datadog.
 
+The diagram shows the fully split layout, one account and cluster per environment. With the recommended shared non-prod cluster (§3.1), the dev and staging boxes are one account and one EKS cluster holding both namespaces.
+
 ```mermaid
 flowchart TB
   dev([Developer]) -->|PR| gh[(GitHub<br/>orders-gateway-platform)]
@@ -104,7 +106,7 @@ flowchart TB
   - 3 AZs. **Public** /24s hold only the ALB and the NAT gateways. **Private** /19s hold the nodes and pods. Add an **intra** /24 set (no route to the internet) for the EKS control-plane ENIs.
   - **VPC CNI with prefix delegation** for pod density. If IPs get tight, add a secondary 100.64.0.0/16 CIDR for pods (custom networking). It isn't needed at this scale.
   - **NAT:** one per AZ in prod (a single NAT is a single-AZ dependency for egress, including Datadog and image pulls), one shared in dev and staging. The sketch already does this (`one_nat_gateway_per_az = var.env == "prod"`).
-  - **VPC endpoints:** the S3 gateway endpoint everywhere (free; ECR layers come from S3). Interface endpoints for `ecr.api`, `ecr.dkr`, `sts`, `secretsmanager`, `kms`, `logs` and `ec2` **in prod only**. Each costs roughly $7–8 per AZ per month *(unsure: check the price)*, so ~7 endpoints × 3 AZs × 4 VPCs would be around $600/month. In dev and staging, NAT is cheaper. Consider **Datadog PrivateLink** in prod if it's available for the chosen Datadog site and region *(unsure: PrivateLink isn't offered for every site, and the EU1 site lives in GCP)*.
+  - **VPC endpoints:** the S3 gateway endpoint everywhere (free; ECR layers come from S3). Interface endpoints for `ecr.api`, `ecr.dkr`, `sts`, `secretsmanager`, `kms`, `logs` and `ec2` **in prod only**. Each costs roughly $7–8 per AZ per month *(unsure: check the price)*, so ~7 endpoints × 3 AZs in prod is about $150/month (it would be ~$600 with them in all four VPCs). In dev and staging, NAT is cheaper. Consider **Datadog PrivateLink** in prod if it's available for the chosen Datadog site and region *(unsure: PrivateLink isn't offered for every site, and the EU1 site lives in GCP)*.
   - **VPC Flow Logs** to the log-archive account's S3 (cheaper than CloudWatch). Only send samples to Datadog.
 - **Connectivity hub ↔ spokes:** a **Transit Gateway** in shared-services (or tooling), shared through RAM, attaching tooling and the three env VPCs. Route tables let tooling reach each spoke's **private** EKS endpoint, and spokes can't reach each other. This lets every cluster keep `endpoint_public_access = false`, as the sketch has it. Cheaper alternative: three VPC peerings, fine for four VPCs. TGW is ~$36/attachment/month plus data *(unsure)*. **Recommend peering now, TGW when a second region or more accounts arrive.**
 
@@ -117,7 +119,7 @@ flowchart TB
 ### 3.2 EKS and compute
 
 **Recommend:**
-- **One EKS cluster per env account, plus one hub cluster in tooling.** Private API endpoint. Access entries, not the `aws-auth` ConfigMap (the sketch already does this). Control-plane logs (`api`, `audit`, `authenticator`) to CloudWatch with 30-day retention, forwarded to Datadog only if Cloud SIEM is bought.
+- **Clusters: prod alone, one shared non-prod cluster for dev and staging (§3.1's joint recommendation), plus one hub cluster in tooling.** If staging is split out (open question 1), it's one cluster per environment account. Everything below applies to each cluster either way. Private API endpoint. Access entries, not the `aws-auth` ConfigMap (the sketch already does this). Control-plane logs (`api`, `audit`, `authenticator`) to CloudWatch with 30-day retention, forwarded to Datadog only if Cloud SIEM is bought.
 - **Compute: a small managed node group `system`** (2× `m7g.large`, Bottlerocket or AL2023 ARM, tainted `CriticalAddonsOnly`) for CoreDNS, Karpenter, LBC, ExternalDNS, ESO, Kyverno and the Datadog Cluster Agent. **Karpenter** NodePools provide the rest:
   - `apps`: on-demand in prod, Spot plus on-demand fallback in dev/staging, Graviton families `m7g`/`c7g`/`m8g`, consolidation `WhenEmptyOrUnderutilized`, disruption budgets restricted in prod business hours.
   - This replaces the sketch's fixed `platform` and `apps` node groups. Karpenter bin-packs better, and **Datadog bills per host**, so fewer, larger nodes save money twice (§11).
@@ -229,11 +231,12 @@ If the owner judges the hub-holds-prod risk too high, a sensible middle is **one
 
 **Recommend ALB → Envoy Gateway.** WAF in prod is non-negotiable, and Envoy keeps every Gateway API route, the `/admin` filter, the JSON access logs and the canary plugin already proven in ADR 0011. The ALB is created by LBC from a small `Ingress` (class `alb`) in `envoy-gateway-system`, with Envoy's Service as default backend (IP targets). Annotations:
 
-**claude_daddy's view: NLB → Envoy, with an ALB only if WAF is needed.** Envoy Gateway's `EnvoyProxy` Service becomes an internet-facing **NLB** through the AWS Load Balancer Controller (IP targets, cross-zone). TLS terminates **at Envoy**, with certificates from cert-manager and Let's Encrypt DNS-01 through Route 53. That keeps today's design closest: the same Gateway, listeners, HTTPRoutes, the `/admin` 403 filter and the path-normalising `ClientTrafficPolicy` (decision 0028), with one fewer hop. **Where we land:** both keep Envoy and every route. The only question is whether the edge needs AWS WAF, which only attaches to an ALB, CloudFront or API Gateway. A public `orders` API should have WAF (managed rule groups, rate limits, body-size limits), so **prod gets ALB → Envoy and non-prod can use NLB → Envoy**. If the owner decides prod doesn't need WAF, NLB everywhere is simpler.
 - `certificate-arn` (or ACM auto-discovery by host), `wafv2-acl-arn`, `ssl-policy` = a TLS 1.2/1.3 policy, `ssl-redirect`
 - `healthcheck-path` against Envoy's ready endpoint
 - `load-balancer-attributes: deletion_protection.enabled=true`, access logs to S3
 - `external-dns.alpha.kubernetes.io/hostname` for the record
+
+**claude_daddy's view: NLB → Envoy, with an ALB only if WAF is needed.** Envoy Gateway's `EnvoyProxy` Service becomes an internet-facing **NLB** through the AWS Load Balancer Controller (IP targets, cross-zone). TLS terminates **at Envoy**, with certificates from cert-manager and Let's Encrypt DNS-01 through Route 53. That keeps today's design closest: the same Gateway, listeners, HTTPRoutes, the `/admin` 403 filter and the path-normalising `ClientTrafficPolicy` (decision 0028), with one fewer hop. **Where we land:** both keep Envoy and every route. The only question is whether the edge needs AWS WAF, which only attaches to an ALB, CloudFront or API Gateway. A public `orders` API should have WAF (managed rule groups, rate limits, body-size limits), so **prod gets ALB → Envoy and non-prod can use NLB → Envoy**. If the owner decides prod doesn't need WAF, NLB everywhere is simpler.
 
 Envoy's `EnvoyProxy` (`gitops/manifests/gateway/envoyproxy.yaml`) becomes `ClusterIP` with `replicas: 3`, topology spread across AZs and a PDB (the README's "What we'd do next" #1). Watch out: the ALB's idle timeout (60 s) must stay **below** Envoy's and the app's keep-alive (`server.keepAliveTimeout = 65000` in server.js, so that already holds) to avoid 502s on reused connections.
 
@@ -427,7 +430,7 @@ What's stateful? **Almost nothing.** The app is stateless. Argo CD state is Git 
 Rough monthly baseline, eu-west-1, on-demand list prices, **all approximate and unsure**:
 | Item | Estimate |
 | --- | --- |
-| EKS control planes: 4 × ~$73 | ~$290 |
+| EKS control planes: 4 × ~$73 (dev, staging, prod, hub) | ~$290 |
 | Nodes: prod 2 system + ~2–3 apps (m7g.large ~$60 each), staging 2+2, dev 2+1 (Spot), hub 2 | ~$700–900 |
 | NAT: prod 3, others 1 each (~$35 each + $0.048/GB processed) | ~$210 + data |
 | ALB: dev/staging/prod public + hub internal (~$20 + LCU) | ~$100 |
@@ -435,6 +438,8 @@ Rough monthly baseline, eu-west-1, on-demand list prices, **all approximate and 
 | WAF: ACL + rules + requests | ~$20–50 |
 | Secrets Manager, KMS, Route 53, ECR storage, CloudTrail/Config/GuardDuty/Inspector/Security Hub | ~$100–200 |
 | **AWS subtotal** | **~$1.6–2k** |
+
+The table prices the fully split layout (one cluster per environment, as in the diagram in §1). With the recommended shared non-prod cluster (§3.1), drop one control plane, one set of system nodes, one NAT gateway and one ALB: about **$300–400 less**, so roughly **$1.3–1.6k** for AWS.
 | Datadog (§3.8) | ~$350–600+ |
 
 **Levers, in order of payoff:**
@@ -549,8 +554,8 @@ infra/
 - `cd-app.yml` dual-pushes GHCR and ECR, signing both. The demo tags move to a separate repo.
 - Kyverno policies accept both registries (in the local stack too, so CI keeps testing the policies).
 
-**Phase 2: hub + dev (2–3 weeks)**
-- Tooling and dev networks, the hub cluster with Argo CD HA + SSO, the dev cluster.
+**Phase 2: hub + the non-prod cluster, dev first (2–3 weeks)**
+- Tooling and non-prod networks, the hub cluster with Argo CD HA + SSO, the non-prod cluster with the `dev` namespace.
 - **Repo refactor:** `destination.server` and cluster values in `gitops/apps/templates/*`, the EKS values layer, the ApplicationSet, ESO/LBC/ExternalDNS/Karpenter Applications.
 - **Keep the kind path working.** The local root passes `cluster.server = https://kubernetes.default.svc`, so the compose stack and CI's cluster job still test the same templates.
 - The Datadog Operator in dev. Run it **in parallel with** kube-prometheus-stack in dev for a couple of weeks to check that the Datadog SLO numbers match the PromQL recording rules.
@@ -561,7 +566,7 @@ infra/
 - Promoter gates switched to the Datadog APIs.
 
 **Phase 4: staging + test series (2 weeks)**
-- The staging account and cluster. The canary on in staging.
+- Staging: the `staging` namespace in the non-prod cluster, or its own account and cluster if open question 1 splits it out. The canary on in staging.
 - PostSync smoke hooks, the k6 Operator nightly load, the weekly soak, the contract tests in PR CI, the alert fire drill, the first FIS game day.
 
 **Phase 5: prod (2 weeks + soak)**
