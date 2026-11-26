@@ -15,9 +15,48 @@
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$ROOT/scripts/lib.sh"
+# One output stream, so commands, their output and the narration stay in
+# order even when piped (docker keeps stdout and stderr apart without a tty).
+exec 2>&1
 
 APP=orders-gateway-demo NS=demo URL=http://localhost:8084
 K6_LOG=/tmp/demo-k6.log
+
+# --- showing the commands ----------------------------------------------------
+# Every command a demo runs against the cluster, Git or the app is printed
+# first ("$ kubectl ..."), and its output is shown indented below it. All of
+# it goes to stderr, so helpers whose stdout is captured stay clean.
+if [ -t 2 ]; then CMD=$'\e[36m' DIM=$'\e[2m' RST=$'\e[0m'; else CMD='' DIM='' RST=''; fi
+# qargs <args...>: the arguments as you'd type them, quoting only where needed.
+qargs() {
+  local a out=''
+  for a in "$@"; do
+    case $a in
+      '' | *[!A-Za-z0-9_./:=@,+%-]*) out+=" '${a//\'/\'\\\'\'}'" ;;
+      *) out+=" $a" ;;
+    esac
+  done
+  printf '%s' "${out# }"
+}
+show() { printf '  %s$ %s%s\n' "$CMD" "$*" "$RST" >&2; }  # show <command line as text>
+note() { printf '    %s# %s%s\n' "$DIM" "$*" "$RST" >&2; }  # a comment under a command
+indent() { sed 's/^/      /' >&2; }
+# run <cmd...>: show it, run it, show its output. Fails if the command fails.
+run() {
+  local shown=("$@")
+  [ "$1" != gitauth ] || shown[0]=git # gitauth is git with the in-stack server's key
+  show "$(qargs "${shown[@]}")"
+  "$@" 2>&1 | indent
+}
+# get <cmd...>: show it, run it, show its output and also return it on stdout,
+# for values a demo needs (x=$(get kubectl ...)).
+get() {
+  local out
+  show "$(qargs "$@")"
+  out=$("$@") || return
+  printf '%s\n' "$out" | indent
+  printf '%s\n' "$out"
+}
 
 # The demo's name is its folder; --keep is the only option.
 name=$(basename "$(cd "$(dirname "$0")" && pwd)")
@@ -49,7 +88,10 @@ create_app() { # create_app <source app> <image tag> [helm-param=value ...]
   # (Loki's env label) and metrics never pass for the real environment's.
   set -- env=demo "$@"
   step "Creating $APP: a copy of the $src Application, image $tag"
-  kubectl -n argocd get applications.argoproj.io "$src" -o json | jq --arg app "$APP" --arg ns "$NS" \
+  local manifest
+  show "kubectl -n argocd get applications.argoproj.io $src -o json | jq '<copy: name $APP, namespace $NS, entrypoint demo, image orders-gateway:$tag, $*>'"
+  note "the same chart (helm/orders-gateway) and values files as $src; only the fields above differ"
+  manifest=$(kubectl -n argocd get applications.argoproj.io "$src" -o json | jq --arg app "$APP" --arg ns "$NS" \
     --arg tag "$tag" --arg src "$src" --arg rev "${DEMO_REVISION:-}" --args '
     {apiVersion, kind,
      metadata: {name: $app, namespace: "argocd",
@@ -80,8 +122,11 @@ create_app() { # create_app <source app> <image tag> [helm-param=value ...]
                {name: "image.repository", value: "ghcr.io/iantest11111989/orders-gateway"},
                {name: "image.tag", value: $tag},
                {name: "image.digest", value: ""}]
-               + ($ARGS.positional | map(split("=") | {name: .[0], value: (.[1:] | join("="))})))}})}' "$@" |
-    kubectl apply -f - >/dev/null
+               + ($ARGS.positional | map(split("=") | {name: .[0], value: (.[1:] | join("="))})))}})}' "$@")
+  note "the Application it builds:"
+  yq -P <<<"$manifest" | indent
+  show "kubectl apply -f -   # the Application above"
+  kubectl apply -f - <<<"$manifest" 2>&1 | sed '/prefer a domain-qualified finalizer/d' | indent
   ok "Argo CD Application argocd/$APP (namespace $NS, $URL)"
 }
 
@@ -94,10 +139,13 @@ ensure_app() {
 
 set_image() { # set_image <tag>
   # Rewrites the image.tag parameter by name, whatever its position.
-  kubectl -n argocd get applications.argoproj.io "$APP" -o json |
-    jq --arg tag "$1" '.spec.source.helm.parameters |= map(if .name == "image.tag" then .value = $tag else . end)
-                       | {spec: {source: {helm: {parameters: .spec.source.helm.parameters}}}}' |
-    kubectl -n argocd patch applications.argoproj.io "$APP" --type merge --patch-file /dev/stdin >/dev/null
+  local patch
+  patch=$(kubectl -n argocd get applications.argoproj.io "$APP" -o json |
+    jq -c --arg tag "$1" '.spec.source.helm.parameters |= map(if .name == "image.tag" then .value = $tag else . end)
+                       | {spec: {source: {helm: {parameters: .spec.source.helm.parameters}}}}')
+  show "kubectl -n argocd patch applications.argoproj.io $APP --type merge -p '$patch'"
+  note "image.tag -> $1; Argo CD renders the chart again and updates the Deployment's image"
+  kubectl -n argocd patch applications.argoproj.io "$APP" --type merge -p "$patch" 2>&1 | indent
   ok "Git-equivalent change: $APP now wants orders-gateway:$1 (Argo CD syncs it, the Deployment rolls its pods)"
 }
 
@@ -105,6 +153,9 @@ current_tag() { kubectl -n argocd get applications.argoproj.io "$APP" -o json 2>
 
 wait_healthy() { # wait_healthy <tag> <timeout s>
   local deadline=$(( $(date +%s) + $2 )) s ready
+  show "kubectl -n argocd get applications.argoproj.io $APP -o jsonpath='{.status.sync.status}/{.status.health.status}'"
+  show "kubectl -n $NS get deployment orders-gateway -o json   # updated, ready and available replicas"
+  note "every 5 s until Synced/Healthy and every replica runs $1 (up to ${2}s)"
   while :; do
     s=$(kubectl -n argocd get applications.argoproj.io "$APP" -o jsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null || true)
     # every Deployment replica updated and available
@@ -123,7 +174,7 @@ wait_healthy() { # wait_healthy <tag> <timeout s>
 # policy demo's pods, fail with "being terminated").
 wait_ns_gone() {
   kubectl get namespace "$NS" >/dev/null 2>&1 || return 0
-  kubectl wait --for=delete "namespace/$NS" --timeout=180s >/dev/null 2>&1 ||
+  run kubectl wait --for=delete "namespace/$NS" --timeout=180s ||
     die "namespace $NS is still Terminating after 180 s (kubectl get namespace $NS -o yaml shows what's holding it)"
 }
 
@@ -132,13 +183,14 @@ delete_app() {
   # if it carries the demo=true label, so nothing else named demo is touched.
   if [ "$(kubectl -n argocd get applications.argoproj.io demo -o jsonpath='{.metadata.labels.demo}' 2>/dev/null)" = true ]; then
     step "Deleting the old demo copy (named demo, from before the rename)"
-    kubectl -n argocd delete applications.argoproj.io demo --wait=true --timeout=180s >/dev/null
+    run kubectl -n argocd delete applications.argoproj.io demo --wait=true --timeout=180s
   fi
   app_exists || { ok "no $APP to delete"; return 0; }
   local src; src=$(app_source)
   step "Deleting $APP (the Application and everything it created)"
-  kubectl -n argocd delete applications.argoproj.io "$APP" --wait=true --timeout=180s >/dev/null
-  kubectl delete namespace "$NS" --ignore-not-found --wait=false >/dev/null
+  run kubectl -n argocd delete applications.argoproj.io "$APP" --wait=true --timeout=180s
+  note "its finalizer makes Argo CD delete the Deployment, Service, HPA, PDB and Ingress it created"
+  run kubectl delete namespace "$NS" --ignore-not-found --wait=false
   wait_ns_gone
   ok "deleted; the real ${src:-environment} was never touched"
 }
@@ -148,6 +200,20 @@ delete_app() {
 start_load() { # start_load [requests/s, default 10]
   local rate=${1:-10}
   step "Starting k6: ~$rate requests/s to $URL (log: $K6_LOG)"
+  # Argo CD reports Healthy as soon as the pods are ready; Traefik picks up a
+  # new Ingress a few seconds later and answers 404 until then.
+  local i code=''
+  show "curl -s -o /dev/null -w '%{http_code}' $URL/version   # until Traefik routes to the copy"
+  for i in $(seq 1 60); do
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$URL/version" || true)
+    [ "$code" = 200 ] && break
+    sleep 1
+  done
+  printf '      %s (after %s s)\n' "$code" "$((i - 1))"
+  [ "$code" = 200 ] || die "Traefik doesn't route $URL to $APP after 60 s (it answers $code)"
+  note "k6 is a load-testing tool (not part of the app); apps/orders-gateway/k6/load.js was written for this repo"
+  note "its mix: 60% GET /work, 30% POST /echo, 10% GET /version, through Traefik to the demo copy"
+  show "k6 run --quiet --summary-mode=compact -e BASE_URL=$URL -e RATE=$rate -e DURATION=30m apps/orders-gateway/k6/load.js > $K6_LOG 2>&1 &"
   k6 run --quiet --summary-mode=compact \
     -e BASE_URL="$URL" -e RATE="$rate" -e DURATION=30m "$ROOT/apps/orders-gateway/k6/load.js" >"$K6_LOG" 2>&1 &
   K6_PID=$!
@@ -167,8 +233,12 @@ where_to_watch() {
 # SLO rate it measured from the client side.
 k6_summary() {
   local slo
+  show "kill -INT $K6_PID   # stop k6; it prints its end-of-test summary"
   kill -INT "$K6_PID" 2>/dev/null || true
   wait "$K6_PID" 2>/dev/null || true
+  note "k6's summary ($K6_LOG):"
+  grep -v -E '^\s*$|test run was aborted' "$K6_LOG" | indent || true
+  note "checks: k6's per-request checks (status 200); orders_slo_good: the SLO's definition (not 5xx, /echo and /version under 250 ms)"
   # e.g. "orders_slo_good......: 99.91% 4021 out of 4025"
   slo=$(grep -m1 -E 'orders_slo_good\.+:' "$K6_LOG" | sed -E 's/^[^:]*:[[:space:]]*//' || true)
   ok "k6 sent traffic the whole time; requests meeting the SLO: ${slo:-see $K6_LOG}"
@@ -180,6 +250,8 @@ k6_summary() {
 # ReplicaSet still serving, until every replica runs the new version.
 narrate_rolling() { # narrate_rolling <generation before the change> <timeout s>
   local gen0=$1 deadline=$(( $(date +%s) + $2 )) last='' line st
+  show "kubectl -n $NS get deployment orders-gateway -o json   # .status: updated, ready, total, unavailable"
+  note "every 2 s, one line per change, until every replica runs the new version"
   while :; do
     st=$(kubectl -n "$NS" get deployment orders-gateway -o json 2>/dev/null)
     line=$(jq -r '"updated \(.status.updatedReplicas // 0)/\(.spec.replicas)  ready \(.status.readyReplicas // 0)  total pods \(.status.replicas // 0)  unavailable \(.status.unavailableReplicas // 0)"' <<<"$st")
@@ -205,11 +277,14 @@ instack_remote() {
   [ -z "$INSTACK_REMOTE" ] || return 0
   local log port=''
   GIT_KEYDIR=$(mktemp -d)
+  show "kubectl -n git get secret git-admin -o jsonpath='{.data.private_key}' | base64 -d > $GIT_KEYDIR/key"
+  note "the in-stack Git server's SSH key, made by the bootstrap (not printed)"
   kubectl -n git get secret git-admin -o jsonpath='{.data.private_key}' | base64 -d >"$GIT_KEYDIR/key" ||
     die "can't read the in-stack Git server's key (Secret git/git-admin); run ./platform up"
   chmod 600 "$GIT_KEYDIR/key"
   log="$GIT_KEYDIR/pf.log"
   : >"$log" # exists before sed reads it (the backgrounded redirect is late)
+  show "kubectl -n git port-forward svc/git :23231 &   # SSH to the Git server Argo CD reads"
   kubectl -n git port-forward svc/git :23231 >"$log" 2>&1 &
   GIT_PF=$!
   for _ in $(seq 1 30); do
@@ -220,6 +295,7 @@ instack_remote() {
   [ -n "$port" ] || die "couldn't port-forward to the in-stack Git server: $(cat "$log")"
   export GIT_SSH_COMMAND="ssh -i $GIT_KEYDIR/key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
   INSTACK_REMOTE="ssh://127.0.0.1:$port/platform.git"
+  note "Git remote: $INSTACK_REMOTE (Argo CD sees the same repo as $IN_STACK)"
 }
 
 # git against the in-stack server (instack_remote's SSH key does the auth).
@@ -232,7 +308,8 @@ gitauth() { git -c safe.directory='*' "$@"; }
 delete_branch() { # delete_branch <repo url> <branch>
   local tmp rc=0
   tmp=$(mktemp -d)
-  git -C "$tmp" init -q && gitauth -C "$tmp" push -q ${DRY_RUN:+--dry-run} "$1" --delete "$2" || rc=$?
+  show "git push ${DRY_RUN:+--dry-run }$1 --delete $2"
+  git -C "$tmp" init -q && gitauth -C "$tmp" push ${DRY_RUN:+--dry-run} "$1" --delete "$2" 2>&1 | indent || rc=$?
   rm -rf "$tmp"
   return "$rc"
 }
@@ -247,6 +324,7 @@ clean_branches() {
   # Run outside /work: in a git worktree checkout, /work/.git points outside
   # the container's mount and git would refuse to start. ls-remote on a URL
   # needs no repository.
+  show "git ls-remote --heads $repo 'demo/gitops-revert-*'"
   for b in $(git -C / ls-remote --heads "$repo" 'demo/gitops-revert-*' 2>/dev/null | awk '{sub("refs/heads/", "", $2); print $2}'); do
     if delete_branch "$repo" "$b"; then ok "${DRY_RUN:+would have }deleted the leftover demo branch $b"
     else warn "couldn't delete the leftover demo branch $b"; fi
@@ -264,7 +342,11 @@ error_ratio() {
 # printing the 5xx share every 10 s; then keeps printing it for <settle> s.
 narrate_git() { # narrate_git <commit> <settle s> <timeout s>
   local want=$1 settle=$2 deadline=$(( $(date +%s) + $3 )) rev synced_at=''
-  kubectl -n argocd annotate applications.argoproj.io "$APP" argocd.argoproj.io/refresh=normal --overwrite >/dev/null
+  run kubectl -n argocd annotate applications.argoproj.io "$APP" argocd.argoproj.io/refresh=normal --overwrite
+  note "asks Argo CD to re-read Git now instead of at its next poll"
+  show "kubectl -n argocd get applications.argoproj.io $APP -o jsonpath='{.status.sync.revision}'"
+  show "kubectl get --raw '/api/v1/namespaces/monitoring/services/kube-prometheus-stack-prometheus:9090/proxy/api/v1/query?query=sum(rate(http_requests_total{namespace=\"demo\",route=~\"/work|/echo\",status=~\"5..\"}[1m])) / sum(rate(http_requests_total{namespace=\"demo\",route=~\"/work|/echo\"}[1m]))'   # URL-encoded when sent"
+  note "every 10 s: which commit Argo CD has synced, and the share of requests failing"
   while :; do
     rev=$(kubectl -n argocd get applications.argoproj.io "$APP" -o jsonpath='{.status.sync.revision}' 2>/dev/null)
     if [ -z "$synced_at" ] && [ "$rev" = "$want" ] &&
@@ -289,6 +371,7 @@ demo_pods() { # name node phase ready, one line per demo pod
 }
 ready_count() { demo_pods | awk '$4 == "True"' | grep -c . || true; }
 show_pods() {
+  show "kubectl -n $NS get pods -l app.kubernetes.io/name=orders-gateway -o wide   # + each node's zone label"
   demo_pods | while read -r name node phase ready; do
     zone=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}' 2>/dev/null || echo -)
     printf '    %-40s %-14s %-7s %s ready=%s\n' "$name" "$node" "$zone" "$phase" "$ready" >&2
@@ -296,6 +379,7 @@ show_pods() {
 }
 wait_ready() { # wait_ready <n> <timeout s>
   local deadline=$(( $(date +%s) + $2 )) last='' n
+  note "every 2 s: kubectl -n $NS get pods (count the Ready ones) until $1 are ready"
   while :; do
     n=$(ready_count)
     [ "$n" != "$last" ] && { printf '  %s  ready pods: %s\n' "$(date +%H:%M:%S)" "$n" >&2; last=$n; }
@@ -317,7 +401,7 @@ finish() {
     # made, and leave a demo copy kept by another demo alone. Wait,
     # so the next demo doesn't find it still Terminating.
     if [ -n "${CREATED_NS:-}" ]; then
-      kubectl delete namespace "$NS" --ignore-not-found --wait=true --timeout=120s >/dev/null
+      run kubectl delete namespace "$NS" --ignore-not-found --wait=true --timeout=120s
       ok "deleted namespace $NS"
     else
       ok "left the existing $NS (from another demo) as it was"

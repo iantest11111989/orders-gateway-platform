@@ -46,6 +46,10 @@ esac
 step() { printf '\n==> %s\n' "$*"; }
 ok() { printf '  ✓ %s\n' "$*"; }
 say() { printf '  %s\n' "$*"; }
+# Every command is printed before it runs ("$ ..."), its output indented below.
+if [ -t 1 ]; then CMD=$(printf '\033[36m') RST=$(printf '\033[0m'); else CMD='' RST=''; fi
+show() { printf '  %s$ %s%s\n' "$CMD" "$*" "$RST"; }
+run() { show "$*"; "$@"; }
 kc() { TOOLBOX_EXEC='' run_toolbox kubectl "$@"; }
 
 # Your git's exclude file, if this is a git checkout (a worktree has its own).
@@ -67,8 +71,9 @@ remove_copy() {
   [ -f "$MARKER" ] || return 0
   step "Teardown: remove hello-world from the checkout and from the cluster"
   # shellcheck disable=SC2086
-  rm -rf $DIRS
+  run rm -rf $DIRS
   unhide_from_git
+  show "./platform shell scripts/git-sync.sh   # push the checkout to the in-stack Git server"
   TOOLBOX_EXEC='' run_toolbox bash scripts/git-sync.sh >/dev/null && ok "pushed the checkout without hello-world"
   for _ in $(seq 1 60); do
     kc -n argocd get applications.argoproj.io -o name 2>/dev/null | grep -q "/$APP-" || break
@@ -94,6 +99,7 @@ on_exit() {
 # Answers /version with $1 on entrypoint port $2, 5 times in a row (an old
 # pod drains for a few seconds after a rollout). Waits up to 60 s.
 serves() {
+  show "curl -s -H 'Host: $APP.localhost' http://127.0.0.1:$2/version   # until it answers $1 five times in a row"
   n=0
   for _ in $(seq 1 240); do
     v=$(curl -s --max-time 2 -H "Host: $APP.localhost" "http://127.0.0.1:$2/version" | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')
@@ -101,6 +107,7 @@ serves() {
     sleep 0.25
   done
   [ "$n" -ge 5 ] || die "http://$APP.localhost:$2 doesn't answer version $1 (it answers '${v:-nothing}')"
+  show "curl -s -H 'Host: $APP.localhost' http://127.0.0.1:$2/"
   ok "http://$APP.localhost:$2 says: $(curl -s -H "Host: $APP.localhost" "http://127.0.0.1:$2/") (version $1)"
 }
 port_of() { case $1 in prod) echo 8080 ;; dev) echo 8082 ;; staging) echo 8083 ;; esac; }
@@ -137,9 +144,10 @@ say "chart) and cd/<app> (what each environment runs). Copying them in is all"
 say "it takes; nothing in the platform names orders-gateway."
 mkdir -p .build && : >"$MARKER"
 hide_from_git
-cp -R "$SRC/app" "apps/$APP"
-cp -R "$SRC/chart" "helm/$APP"
-mkdir -p "cd/$APP" && cp "$SRC/cd/values.yaml" "cd/$APP/values.yaml"
+run cp -R "$SRC/app" "apps/$APP"
+run cp -R "$SRC/chart" "helm/$APP"
+run mkdir -p "cd/$APP"
+run cp "$SRC/cd/values.yaml" "cd/$APP/values.yaml"
 ok "apps/$APP, helm/$APP, cd/$APP/values.yaml (hidden from your git while the demo runs)"
 
 # --- 2. CI -------------------------------------------------------------------
@@ -148,51 +156,53 @@ W=$(next_version "$(echo "$V" | awk -F. '{print $1"."$2"."$3+1}')")
 step "2 · CI: ./pipeline ci $APP --version $V"
 say "Test, build, scan with Trivy, then publish image $APP:$V and chart $APP $V"
 say "to the registry in the cluster. A published version is never overwritten."
-./pipeline ci "$APP" --version "$V"
+run ./pipeline ci "$APP" --version "$V"
 
 # --- 3. CD, in order ---------------------------------------------------------
 for e in dev staging prod; do
-  cp "$SRC/cd/$e.yaml" "cd/$APP/$e.yaml"
+  run cp "$SRC/cd/$e.yaml" "cd/$APP/$e.yaml"
   if [ "$e" = dev ]; then
     step "3 · CD: ./pipeline cd $APP dev --version $V"
     say "dev has autoSync: true, so Argo CD rolls it out as soon as the change"
     say "reaches the in-stack Git server. The ApplicationSet creates $APP-dev"
     say "because cd/$APP/dev.yaml now exists."
-    ./pipeline cd "$APP" dev --version "$V"
+    run ./pipeline cd "$APP" dev --version "$V"
   else
     step "3 · CD: ./pipeline cd $APP $e --version $V --sync"
     say "$e only takes a version the environment before it has run, and only"
     say "while that one is healthy (Argo CD Synced and Healthy, no firing alert"
     say "for $APP). autoSync is off here: --sync stands in for the Sync click."
-    ./pipeline cd "$APP" "$e" --version "$V" --sync
+    run ./pipeline cd "$APP" "$e" --version "$V" --sync
   fi
   serves "$V" "$(port_of "$e")"
 done
 
 # --- 4. A second version: out of order is refused ----------------------------
 step "4 · CI for a second version: ./pipeline ci $APP --version $W"
-./pipeline ci "$APP" --version "$W"
+run ./pipeline ci "$APP" --version "$W"
 step "4 · Straight to prod is refused: ./pipeline cd $APP prod --version $W"
-if ./pipeline cd "$APP" prod --version "$W" --sync; then
+if run ./pipeline cd "$APP" prod --version "$W" --sync; then
   die "prod took $W although staging never ran it"
 fi
 ok "refused, as it should be: promote in order"
 for e in dev staging prod; do
   step "4 · ./pipeline cd $APP $e --version $W$([ "$e" = dev ] || echo ' --sync')"
-  if [ "$e" = dev ]; then ./pipeline cd "$APP" dev --version "$W"; else ./pipeline cd "$APP" "$e" --version "$W" --sync; fi
+  if [ "$e" = dev ]; then run ./pipeline cd "$APP" dev --version "$W"; else run ./pipeline cd "$APP" "$e" --version "$W" --sync; fi
   serves "$W" "$(port_of "$e")"
 done
 
 # --- 5. Rollback -------------------------------------------------------------
 step "5 · Rollback: ./pipeline rollback $APP prod --sync"
 say "Always allowed, no gate: back to what prod ran before ($V)."
-./pipeline rollback "$APP" prod --sync
+run ./pipeline rollback "$APP" prod --sync
 serves "$V" 8080
 
 # --- 6. Observe --------------------------------------------------------------
 step "6 · Observe hello-world next to orders-gateway"
+show "curl -s -H 'Host: $APP.localhost' http://127.0.0.1:8080/   # 20 times, so Prometheus has requests to show"
 for _ in $(seq 1 20); do curl -s -o /dev/null -H "Host: $APP.localhost" http://127.0.0.1:8080/; done
 q='sum by (namespace) (http_requests_total{service="hello-world"})'
+show "kubectl get --raw '/api/v1/namespaces/monitoring/services/kube-prometheus-stack-prometheus:9090/proxy/api/v1/query?query=$q'"
 # In the toolbox (it has jq): the namespaces with hello-world requests, up to 2 min.
 # shellcheck disable=SC2016 # expanded inside the toolbox's bash
 found=$(TOOLBOX_EXEC='' run_toolbox bash -c '

@@ -45,6 +45,7 @@ clone_in_stack() {
   local port=''
   for _ in $(seq 1 30); do port=$(sed -n 's/^Forwarding from 127.0.0.1:\([0-9]*\) .*/\1/p' "$tmp/pf" | head -1); [ -n "$port" ] && break; sleep 0.5; done
   [ -n "$port" ] || die "couldn't reach the in-stack Git server"
+  showcmd "git clone http://127.0.0.1:$port/platform.git   # the in-stack repo Argo CD deploys from"
   git clone -q "http://127.0.0.1:$port/platform.git" "$tmp/r"
 }
 tmp=$(mktemp -d); pf=''
@@ -56,7 +57,9 @@ release_of() { yq -o json -I0 '{"version": .version, "image": .image}' | jq -cS 
 versions_run_in() { # versions_run_in <env>
   clone_in_stack
   local c
+  showcmd "git log --format=%H -- cd/$APP/$1.yaml   # then each commit's version: line"
   for c in $(git -C "$tmp/r" log --format=%H -- "cd/$APP/$1.yaml"); do
+    git -C "$tmp/r" cat-file -e "$c:cd/$APP/$1.yaml" 2>/dev/null || continue
     git -C "$tmp/r" show "$c:cd/$APP/$1.yaml" | yq '.version // ""'
   done | grep -v '^$' | sort -u
 }
@@ -77,6 +80,8 @@ set_release() { # set_release <version> <repository> <tag> <digest>
     /^image:[[:space:]]*$/ { n++; if (!hasrepo && ENVIRON["REPO"] != "") print "  repository: " ENVIRON["REPO"] }
     END { if (n != 1 || t != 1 || d != 1 || r > 1 || v > 1) { printf "expected one image: block with one tag, one digest and at most one repository line, and at most one version line; found %d, %d, %d, %d, %d\n", n, t, d, r, v > "/dev/stderr"; exit 1 } }
   ' "$values" "$values" >"$values.tmp" || { rm -f "$values.tmp"; die "couldn't update $values"; }
+  showcmd "diff -u cd/$APP/$env.yaml cd/$APP/$env.yaml.tmp   # the file before and after the edit"
+  diff -u --label "cd/$APP/$env.yaml" --label "cd/$APP/$env.yaml" "$values" "$values.tmp" | sed 's/^/      /' >&2 || true
   cat "$values.tmp" >"$values" && rm -f "$values.tmp"
 }
 
@@ -108,6 +113,7 @@ manual_sync() {
 }
 
 roll_out() { # roll_out <image>: push the checkout, then wait for the Deployment
+  showcmd "scripts/git-sync.sh   # commit the checkout and push it to the in-stack Git server"
   bash "$(dirname "$0")/git-sync.sh"
   if manual_sync; then
     if $sync; then
@@ -121,15 +127,20 @@ roll_out() { # roll_out <image>: push the checkout, then wait for the Deployment
   fi
   step "Waiting for Argo CD to roll $env out (Deployment $DEPLOYMENT)"
   local want=$1 img deadline=$(( $(date +%s) + 300 ))
+  showcmd "kubectl -n $env get deploy $DEPLOYMENT -o jsonpath='{.spec.template.spec.containers[0].image}'"
+  shownote "every 3 s until Argo CD has applied $want"
   while :; do
     img=$(kubectl -n "$env" get deploy "$DEPLOYMENT" -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
     [ "$img" = "$want" ] && break
     [ "$(date +%s)" -lt "$deadline" ] || { app_status; die "Argo CD hasn't applied $want to $env/$DEPLOYMENT after 5 minutes (it shows ${img:-nothing}); see ./platform verify"; }
     sleep 3
   done
-  kubectl -n "$env" rollout status "deploy/$DEPLOYMENT" --timeout=300s
+  showcmd "kubectl -n $env rollout status deploy/$DEPLOYMENT --timeout=300s"
+  kubectl -n "$env" rollout status "deploy/$DEPLOYMENT" --timeout=300s 2>&1 | sed 's/^/      /'
   # Then wait for pruning (PruneLast) so the next promotion's gate sees Synced.
   local st deadline2=$(( $(date +%s) + 300 ))
+  showcmd "kubectl -n argocd get applications.argoproj.io $APP-$env -o jsonpath='{.status.sync.status} {.status.operationState.phase}'"
+  shownote "until Synced Succeeded (old objects pruned)"
   while :; do
     st=$(kubectl -n argocd get applications.argoproj.io "$APP-$env" -o jsonpath='{.status.sync.status} {.status.operationState.phase}' 2>/dev/null || true)
     [ "$st" = "Synced Succeeded" ] && break
@@ -190,6 +201,8 @@ case "$cmd" in
     cur=$(release_of <"$values")
     rels=()
     for c in $(git -C "$tmp/r" log --reverse --format=%H -- "cd/$APP/$env.yaml"); do
+      # Skip commits where the file is gone (hello-world's teardown deletes it).
+      git -C "$tmp/r" cat-file -e "$c:cd/$APP/$env.yaml" 2>/dev/null || continue
       rels+=("$(git -C "$tmp/r" show "$c:cd/$APP/$env.yaml" | release_of)")
     done
     first=-1

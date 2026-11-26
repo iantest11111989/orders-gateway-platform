@@ -12,6 +12,7 @@ source "$(dirname "$0")/../lib.sh"
 # (429) while it would break the PodDisruptionBudget. Retries until allowed.
 evict() { # evict <pod>
   local out deadline=$(( $(date +%s) + 180 )) refused=''
+  show "kubectl create --raw /api/v1/namespaces/$NS/pods/$1/eviction -f -   # {kind: Eviction, name: $1}, what kubectl drain sends"
   while :; do
     if out=$(jq -nc --arg p "$1" --arg ns "$NS" '{apiVersion: "policy/v1", kind: "Eviction", metadata: {name: $p, namespace: $ns}}' |
         kubectl create --raw "/api/v1/namespaces/$NS/pods/$1/eviction" -f - 2>&1); then
@@ -38,27 +39,31 @@ demo_chaos() {
   wait_healthy v1 600
   start_load
   where_to_watch
-  want=$(kubectl -n "$NS" get deployment orders-gateway -o jsonpath='{.spec.replicas}')
+  want=$(get kubectl -n "$NS" get deployment orders-gateway -o jsonpath='{.spec.replicas}')
+  run kubectl -n "$NS" get pdb orders-gateway
+  note "the PodDisruptionBudget: at most 1 pod may be voluntarily disrupted at a time"
+  run kubectl get nodes -L topology.kubernetes.io/zone
   echo "  Pods (name, node, zone, phase):" >&2; show_pods
 
   step "Deleting one pod"
   victim=$(demo_pods | awk 'NR == 1 {print $1}')
-  kubectl -n "$NS" delete pod "$victim" --wait=false >/dev/null
+  run kubectl -n "$NS" delete pod "$victim" --wait=false
   ok "deleted $victim"
   sleep 2
   wait_ready "$want" 180
   ok "back to $want ready pods"; show_pods
+  run kubectl -n "$NS" get events --field-selector involvedObject.kind=Pod --sort-by=.lastTimestamp -o custom-columns=TIME:.lastTimestamp,REASON:.reason,POD:.involvedObject.name,MESSAGE:.message
 
   node=$(demo_pods | awk '{print $2}' | sort | uniq -c | sort -rn | awk 'NR == 1 {print $2}')
   step "Draining $node for the demo's pods"
-  kubectl cordon "$node" >/dev/null; CORDONED=$node
+  run kubectl cordon "$node"; CORDONED=$node
   ok "cordoned $node: no new pods land there, from any namespace, until it's uncordoned (about a minute)"
   for p in $(demo_pods | awk -v n="$node" '$2 == n {print $1}'); do evict "$p"; done
   wait_ready "$want" 300
   left=$(demo_pods | awk -v n="$node" '$2 == n' | grep -c . || true)
   [ "$left" -eq 0 ] || die "$left demo pod(s) still on the cordoned $node"
   ok "all $want pods ready again, none on $node"; show_pods
-  kubectl uncordon "$node" >/dev/null; CORDONED=''
+  run kubectl uncordon "$node"; CORDONED=''
   ok "uncordoned $node"
 
   sleep 10
