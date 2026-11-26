@@ -7,7 +7,7 @@
 #   ./platform down       delete the cluster (idempotent)
 #   ./platform urls       print URLs and logins
 #   ./platform verify     check the running stack: apps, scrape targets, logs,
-#                         HTTPS and policies
+#                         alerts, host ports and policies
 #   ./platform budget [--watch SECONDS]  measured CPU/memory vs the 6 CPU / 12 GiB
 #                         budget (peak over SECONDS with --watch)
 #   ./platform demo <name>  narrated demos, one per folder in demo/ (see
