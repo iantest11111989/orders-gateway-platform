@@ -171,7 +171,7 @@ while true; do curl -s -o /dev/null -w '%{http_code} ' 'http://localhost:8080/wo
 
 These are Git changes on purpose: `kubectl set image` or `kubectl rollout undo` would be reverted by Argo CD within seconds. The edit to `environments/prod/values.yaml` stays in your checkout to commit or revert.
 
-**Tested with traffic flowing.** CI's cluster job ships a new version and rolls it back while three clients hit `:8080` the whole time (`/work?ms=5`, `POST /echo`, and a slow `/work?ms=200`, so requests are in flight while old pods drain), and fails on any non-200: 2,641 requests, 0 errors. It then rolls back once more to prove a second rollback goes further back instead of toggling ([run](https://github.com/iantest11111989/orders-gateway-platform/actions/runs/45710719231/job/139544268716)).
+**Tested with traffic flowing.** CI's fresh-install job ships a new version and rolls it back while three clients hit `:8080` the whole time (`/work?ms=5`, `POST /echo`, and a slow `/work?ms=200`, so requests are in flight while old pods drain), and fails on any non-200: 2,641 requests, 0 errors. It then rolls back once more to prove a second rollback goes further back instead of toggling ([run](https://github.com/iantest11111989/orders-gateway-platform/actions/runs/45710719231/job/139544268716)).
 
 **From GitHub instead.** In GitHub mode, CI ships: every merge to `main` builds, scans, signs and pushes an image and commits it to dev; staging and prod move by pull request ([0014](docs/decisions/0014-promotion.md), [0015](docs/decisions/0015-promotion-prs.md)). Roll back there with a revert PR.
 
@@ -264,14 +264,14 @@ What we'd test next: killing Envoy Gateway's proxy (one replica here, so a short
 | Workflow | What it does |
 | --- | --- |
 | `app` | Unit tests, build (amd64 + arm64), Trivy scan (fails on fixable critical/high), push to GHCR, cosign keyless signing, SBOM; on `main`, commits the new image to dev and opens staging/prod promotion PRs |
-| `platform` | shellcheck, actionlint, toolbox build; then the **cluster job**: `docker compose up -d --wait` on a fresh runner, kubeconfig from the host, a stop/start cycle, `up` again, `verify`, ship and roll back under traffic, `budget` |
+| `platform` | shellcheck, actionlint, toolbox build; then the **fresh-install job** ("Fresh install, the reviewer's way"): `docker compose up -d --wait` on a fresh runner, kubeconfig from the host, a stop/start cycle, `up` again, `verify`, ship and roll back under traffic, `budget` |
 | `alerts`, `policies`, `promoter` | `promtool` rule tests and runbook links, dashboard checks; `kyverno test`; the promoter's unit tests |
 | `secrets`, `renovate-config` | No plain secrets; Renovate's config is valid |
 | `nightly`, `rescan` | A full `up` + `verify` + canary demo on fresh x86-64 and arm64 runners; a daily re-scan of the images that are running |
 
 Pull requests run checks only (read-only token, no secrets); pushes to `main` build, sign and promote. Every job declares least-privilege `permissions:`, actions are pinned by commit SHA, and Docker layers and the cluster's images are cached. Prod's approval gate is a pull request the owner approves, rather than a GitHub Environment.
 
-We run the workflows on real GitHub rather than locally with `act`: they're the same files, GitHub gives evidence anyone can open (the [cluster job](https://github.com/iantest11111989/orders-gateway-platform/actions/runs/45710719231/job/139544268716) above), and `act` would need changes to them: it has no GitHub OIDC token, so cosign keyless signing can't run, and the cluster job needs the host's Docker socket plus the full 6 CPU / 12 GB, which `act`'s default runner images aren't set up for.
+We run the workflows on real GitHub rather than locally with `act`: they're the same files, GitHub gives evidence anyone can open (the [fresh-install job](https://github.com/iantest11111989/orders-gateway-platform/actions/runs/45710719231/job/139544268716) above), and `act` would need changes to them: it has no GitHub OIDC token, so cosign keyless signing can't run, and the fresh-install job needs the host's Docker socket plus the full 6 CPU / 12 GB, which `act`'s default runner images aren't set up for.
 
 ## Resource budget (measured)
 
