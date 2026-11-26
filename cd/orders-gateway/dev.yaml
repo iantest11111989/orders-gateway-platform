@@ -11,12 +11,11 @@ autoSync: true
 # localhost:30500/orders-gateway:<version> and chart orders-gateway <version>
 # from the in-stack registry. Set by ./pipeline cd; without a version (a
 # dev-only build) the chart is helm/orders-gateway as it is in Git.
-version: 0.2.0
+version: 0.1.0
 
 image:
-  repository: localhost:30500/orders-gateway
-  tag: 0.2.0
-  digest: sha256:44daf29d34967e069281f7f237124e888dc1b4886553b96ef7cdb52a46c0ed33
+  tag: 0.1.0
+  digest: ""
 
 replicas: 1
 
