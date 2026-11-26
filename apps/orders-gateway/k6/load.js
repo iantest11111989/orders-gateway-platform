@@ -17,7 +17,7 @@ import { Rate } from 'k6/metrics';
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 const WORK_MS = Number(__ENV.WORK_MS || 50);
 
-// The metric name is read by scripts/demo.sh.
+// The metric name is read by demo/lib.sh.
 const sloGood = new Rate('orders_slo_good');
 
 export const options = {
