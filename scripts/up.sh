@@ -99,6 +99,12 @@ else
   ok "kube-system/sealed-secrets-demo-key"
 fi
 
+# The registry the apps' images and charts come from, with every version the
+# env files pin (a fresh cluster builds them here).
+bash "$(dirname "$0")/registry.sh" install
+bash "$(dirname "$0")/registry.sh" seed
+hand_over_app_applications
+
 # Argo CD syncs from the in-stack Git server by default: the cluster runs this
 # checkout. REPO_URL (e.g. this repo on GitHub) switches to
 # GitHub mode, where CI's promotion PRs apply.

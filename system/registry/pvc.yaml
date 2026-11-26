@@ -1,0 +1,11 @@
+# Published images and charts. On the kind node's local-path storage, so they
+# survive `docker compose stop`/`start` (the cluster isn't stopped).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: registry
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi

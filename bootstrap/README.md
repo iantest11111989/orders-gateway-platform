@@ -26,4 +26,4 @@ Sync waves: -10 CRDs, 0 Argo CD, 10 controllers, 20 observability, 30 policies, 
 | `alloy` | 20 | Log collection DaemonSet |
 | `platform-alerts` | 25 | PrometheusRules from `alerts/` |
 | `edge` | 25 | Ingresses for Argo CD (:8081), Grafana (:3000), Prometheus (:9090) and Alertmanager (:9093) (`system/edge/`) |
-| `orders-gateway-dev`, `-staging`, `-prod` | 40 | orders-gateway per environment: `helm/orders-gateway` + `cd/orders-gateway/values.yaml` + `<env>.yaml` |
+| `apps` (ApplicationSet) → `<app>-dev`, `-staging`, `-prod` | 40 | Each app per environment, from `cd/<app>/<env>.yaml`: the chart of the version it pins from the in-stack registry (or `helm/<app>` from Git for a dev-only build) + `cd/<app>/values.yaml` + `<env>.yaml` |

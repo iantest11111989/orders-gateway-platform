@@ -1,0 +1,17 @@
+# The in-stack registry: where ./pipeline publishes each app's images and
+# Helm charts (OCI), and where the cluster pulls them from. Applied by
+# scripts/registry.sh (from up.sh) before Argo CD exists, with kubectl
+# apply -k, like the Git server.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: registry
+resources:
+  - namespace.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - networkpolicy.yaml
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: orders-gateway-platform
+    includeSelectors: false
