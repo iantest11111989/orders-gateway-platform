@@ -90,6 +90,11 @@ run_toolbox() {
   # The Docker socket lets kind create its node containers. The kubeconfig
   # lives in a named volume, not the repo, so no root-owned or locked files
   # land in the reviewer's checkout.
+  # Create that volume as Compose would (its labels), so a later `docker
+  # compose up` adopts it instead of warning that Compose didn't create it.
+  docker volume inspect ogp-kube >/dev/null 2>&1 ||
+    docker volume create --label com.docker.compose.project=orders-gateway-platform \
+      --label com.docker.compose.volume=kube ogp-kube >/dev/null
   # shellcheck disable=SC2086
   ${TOOLBOX_EXEC-exec} docker run --rm $tty \
     --network host \

@@ -6,7 +6,17 @@ A local, reproducible **"cluster in a box"** that runs, ships, observes and oper
 docker compose up -d --wait
 ```
 
-That is all it takes. Compose starts one service, `ready`, which creates a kind cluster and hands it to Argo CD; Argo CD installs everything else from Git, with Helm, in order. `--wait` returns when the platform is installed and prod is serving.
+That is all it takes. Compose's `ready` service creates a kind cluster and hands it to Argo CD; Argo CD installs everything else from Git, with Helm, in order. `--wait` returns when the platform is installed and prod is serving, about 9 minutes from cold. While it runs, four progress services turn **Healthy** one by one as each stage finishes:
+
+```
+ ✔ Container orders-gateway-platform-step-1-cluster-1    Healthy   (kind nodes Ready)
+ ✔ Container orders-gateway-platform-step-2-argocd-1     Healthy   (Git server and Argo CD running)
+ ⠿ Container orders-gateway-platform-step-3-platform-1   Waiting   (every platform component Synced and Healthy)
+ ⠿ Container orders-gateway-platform-step-4-apps-1       Waiting   (dev, staging and prod Synced and Healthy)
+ ⠿ Container orders-gateway-platform-ready-1             Waiting   (all of it, and prod serving on :8080)
+```
+
+To follow every detail as it happens, run `docker compose logs -f ready` in a second terminal.
 
 **Status.** Every **[core]** item is done, and so is the **[optional]** GitOps and CI/CD. Of the **[stretch]** items, the Terraform is sketched ([docs/terraform-sketch/](docs/terraform-sketch/README.md)) and distributed tracing is not done. [What we skipped and why](#what-we-skipped-and-why) has the full list.
 
@@ -111,7 +121,7 @@ flowchart LR
 
 How it fits together:
 
-- **Compose is only the outer shell.** Its one service, `ready`, runs the toolbox image (every tool pinned and checksum-verified), creates the kind cluster, installs Argo CD and hands it the root Application. It then stays up as the healthcheck ([0026](docs/decisions/0026-compose-entrypoint.md)).
+- **Compose is only the outer shell.** Its working service, `ready`, runs the toolbox image (every tool pinned and checksum-verified), creates the kind cluster, installs Argo CD and hands it the root Application. It then stays up as the healthcheck ([0026](docs/decisions/0026-compose-entrypoint.md)). Four more services, `step-1` to `step-4`, do no work: their healthchecks show the start-up's progress ([`scripts/compose-step.sh`](scripts/compose-step.sh)).
 - **Git is the only way in.** By default Argo CD follows a Git server inside the cluster, to which `ready` (and `./platform up`, `ship`, `rollback`) pushes this checkout. That's the assignment's "Git repo your own stack hosts", with self-heal and prune on ([0029](docs/decisions/0029-in-stack-git-server.md)). GitHub mode (`REPO_URL=https://github.com/...`) follows GitHub instead, where CI's promotion PRs and the patch promoter apply.
 - **Argo CD installs everything with Helm,** itself included, in sync waves: CRDs, then controllers, then observability, policies and the gateway, then the apps ([0005](docs/decisions/0005-gitops-layout.md)).
 - **One edge.** Envoy Gateway serves the contract's ports (`:8080`, `:3000`, `:9090`, `:9093`) and HTTPS on `*.localtest.me`, and refuses `/admin/*` from outside ([0028](docs/decisions/0028-contract-ports-on-the-gateway.md)).

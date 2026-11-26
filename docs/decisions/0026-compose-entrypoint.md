@@ -19,3 +19,7 @@ The assignment's fixed contract: the repo is run with `docker compose up -d --wa
 - `docker compose down` removes `ready` but not the cluster; `./platform down` removes the cluster. Documented in the README.
 - `./out/kubeconfig.yaml` is written by root inside the toolbox, with mode 0644 so the host user can read it. It's a local admin credential for a cluster bound to 127.0.0.1.
 - CI's cluster job now starts the stack exactly the way a reviewer does, then checks the kubeconfig from the host and a stop/start cycle.
+
+## Addendum, 2026-11-25: progress services
+
+`docker compose up -d --wait` prints only each container's state, so with `ready` alone the reviewer saw "Waiting" for about nine minutes. Four services, `step-1-cluster` to `step-4-apps`, now do no work and only show progress: each one's healthcheck (`scripts/compose-step.sh`) passes when one stage is done (kind nodes Ready; the Git server and Argo CD running; every platform Application Synced and Healthy; dev, staging and prod Synced and Healthy), so Compose shows the stages turn Healthy in order. They share `ready`'s image and settings through a YAML anchor, including `restart: unless-stopped`; a passed step stays healthy until its container restarts, and re-derives its state from the cluster after `docker compose stop`/`start`. Each is an idle `sleep` process, outside the kind nodes. `./platform` now creates the `ogp-kube` volume with Compose's labels, so a later `docker compose up` adopts it without a warning.

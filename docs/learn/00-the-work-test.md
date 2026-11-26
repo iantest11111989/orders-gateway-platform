@@ -24,12 +24,13 @@ A team owns a stateless HTTP service, `orders-gateway` (`app/`). Build the platf
 
 ```sh
 time docker compose up -d --wait     # 10–15 min the first time, mostly image pulls
-docker compose ps                    # one service, ready, (healthy)
+docker compose logs -f ready         # in a second terminal: every step as it happens
+docker compose ps                    # ready and step-1..4, all (healthy)
 ```
 
-**Understand:** Compose runs **one** container, `ready`, built from the toolbox image (every tool pinned). It creates the kind cluster, installs Argo CD and gives it the root Application; Argo CD installs everything else. Compose doesn't run Kubernetes itself, it only starts the thing that does. `--wait` returns when `ready`'s healthcheck passes.
+**Understand:** one Compose container does the work: `ready`, built from the toolbox image (every tool pinned). It creates the kind cluster, installs Argo CD and gives it the root Application; Argo CD installs everything else. Compose doesn't run Kubernetes itself, it only starts the thing that does. `--wait` returns when `ready`'s healthcheck passes.
 
-**Check yourself:** why is there only one Compose service, when the stack has dozens of components?
+**Check yourself:** only `ready` does any work; the four `step-*` services just show progress (read [`scripts/compose-step.sh`](../../scripts/compose-step.sh)). Why does Compose need so few services when the stack has dozens of components?
 
 ### A2. The cluster: why kind
 
