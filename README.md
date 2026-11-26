@@ -284,7 +284,7 @@ The top row is GitHub mode (`REPO_URL` set, decision [0024](docs/decisions/0024-
 
 | Workflow | When | Stages |
 | --- | --- | --- |
-| **CI · app** (`ci-app.yml`) | every pull request touching the app | 1 · Test, 1 · Lint → 2 · Build (amd64 + arm64), scan (Trivy) and rehearse signing; nothing pushed |
+| **CI · app** (`ci-app.yml`) | every pull request touching the app | 1 · Test, 1 · Lint → 2 · Build (amd64 + arm64), scan (Trivy) and rehearse signing; nothing pushed. 3 · Smoke test the image: run it as Kubernetes would (non-root, read-only) and check warm-up, endpoints, metrics and a clean SIGTERM drain. 4 · Performance gate: 60 s of k6 at 20 requests/s, held to the SLOs (99.5% good, `/echo` and `/version` p99 under 250 ms) |
 | **CD · app** (`cd-app.yml`) | every merge to `main` touching the app | 1 · Test, 1 · Lint → 2 · Build and push to GHCR → 3 · Sign (cosign keyless, SBOM), 3 · Scan → 4 · Deploy dev (commit to `environments/dev`; Argo CD syncs) → 5 · Promote (staging and prod PRs) |
 | **CI · platform** | pull requests and `main` | Lint (shellcheck, actionlint) → Build toolbox → **E2E · Fresh install**: `docker compose up -d --wait` on a fresh runner, kubeconfig from the host, restart, re-run bootstrap, verify, ship and roll back under traffic, resource budget. On `main` it also publishes the toolbox |
 | **CI · alerts / policies / promoter** | pull requests and `main` | `promtool` rule tests, runbook links and dashboard checks; `kyverno test`; the promoter's unit tests |
