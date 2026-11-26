@@ -23,7 +23,7 @@ How it maps to the local stack:
 | One cluster, three namespaces | One cluster per environment (`env` is dev, staging or prod), each with its own Argo CD |
 | Traefik on NodePorts mapped to `127.0.0.1`, plain HTTP | Traefik behind an ALB (WAF) from the AWS Load Balancer Controller, 3 replicas across zones |
 | No TLS, a port per environment | ACM certificates on the load balancer, which terminates TLS; ExternalDNS writing Route 53 |
-| Sealed Secrets with a demo key in Git | External Secrets reading AWS Secrets Manager (`ogp/<env>/*`) |
+| Sealed Secrets with a demo key in Git | External Secrets reading AWS Secrets Manager (`platform-demo/<env>/*`) |
 | `local-path` storage | EBS volumes (gp3) for Prometheus, Loki and Grafana |
 | In-stack Git server (soft-serve) | GitHub, with promotion PRs and approvals for prod (and, in the AWS design, a patch promoter) |
 | `kind load` for `./platform ship` | Only CI-built, signed images from GHCR (through ECR); `localhost/` is not admitted |

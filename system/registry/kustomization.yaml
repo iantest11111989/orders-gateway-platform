@@ -13,5 +13,5 @@ resources:
   - networkpolicy.yaml
 labels:
   - pairs:
-      app.kubernetes.io/part-of: orders-gateway-platform
+      app.kubernetes.io/part-of: platform-demo
     includeSelectors: false

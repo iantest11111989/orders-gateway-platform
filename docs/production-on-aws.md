@@ -1,4 +1,4 @@
-# Running orders-gateway-platform in production on AWS
+# Running platform-demo in production on AWS
 
 Status: a plan for discussion. Nothing here has been built or applied. It extends [`docs/terraform-sketch/`](terraform-sketch/README.md) and the README's [Local vs a real cloud](../README.md#local-vs-a-real-cloud) table.
 
@@ -16,7 +16,7 @@ One account, one VPC, one EKS cluster and one Argo CD per environment. Nothing i
 
 ```mermaid
 flowchart TB
-  dev([Developer]) -->|PR| gh[(GitHub<br/>orders-gateway-platform)]
+  dev([Developer]) -->|PR| gh[(GitHub<br/>platform-demo)]
   gh -->|Actions: test, build, Trivy,<br/>cosign keyless| ci[GitHub Actions]
   ci -->|OIDC AssumeRole<br/>no long-lived keys| ecr
 
@@ -146,7 +146,7 @@ flowchart TB
 Roles, one per controller per cluster, least privilege:
 - **AWS Load Balancer Controller:** the upstream policy. Scope tag conditions to `elbv2.k8s.aws/cluster = <name>` where the policy allows.
 - **ExternalDNS:** `route53:ChangeResourceRecordSets` on **that env's hosted zone only**, plus `ListHostedZones`.
-- **External Secrets:** `secretsmanager:GetSecretValue`/`DescribeSecret` on `arn:...:secret:ogp/<env>/*`, and `kms:Decrypt` on the env CMK through the `kms:ViaService` condition.
+- **External Secrets:** `secretsmanager:GetSecretValue`/`DescribeSecret` on `arn:...:secret:platform-demo/<env>/*`, and `kms:Decrypt` on the env CMK through the `kms:ViaService` condition.
 - **Karpenter:** the controller policy scoped to the cluster's tags, plus a node role.
 - **EBS CSI:** the managed policy.
 - **cert-manager:** none. ACM handles public certificates on the ALB (the sketch's DNS-01 role goes away).
@@ -155,7 +155,7 @@ Roles, one per controller per cluster, least privilege:
 
 **CI (GitHub Actions to AWS):**
 - An IAM OIDC provider for `token.actions.githubusercontent.com` in shared-services and in each env account (only where CI needs it).
-- `gha-ecr-push` (shared-services): trust `sub = repo:iantest11111989/orders-gateway-platform:ref:refs/heads/main` and `aud = sts.amazonaws.com`. Permissions: `ecr:PutImage`, `InitiateLayerUpload` and friends on `orders-gateway` only. **No delete or tag-mutation rights.** PRs get no role; they build without pushing, as `ci-app.yml` already does.
+- `gha-ecr-push` (shared-services): trust `sub = repo:iantest11111989/platform-demo:ref:refs/heads/main` and `aud = sts.amazonaws.com`. Permissions: `ecr:PutImage`, `InitiateLayerUpload` and friends on `orders-gateway` only. **No delete or tag-mutation rights.** PRs get no role; they build without pushing, as `ci-app.yml` already does.
 - `gha-tf-plan-<acct>`: read-only plus the state bucket, trusted for `pull_request` events. `gha-tf-apply-<acct>`: trusted for `environment:<env>` only, so prod applies need the GitHub Environment's required reviewers.
 - **CI never talks to a cluster.** Argo CD pulls, so no kube credentials exist in GitHub at all. That's the strongest property the repo already has; keep it.
 - Use a **GitHub App**, whose private key lives in Secrets Manager (shared-services account), for the patch promoter and for opening promotion PRs. Production needs individual human and bot identities, or approvals mean nothing.
@@ -281,7 +281,7 @@ Traefik (`system/traefik/values.yaml`) becomes `ClusterIP` with `replicas: 3`, t
 
 **Recommend External Secrets Operator + AWS Secrets Manager, per-account KMS CMKs.**
 - **What actually needs secrets?** The app has none (server.js reads only `VERSION`, `PORT`, `STARTUP_DELAY_MS` and `FAULT_*`). The platform needs: the Datadog API key (per cluster), the GitHub App key for Argo CD repo access (hub), the promoter's GitHub App key (hub), Docker Hub creds for the pull-through cache (shared-services), and the PagerDuty/Slack integration keys (stored in Datadog, not Kubernetes). So: **few secrets, low churn**.
-- Path convention `ogp/<env>/<component>/<name>`, matching the sketch's IAM scope. One `ClusterSecretStore` per cluster, authenticated by Pod Identity. `ExternalSecret`s live next to their component in `system/<component>/`. Refresh at 1 h.
+- Path convention `platform-demo/<env>/<component>/<name>`, matching the sketch's IAM scope. One `ClusterSecretStore` per cluster, authenticated by Pod Identity. `ExternalSecret`s live next to their component in `system/<component>/`. Refresh at 1 h.
 - KMS: one CMK per account for Secrets Manager, one for EKS envelope encryption of Kubernetes Secrets (the cluster's `encryption_config`), one for EBS, one for ECR, plus the Terraform state key. Key policies grant use to specific roles only. Automatic rotation on.
 - Rotation: Datadog API keys rotated by hand yearly, with a runbook. GitHub App private keys every 90 days (two keys valid during overlap).
 

@@ -34,7 +34,7 @@ for url in $(for f in .build/alerts/*.rules.yaml; do docker run --rm -i "$YQ_IMA
     '.groups[].rules[] | select(has("alert")) | .alert + "=" + (.annotations.runbook_url // "")' <"$f"; done); do
   alert=${url%%=*}
   link=${url#*=}
-  want="https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/$alert.md"
+  want="https://github.com/iantest11111989/platform-demo/blob/main/runbooks/$alert.md"
   if [ "$link" != "$want" ]; then
     echo "FAIL $alert: runbook_url must be $want (got '${link}')"; status=1
   elif [ ! -f "runbooks/$alert.md" ]; then

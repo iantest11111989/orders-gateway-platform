@@ -100,7 +100,7 @@ grafana:
   testFramework:
     enabled: false
   # Grafana 13 runs each bundled backend plugin as its own process; 256Mi
-  # got the pod OOM-killed on start in the ogp sync test.
+  # got the pod OOM-killed on start in a local sync test.
   resources:
     requests: {cpu: 25m, memory: 256Mi}
     limits: {memory: 512Mi}

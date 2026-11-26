@@ -21,7 +21,7 @@ Grafana is <http://localhost:3000> (`admin` / `admin12345`); the other logins ar
    kubectl -n dev get deploy orders-gateway -w
    ```
 
-   Within seconds `replicas` goes back to `1`. On ogp it took 5 seconds. Argo CD saw the live state drift from Git (dev runs one replica, `cd/orders-gateway/dev.yaml`) and **self-healed** it. Press Ctrl-C. In the UI, `dev`'s **History and rollback** and the dashboard's **Syncs per Application** panel show the extra sync.
+   Within seconds `replicas` goes back to `1`. On the local cluster it took 5 seconds. Argo CD saw the live state drift from Git (dev runs one replica, `cd/orders-gateway/dev.yaml`) and **self-healed** it. Press Ctrl-C. In the UI, `dev`'s **History and rollback** and the dashboard's **Syncs per Application** panel show the extra sync.
 
 That's the rule for this whole platform: **change Git, not the cluster.** A manual change lasts seconds.
 

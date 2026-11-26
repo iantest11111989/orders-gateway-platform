@@ -26,7 +26,7 @@ image:
   registry: docker.io
   repository: aquasec/trivy-operator
 
-# Measured on ogp while scanning: about 220Mi (it caches every report).
+# Measured on the local cluster while scanning: about 220Mi (it caches every report).
 resources:
   requests: {cpu: 25m, memory: 192Mi}
   limits: {memory: 384Mi}

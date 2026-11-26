@@ -16,7 +16,7 @@ set -euo pipefail
 DONE=/tmp/step-done
 # The marker holds the cluster it was earned on: a rebuilt cluster (new
 # control-plane container) makes every step check again from the start.
-cluster_id=$(docker inspect -f '{{.Id}}' "${CLUSTER_NAME:-ogp}-control-plane" 2>/dev/null || true)
+cluster_id=$(docker inspect -f '{{.Id}}' "${CLUSTER_NAME:-platform-demo}-control-plane" 2>/dev/null || true)
 if [ -n "$cluster_id" ] && [ -f "$DONE" ] && [ "$(cat "$DONE")" = "$cluster_id" ]; then exit 0; fi
 rm -f "$DONE"
 

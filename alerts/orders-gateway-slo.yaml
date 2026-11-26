@@ -32,7 +32,7 @@ kind: PrometheusRule
 metadata:
   name: orders-gateway-slo
   labels:
-    app.kubernetes.io/part-of: orders-gateway-platform
+    app.kubernetes.io/part-of: platform-demo
     app.kubernetes.io/component: slo
 spec:
   groups:
@@ -129,7 +129,7 @@ spec:
             description: >-
               {{ $value | humanizePercentage }} of /work and /echo requests failed with 5xx over the last hour
               (the SLO allows 0.5%). At this rate the whole 30-day error budget is gone in about 2 days.
-            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/OrdersGatewayAvailabilityFastBurn.md
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/OrdersGatewayAvailabilityFastBurn.md
         - alert: OrdersGatewayAvailabilitySlowBurn
           expr: |
             slo:orders_availability_errors:ratio_rate6h > (6 * 0.005)
@@ -144,7 +144,7 @@ spec:
             description: >-
               {{ $value | humanizePercentage }} of /work and /echo requests failed with 5xx over the last 6 hours
               (the SLO allows 0.5%). At this rate the 30-day error budget is gone in about 5 days.
-            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/OrdersGatewayAvailabilitySlowBurn.md
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/OrdersGatewayAvailabilitySlowBurn.md
         - alert: OrdersGatewayLatencyFastBurn
           expr: |
             slo:orders_latency_errors:ratio_rate1h > (14.4 * 0.005)
@@ -159,7 +159,7 @@ spec:
             description: >-
               {{ $value | humanizePercentage }} of /echo and /version requests took longer than 250 ms over the last hour
               (the SLO allows 0.5%). At this rate the whole 30-day error budget is gone in about 2 days.
-            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/OrdersGatewayLatencyFastBurn.md
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/OrdersGatewayLatencyFastBurn.md
         - alert: OrdersGatewayLatencySlowBurn
           expr: |
             slo:orders_latency_errors:ratio_rate6h > (6 * 0.005)
@@ -174,4 +174,4 @@ spec:
             description: >-
               {{ $value | humanizePercentage }} of /echo and /version requests took longer than 250 ms over the last 6 hours
               (the SLO allows 0.5%). At this rate the 30-day error budget is gone in about 5 days.
-            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/OrdersGatewayLatencySlowBurn.md
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/OrdersGatewayLatencySlowBurn.md

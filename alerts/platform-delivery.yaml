@@ -11,7 +11,7 @@ kind: PrometheusRule
 metadata:
   name: platform-delivery
   labels:
-    app.kubernetes.io/part-of: orders-gateway-platform
+    app.kubernetes.io/part-of: platform-demo
     app.kubernetes.io/component: alerts
 spec:
   groups:
@@ -32,7 +32,7 @@ spec:
             description: >-
               The live state of {{ $labels.name }} differs from Git and Argo CD hasn't
               been able to sync it. Changes merged for it aren't reaching the cluster.
-            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/ArgoCDAppOutOfSync.md
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/ArgoCDAppOutOfSync.md
 
         # A manual-sync app (staging, prod) left OutOfSync: a promotion was
         # pushed to Git but nobody clicked Sync, so the environment still
@@ -48,7 +48,7 @@ spec:
               Git has a change for {{ $labels.name }} that nobody has synced, so it still runs
               what it ran before. Sync it (the Argo CD UI, or ./pipeline cd --sync), or
               revert the change in Git.
-            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/ArgoCDManualSyncPending.md
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/ArgoCDManualSyncPending.md
 
         # Degraded: something it deployed is failing (pods crashing, a
         # Deployment that can't get ready). Missing: a resource Git expects doesn't exist.
@@ -61,12 +61,12 @@ spec:
             summary: "Argo CD application {{ $labels.name }} is {{ $labels.health_status }}"
             description: >-
               {{ $labels.name }} has been {{ $labels.health_status }} for 10 minutes.
-            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/ArgoCDAppUnhealthy.md
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/ArgoCDAppUnhealthy.md
 
         # The whole stack against its 12 GiB budget. cAdvisor's root cgroup on
         # each kind node is the node container itself (pods plus kubelet and
         # containerd), so the sum matches `./platform budget` (7067 vs 7055 MiB
-        # on ogp, 2026-11-25). At 90% a node is close to its 4 GiB cap and
+        # on the local cluster, 2026-11-25). At 90% a node is close to its 4 GiB cap and
         # will start OOM-killing.
         - alert: StackNearMemoryBudget
           expr: sum(container_memory_working_set_bytes{id="/"}) / (12 * 2^30) > 0.9
@@ -77,4 +77,4 @@ spec:
             summary: "The stack uses {{ $value | humanizePercentage }} of its 12 GiB memory budget"
             description: >-
               Memory across the kind nodes has been above 90% of the budget for 10 minutes.
-            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/StackNearMemoryBudget.md
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/StackNearMemoryBudget.md

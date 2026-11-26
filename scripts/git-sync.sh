@@ -34,7 +34,7 @@ else
     kubectl -n git delete deploy soft-serve --ignore-not-found --wait=true >/dev/null
     kubectl -n git delete pvc soft-serve --wait=true >/dev/null
   fi
-  ssh-keygen -q -t ed25519 -N '' -C orders-gateway-platform-bootstrap -f "$KEY"
+  ssh-keygen -q -t ed25519 -N '' -C platform-demo-bootstrap -f "$KEY"
   kubectl -n git create secret generic git-admin \
     --from-file=private_key="$KEY" --from-file=authorized_key="$KEY.pub" >/dev/null
 fi
@@ -79,8 +79,8 @@ else
     origin="local HEAD $head"
     [ -z "$(git -c safe.directory='*' -C "$ROOT" status --porcelain 2>/dev/null)" ] || origin="$origin, plus uncommitted changes"
   fi
-  commit=$(GIT_AUTHOR_NAME="orders-gateway-platform bootstrap" GIT_AUTHOR_EMAIL="bootstrap@localhost" \
-    GIT_COMMITTER_NAME="orders-gateway-platform bootstrap" GIT_COMMITTER_EMAIL="bootstrap@localhost" \
+  commit=$(GIT_AUTHOR_NAME="platform-demo bootstrap" GIT_AUTHOR_EMAIL="bootstrap@localhost" \
+    GIT_COMMITTER_NAME="platform-demo bootstrap" GIT_COMMITTER_EMAIL="bootstrap@localhost" \
     g commit-tree "$tree" ${parent:+-p "$parent"} -m "Snapshot of the checkout ($origin)")
   g push -q "$remote" "$commit:refs/heads/main" ||
     die "push to the in-stack Git server refused; if its admin key changed, reset it: kubectl -n git delete secret git-admin, then run ./platform up again"

@@ -4,7 +4,7 @@
 # Shared helpers for the scripts ./platform runs inside the toolbox.
 set -euo pipefail
 
-CLUSTER_NAME=ogp
+CLUSTER_NAME=platform-demo
 KIND_CONFIG=cluster/kind.yaml
 # Budget for the whole stack.
 BUDGET_CPUS=6

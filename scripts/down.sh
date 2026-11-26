@@ -9,5 +9,5 @@ if cluster_exists; then
 else
   step "No cluster named '$CLUSTER_NAME'; nothing to delete"
 fi
-rm -f "$KUBECONFIG"  # in the ogp-kube volume
+rm -f "$KUBECONFIG"  # in the platform-demo-kube volume
 ok "Done"
