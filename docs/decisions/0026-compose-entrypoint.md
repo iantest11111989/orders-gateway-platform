@@ -23,3 +23,11 @@ The assignment's fixed contract: the repo is run with `docker compose up -d --wa
 ## Addendum, 2026-11-25: progress services
 
 `docker compose up -d --wait` prints only each container's state, so with `ready` alone the reviewer saw "Waiting" for about nine minutes. Four services, `step-1-cluster` to `step-4-apps`, now do no work and only show progress: each one's healthcheck (`scripts/compose-step.sh`) passes when one stage is done (kind nodes Ready; the Git server and Argo CD running; every platform Application Synced and Healthy; dev, staging and prod Synced and Healthy), so Compose shows the stages turn Healthy in order. They share `ready`'s image and settings through a YAML anchor, including `restart: unless-stopped`; a passed step stays healthy until its container restarts, and re-derives its state from the cluster after `docker compose stop`/`start`. Each is an idle `sleep` process, outside the kind nodes. `./platform` now creates the `ogp-kube` volume with Compose's labels, so a later `docker compose up` adopts it without a warning.
+
+## Addendum, 2026-11-25: `./platform down` means everything
+
+The owner ran `./platform down`, then `docker compose up -d --wait`, and nothing came up. `down` had deleted the cluster but left `ready` running with its configuration unchanged, so Compose didn't recreate it, and an old `ready` that had finished its bootstrap just idled with no cluster. Two changes:
+
+- **`./platform down` removes the Compose services first** (by Compose's project label, so it works without the Compose plugin), then deletes the cluster. Volumes are kept. The next `docker compose up` starts a fresh `ready`, which bootstraps.
+- **`ready` watches its cluster.** After the bootstrap it checks every 30 s that the kind control plane exists; after two misses it exits, and `restart: unless-stopped` brings it back to rebuild the cluster. The step services tie their "passed" marker to the control plane's container ID, so after a rebuild they check again from the start.
+

@@ -77,6 +77,20 @@ ensure_toolbox() {
   docker build -q -t "$img" toolbox >/dev/null || die "toolbox build failed"
 }
 
+# `./platform down` means everything: stop and remove the Compose services
+# first, so `ready` can't start rebuilding the cluster we're about to delete,
+# and so the next `docker compose up` starts a fresh `ready` that bootstraps
+# (an old one left running would just sit there with no cluster). Volumes are
+# kept. No Compose plugin needed: the containers are found by Compose's label.
+compose_down() {
+  ids=$(docker ps -aq --filter label=com.docker.compose.project=orders-gateway-platform)
+  [ -n "$ids" ] || return 0
+  printf '==> Stopping the Compose services (ready, step-1..4)\n'
+  # shellcheck disable=SC2086
+  docker rm -f $ids >/dev/null
+  printf '  ✓ removed; docker compose up -d --wait starts them again\n'
+}
+
 run_toolbox() {
   img=$(toolbox_image)
   ensure_toolbox "$img"
@@ -202,7 +216,11 @@ case "$cmd" in
     host_ports || [ -n "$(docker ps -q --filter "name=^${CLUSTER_NAME:-ogp}-control-plane$")" ] || die "free the ports above first"
     TOOLBOX_EXEC='' run_toolbox bash scripts/up.sh "$@"
     promoter_token_load ;;
-  doctor|down|urls|verify|budget|demo|ship|rollback)
+  down)
+    check_docker
+    compose_down
+    run_toolbox bash scripts/down.sh "$@" ;;
+  doctor|urls|verify|budget|demo|ship|rollback)
     check_docker
     [ "$cmd" != doctor ] || host_ports || true
     case "$cmd" in ship|rollback) set -- "$cmd" "$@"; cmd=ship ;; esac
