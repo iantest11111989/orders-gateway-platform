@@ -95,7 +95,7 @@ step "Loading the Sealed Secrets demo key"
 if kubectl -n kube-system get secret sealed-secrets-demo-key >/dev/null 2>&1; then
   ok "kube-system/sealed-secrets-demo-key already there (Argo CD manages it)"
 else
-  kubectl apply -f "$(dirname "$0")/../gitops/manifests/sealed-secrets/demo-key.yaml" >/dev/null
+  kubectl apply -f "$(dirname "$0")/../system/sealed-secrets/manifests/demo-key.yaml" >/dev/null
   ok "kube-system/sealed-secrets-demo-key"
 fi
 

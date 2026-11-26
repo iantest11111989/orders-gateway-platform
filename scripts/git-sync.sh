@@ -39,7 +39,7 @@ else
     --from-file=private_key="$KEY" --from-file=authorized_key="$KEY.pub" >/dev/null
 fi
 chmod 600 "$KEY"
-kubectl apply -k "$ROOT/gitops/manifests/git-server" >/dev/null
+kubectl apply -k "$ROOT/system/git-server" >/dev/null
 kubectl -n git rollout status deploy/soft-serve --timeout=180s >/dev/null
 ok "soft-serve ready ($IN_CLUSTER_URL)"
 

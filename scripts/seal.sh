@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Prints a SealedSecret for <namespace>/<name> with the given key=value
 # pairs, sealed offline with the committed demo certificate
-# (gitops/manifests/sealed-secrets/demo-cert.pem), so no cluster is needed.
+# (system/sealed-secrets/manifests/demo-cert.pem), so no cluster is needed.
 # Runs in the toolbox (kubeseal, kubectl):
 #   ./platform shell scripts/seal.sh monitoring grafana-admin admin-user=admin admin-password=...
-# Output goes to stdout; commit it under gitops/manifests/.
+# Output goes to stdout; commit it under system/<component>/.
 # DEMO ONLY: the matching private key is committed too, so these values are
 # readable by anyone with the repo.
 set -euo pipefail
 [ $# -ge 3 ] || { echo "usage: $0 <namespace> <name> key=value..." >&2; exit 2; }
 ns=$1 name=$2
 shift 2
-cert="$(cd "$(dirname "$0")/.." && pwd)/gitops/manifests/sealed-secrets/demo-cert.pem"
+cert="$(cd "$(dirname "$0")/.." && pwd)/system/sealed-secrets/manifests/demo-cert.pem"
 
 args=()
 for kv in "$@"; do

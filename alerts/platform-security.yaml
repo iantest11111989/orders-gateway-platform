@@ -4,7 +4,7 @@
 #
 # Severities follow the SLO alerts: "page" for something that weakens a
 # security control right now, "ticket" for something to fix today.
-# Alertmanager routes them (gitops/values/kube-prometheus-stack.yaml).
+# Alertmanager routes them (system/kube-prometheus-stack/values.yaml).
 #
 # Tests: alerts/tests/platform-security.test.yaml (promtool, run in CI).
 apiVersion: monitoring.coreos.com/v1

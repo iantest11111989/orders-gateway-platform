@@ -1,0 +1,55 @@
+# Metrics and alerting: Prometheus, Alertmanager, Grafana, the Prometheus
+# Operator, kube-state-metrics and node-exporter, in namespace monitoring.
+# Values: system/kube-prometheus-stack/values.yaml.
+#
+# Pod Security: "privileged" here, because node-exporter needs the host's
+# network, PID namespace and filesystem to report node metrics. That is the
+# only exception; every other pod in this namespace is restricted-compliant
+# (enforced by Kyverno).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: orders-gateway-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/manifest-generate-paths: "/system/kube-prometheus-stack"
+spec:
+  project: default
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 93.6.1 # operator v0.95.2, same as prometheus-operator-crds
+      helm:
+        releaseName: kube-prometheus-stack
+        valueFiles:
+          - $values/system/kube-prometheus-stack/values.yaml
+    - repoURL: {{ .Values.repo.url }}
+      targetRevision: {{ .Values.repo.revision }}
+      ref: values
+    # SealedSecrets for this namespace (Grafana's admin login).
+    - repoURL: {{ .Values.repo.url }}
+      targetRevision: {{ .Values.repo.revision }}
+      path: system/kube-prometheus-stack/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    # Auto-sync does not retry a failed sync of the same revision on its own;
+    # this covers transient failures such as a CRD not yet Established.
+    retry:
+      limit: 5
+      backoff: {duration: 5s, factor: 2, maxDuration: 1m}
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: privileged
+        pod-security.kubernetes.io/warn: baseline
+        pod-security.kubernetes.io/audit: restricted
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

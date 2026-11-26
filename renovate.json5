@@ -26,7 +26,7 @@
   // and the alert receiver). The kubernetes
   // manager has no default file patterns.
   kubernetes: {
-    managerFilePatterns: ['/^gitops/manifests/trickle/.+\\.yaml$/', '/^gitops/manifests/monitoring/alert-receiver\\.yaml$/'],
+    managerFilePatterns: ['/^system/trickle/.+\\.yaml$/', '/^system/kube-prometheus-stack/manifests/alert-receiver\\.yaml$/'],
   },
 
   customManagers: [
@@ -34,8 +34,8 @@
       // Helm charts in the Argo CD Applications (Helm templates, so the
       // built-in argocd manager can't parse them): repoURL, chart, targetRevision.
       customType: 'regex',
-      description: 'Helm charts from HTTPS repos in gitops/apps',
-      managerFilePatterns: ['/^gitops/apps/templates/.+\\.yaml$/'],
+      description: 'Helm charts from HTTPS repos in bootstrap/apps',
+      managerFilePatterns: ['/^bootstrap/apps/templates/.+\\.yaml$/'],
       matchStrings: [
         'repoURL:\\s*(?<registryUrl>https://\\S+?)/?\\s+chart:\\s*(?<depName>\\S+)\\s+targetRevision:\\s*(?<currentValue>[^\\s#]+)',
       ],
@@ -102,12 +102,12 @@
       datasourceTemplate: 'docker',
     },
     {
-      // Images pinned in Helm values files. Renovate's helm-values manager only
-      // reads files named values.yaml; ours are gitops/values/<chart>.yaml, so
-      // an explicit image there would never be updated.
+      // Images pinned as one string (image: repo:tag@digest) in
+      // system/<chart>/values.yaml. Renovate's helm-values manager only reads
+      // the repository/tag map form, so these would never be updated.
       customType: 'regex',
-      description: 'Images pinned in gitops/values',
-      managerFilePatterns: ['/^gitops/values/.+\\.yaml$/'],
+      description: 'Images pinned in system/*/values.yaml',
+      managerFilePatterns: ['/^system/[^/]+/values\\.yaml$/'],
       matchStrings: [
         'image:\\s*(?<depName>[a-z0-9.-]+\\.[a-z]+/[^:@\\s]+):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})',
       ],

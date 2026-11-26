@@ -8,7 +8,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # DEMO ONLY: the committed Sealed Secrets key. Nothing else.
-allow='^gitops/manifests/sealed-secrets/demo-key\.yaml$'
+allow='^system/sealed-secrets/manifests/demo-key\.yaml$'
 
 found=0
 while IFS= read -r f; do

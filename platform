@@ -14,7 +14,7 @@
 #                         gitops-revert (clean removes the demo copy)
 #   ./platform shell [script]  open a shell (or run a script) in the toolbox
 #   ./platform kubectl …  run kubectl in the toolbox
-#   ./platform ship [--env ENV] [TAG]  build app/, load it into kind, roll it
+#   ./platform ship [--env ENV] [TAG]  build apps/orders-gateway/, load it into kind, roll it
 #                         out by Git change (default prod)
 #   ./platform rollback [--env ENV]  back to the image before the last change
 #

@@ -10,7 +10,7 @@ It fires when more than **3%** of `/work` and `/echo` requests in one namespace 
 
 The short window lets the alert clear soon after the problem is fixed, instead of waiting for the long window to forget it. Its faster sibling is [OrdersGatewayAvailabilityFastBurn](OrdersGatewayAvailabilityFastBurn.md).
 
-The alert's `namespace` label tells you which environment it is. Use it for `<namespace>` below; `<env>` is the matching folder in `environments/`.
+The alert's `namespace` label tells you which environment it is. Use it for `<namespace>` below; `<env>` is the matching file in `cd/orders-gateway/` (`<env>.yaml`).
 
 ## Likely causes
 
@@ -51,7 +51,7 @@ The alert's `namespace` label tells you which environment it is. Use it for `<na
 
 ## How to fix
 
-- **Bad release:** roll back through Git, so Argo CD doesn't undo it. In the default setup, `./platform rollback --env <env>` puts back the image `<env>` ran before (README, Roll back); it pushes a commit to the in-stack Git server and waits for the rollout. When Argo CD syncs from GitHub, revert the image change in `environments/<env>/values.yaml` with a pull request instead. Don't `kubectl rollout undo`: self-heal puts Git's version back within seconds.
+- **Bad release:** roll back through Git, so Argo CD doesn't undo it. In the default setup, `./platform rollback --env <env>` puts back the image `<env>` ran before (README, Roll back); it pushes a commit to the in-stack Git server and waits for the rollout. When Argo CD syncs from GitHub, revert the image change in `cd/orders-gateway/<env>.yaml` with a pull request instead. Don't `kubectl rollout undo`: self-heal puts Git's version back within seconds.
 - **Injected faults:** remove `config.faultErrorRate` from the environment's values and let Argo CD sync. For a runtime fault, reset it from inside the cluster (`POST /admin/fault` with `{"error_rate": 0}` to each pod), or delete the pods: they start clean.
 - **Crashing pods:** run `./platform kubectl -n <namespace> describe pod <pod>` and `logs --previous`, then fix the cause. For an OOM kill, raise the memory limit. For a failing probe, check `/readyz` (503 for the first 3 s, and while draining).
 

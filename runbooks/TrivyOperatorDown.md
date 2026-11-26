@@ -25,7 +25,7 @@ kubectl -n trivy-system get events --sort-by=.lastTimestamp | tail
 
 ## How to fix
 
-- OOM: raise its limit in `gitops/values/trivy-operator.yaml` through a PR, and keep the 6 CPU / 12 GiB budget in mind (`./platform budget`).
+- OOM: raise its limit in `system/trivy-operator/values.yaml` through a PR, and keep the 6 CPU / 12 GiB budget in mind (`./platform budget`).
 - DB download failing: usually transient, so wait. The operator retries.
 
 ## Verify recovery

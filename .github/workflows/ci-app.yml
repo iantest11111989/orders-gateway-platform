@@ -5,7 +5,7 @@ name: CI · app
 
 on:
   pull_request:
-    paths: ["app/**", "!app/k6/**", "!app/**/*.md", "app/k6/load.js", "app/k6/perf-gate.js", "scripts/smoke-test-image.sh", ".github/workflows/ci-app.yml", ".github/workflows/cd-app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh"]
+    paths: ["apps/orders-gateway/**", "!apps/orders-gateway/k6/**", "!apps/orders-gateway/**/*.md", "apps/orders-gateway/k6/load.js", "apps/orders-gateway/k6/perf-gate.js", "scripts/smoke-test-image.sh", ".github/workflows/ci-app.yml", ".github/workflows/cd-app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh"]
 
 # Least privilege: jobs read the repo, and only the `image` job (the signing
 # rehearsal) may request an OIDC token. Nothing here writes packages or the
@@ -28,7 +28,7 @@ env:
 
 defaults:
   run:
-    working-directory: app
+    working-directory: apps/orders-gateway
 
 jobs:
   # The app (server.js) has no dependencies, so its own tests run in the same
@@ -82,7 +82,7 @@ jobs:
       - id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: app
+          context: apps/orders-gateway
           platforms: linux/amd64,linux/arm64
           push: true
           sbom: true
@@ -129,9 +129,9 @@ jobs:
         working-directory: .
         run: scripts/smoke-test-image.sh orders-gateway:ci
 
-  # The SLOs as a gate: 60 s of the demos' traffic mix (app/k6/load.js) at
+  # The SLOs as a gate: 60 s of the demos' traffic mix (apps/orders-gateway/k6/load.js) at
   # 20 requests/s against one container, failing on any SLO threshold
-  # (app/k6/perf-gate.js): 99.5% good, /echo and /version p99 under 250 ms,
+  # (apps/orders-gateway/k6/perf-gate.js): 99.5% good, /echo and /version p99 under 250 ms,
   # under 0.5% failed requests.
   perf:
     name: "4 · Performance gate (k6, 60 s)"

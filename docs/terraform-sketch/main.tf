@@ -143,7 +143,7 @@ resource "aws_ecr_pull_through_cache_rule" "ghcr" {
 
 # Terraform's job ends where Argo CD's begins: install Argo CD and hand it
 # the same root Application `./platform up` uses, pointed at GitHub. Every
-# other component stays in gitops/, exactly as it is in kind.
+# other component stays in bootstrap/ and system/, exactly as it is in kind.
 provider "helm" {
   kubernetes = {
     host                   = module.eks.cluster_endpoint
@@ -160,10 +160,10 @@ resource "helm_release" "argocd" {
   name             = "argo-cd"
   repository       = "https://argoproj.github.io/argo-helm"
   chart            = "argo-cd"
-  version          = "10.18.2" # the same pin as gitops/apps/templates/argocd.yaml
+  version          = "10.18.2" # the same pin as bootstrap/apps/templates/argocd.yaml
   namespace        = "argocd"
   create_namespace = true
-  values           = [file("${path.module}/../../gitops/values/argocd.yaml")]
+  values           = [file("${path.module}/../../system/argocd/values.yaml")]
 }
 
 resource "helm_release" "root" {
@@ -180,8 +180,8 @@ resource "helm_release" "root" {
         source = {
           repoURL        = var.repo_url
           targetRevision = "main"
-          path           = "gitops/apps"
-          # Today's values; a real port adds an EKS layer (gitops/values/*-eks.yaml)
+          path           = "bootstrap/apps"
+          # Today's values; a real port adds an EKS layer (system/*/eks.yaml)
           # for the load balancer and storage classes.
           helm = { valuesObject = { repo = { url = var.repo_url, revision = "main" } } }
         }

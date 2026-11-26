@@ -5,7 +5,7 @@
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
-ARGOCD_CHART_VERSION=$(yq '.spec.sources[0].targetRevision' gitops/apps/templates/argocd.yaml)
+ARGOCD_CHART_VERSION=$(yq '.spec.sources[0].targetRevision' bootstrap/apps/templates/argocd.yaml)
 REPO_URL=${REPO_URL:-https://github.com/iantest11111989/orders-gateway-platform.git}
 REVISION=${REVISION:-main}
 APPS_TIMEOUT=${APPS_TIMEOUT:-600}
@@ -17,7 +17,7 @@ else
   helm repo add argo https://argoproj.github.io/argo-helm --force-update >/dev/null
   helm upgrade --install argocd argo/argo-cd --version "$ARGOCD_CHART_VERSION" \
     --namespace argocd --create-namespace \
-    --values gitops/values/argocd.yaml \
+    --values system/argocd/values.yaml \
     --wait --timeout 5m >/dev/null
   ok "Argo CD running"
 fi
@@ -28,7 +28,7 @@ REPO_URL="$REPO_URL" REVISION="$REVISION" yq '
   .spec.source.targetRevision = strenv(REVISION) |
   .spec.source.helm.valuesObject.repo.url = strenv(REPO_URL) |
   .spec.source.helm.valuesObject.repo.revision = strenv(REVISION)
-' gitops/root.yaml | kubectl apply -f - >/dev/null
+' bootstrap/root.yaml | kubectl apply -f - >/dev/null
 ok "root applied"
 
 step "Waiting for every Application to be Synced and Healthy (up to ${APPS_TIMEOUT}s)"

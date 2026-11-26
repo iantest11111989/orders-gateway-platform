@@ -1,0 +1,11 @@
+# staging: promoted from dev by a pull request the owner approves.
+env: staging
+
+image:
+  tag: sha-9ab553b08d9f
+  digest: sha256:4a3e5f1af2371bd526a8eed0b4fcf23f86d7475cf26350d93e0e41af684f9735
+
+replicas: 2
+
+ingress:
+  entrypoint: staging

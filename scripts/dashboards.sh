@@ -1,6 +1,6 @@
 #!/bin/sh
 # Grafana dashboards: dashboards/*.json is the source; Argo CD applies a
-# ConfigMap per dashboard from gitops/manifests/monitoring/ (label
+# ConfigMap per dashboard from system/kube-prometheus-stack/manifests/ (label
 # grafana_dashboard=1, which Grafana's sidecar loads).
 #
 #   scripts/dashboards.sh gen     write the ConfigMaps from dashboards/*.json
@@ -12,7 +12,7 @@ set -eu
 cd "$(dirname "$0")/.."
 
 PROM_IMAGE=prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
-OUT=gitops/manifests/monitoring
+OUT=system/kube-prometheus-stack/manifests
 
 configmap() { # configmap <dashboard.json>
   name=$(basename "$1" .json)
