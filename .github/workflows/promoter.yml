@@ -1,4 +1,4 @@
-name: promoter
+name: CI · promoter
 
 on:
   pull_request:

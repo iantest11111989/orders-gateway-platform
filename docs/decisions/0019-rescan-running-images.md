@@ -26,3 +26,5 @@ Decision 0016 gates each image on a Trivy scan when it's built. A CVE published 
 - `scan-image.sh` exit codes: 0 for dev's image, 3 for `golang:1.20-alpine`, 1 for a digest that doesn't exist.
 - actionlint (with shellcheck) and `renovate-config-validator --strict` are clean.
 - The issue step only runs on GitHub. After merge, the first `workflow_dispatch` run is its real test.
+
+_Since 2026-11-25 the app workflow is split into `ci-app.yml` (pull requests) and `cd-app.yml` (main); what this record says of `app.yml` now applies to `cd-app.yml` (decision 0013's addendum)._

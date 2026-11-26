@@ -1,4 +1,4 @@
-name: platform
+name: CI · platform
 
 on:
   pull_request:
@@ -6,7 +6,7 @@ on:
   push:
     branches: [main]
     paths: ["platform", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "gitops/**", "charts/**", "environments/**", "alerts/**", ".github/workflows/**", ".shellcheckrc"]
-  # The promotion PRs (app.yml, job promote-prs) are opened with GITHUB_TOKEN,
+  # The promotion PRs (cd-app.yml, job promote-prs) are opened with GITHUB_TOKEN,
   # which starts no pull_request workflows; that job dispatches this one on
   # the PR's branch instead, and the results show on the PR's head commit.
   workflow_dispatch:
@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   lint:
-    name: shellcheck + actionlint
+    name: "Lint (shellcheck, actionlint)"
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -39,7 +39,7 @@ jobs:
             rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
 
   toolbox:
-    name: toolbox builds (amd64 + arm64)
+    name: "Build toolbox (amd64 + arm64)"
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -61,7 +61,7 @@ jobs:
   # rebuilt. Signed and checked like the app image (scripts/sign-images.sh,
   # decision 0013), with this workflow on main as the identity.
   toolbox-publish:
-    name: publish toolbox (amd64 + arm64)
+    name: "Publish toolbox (main only)"
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: toolbox
     runs-on: ubuntu-24.04
@@ -125,7 +125,7 @@ jobs:
         run: scripts/sign-images.sh "$DIGEST" | tee -a "$GITHUB_STEP_SUMMARY"
 
   cluster:
-    name: ./platform doctor, up, up again, down
+    name: "E2E · Fresh install"
     runs-on: ubuntu-24.04
     # No REPO_URL: Argo CD syncs from the in-stack Git server, which the
     # bootstrap fills with this job's checkout (decision 0029), exactly what a
@@ -134,7 +134,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: ./platform doctor # runners have 4 CPUs: a warning, not a failure
+      - name: "Pre-flight (./platform doctor)"
+        run: ./platform doctor # runners have 4 CPUs: a warning, not a failure
       # The images a recent run on main used, so a cold start doesn't hinge on
       # every registry answering (ECR Public 429s, ErrImagePull; see
       # scripts/images.sh). The key never matches exactly: restore-keys picks
@@ -149,7 +150,7 @@ jobs:
       # The reviewer's entry point (the brief's fixed contract): Compose's
       # `ready` service bootstraps everything and is healthy only when every
       # Argo CD Application is Synced and Healthy and prod serves.
-      - name: docker compose up -d --wait
+      - name: "Start (docker compose up -d --wait)"
         run: docker compose up -d --wait --wait-timeout 1200
         env:
           PRELOAD_IMAGES: .cache/images
@@ -157,11 +158,11 @@ jobs:
         if: failure()
         run: docker compose logs --tail=200 ready || true
       # ./out/kubeconfig.yaml must work from the host, with the host's kubectl.
-      - name: kubeconfig from the host
+      - name: "Kubeconfig from the host"
         run: kubectl --kubeconfig out/kubeconfig.yaml get nodes
       # Restarts: stopping and starting Compose must come back healthy with the
       # cluster (and its data) untouched.
-      - name: docker compose stop, then up again
+      - name: "Restart (stop, then up again)"
         run: |
           docker compose stop
           docker compose up -d --wait --wait-timeout 600
@@ -181,9 +182,12 @@ jobs:
               else if (match(rest, /[0-9.]+s/)) { s += substr(rest, RSTART, RLENGTH - 1) }
               printf "%7.1fs  %s\n", s, f[2]
             }' | sort -rn | head -20
-      - run: ./platform up # idempotent
-      - run: ./platform kubectl get nodes -L topology.kubernetes.io/zone
-      - run: ./platform kubectl -n argocd get applications
+      - name: "Re-run bootstrap (idempotent)"
+        run: ./platform up # idempotent
+      - name: Nodes and their zones
+        run: ./platform kubectl get nodes -L topology.kubernetes.io/zone
+      - name: Argo CD Applications
+        run: ./platform kubectl -n argocd get applications
       # One ReplicaSet means the Envoy proxy didn't roll during bootstrap
       # (#46). More is a regression worth seeing, not worth failing CI over.
       - name: Envoy proxy rolled during bootstrap?
@@ -195,7 +199,7 @@ jobs:
           fi
       # Apps, scrape targets, logs, HTTPS and policies (includes check-https).
       # Right after `up` a target may not have been scraped yet: retry a bit.
-      - name: ./platform verify
+      - name: "Verify (./platform verify)"
         run: |
           for attempt in 1 2 3; do
             ./platform verify && exit 0
@@ -204,11 +208,12 @@ jobs:
           done
           exit 1
       # The Application health check the root's sync waves rely on (#31).
-      - run: ./platform shell scripts/test-argocd-health.sh
+      - name: Argo CD health check
+        run: ./platform shell scripts/test-argocd-health.sh
       # The README's "ship a new version" and "roll back", while traffic flows
       # (decision 0030): a request loop against prod at :8080 for the whole
       # time; any non-200 fails the step.
-      - name: ship and roll back while traffic flows
+      - name: "Ship and roll back under traffic"
         run: |
           # A known baseline first: environments/prod may pin an older image.
           ./platform ship ci-ship-0
@@ -241,7 +246,8 @@ jobs:
           ./platform rollback
           test "$(kubectl --kubeconfig out/kubeconfig.yaml -n prod get deploy app -o jsonpath='{.spec.template.spec.containers[0].image}')" != localhost/orders-gateway:ci-ship-1
       # Measured CPU/memory against the 6 CPU / 12 GiB budget, plus OOM kills.
-      - run: ./platform budget --watch 30
+      - name: "Resource budget (./platform budget)"
+        run: ./platform budget --watch 30
       # Refresh the image cache from main when the set of images changed (a
       # chart or image bump). Only main and manual runs save: PR caches are
       # scoped to their branch and would only crowd out main's (10 GB cap).

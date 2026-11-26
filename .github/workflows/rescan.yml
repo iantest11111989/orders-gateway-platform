@@ -1,4 +1,4 @@
-name: rescan
+name: Scheduled · image rescan
 
 # Daily: scans the images dev, staging and prod run now against today's
 # vulnerability DB (decision 0019). The app workflow scans an image only when
@@ -19,7 +19,7 @@ concurrency:
 
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/orders-gateway
-  # Same pin as app.yml; a regex manager in renovate.json5 keeps both current.
+  # Same pin as ci-app.yml and cd-app.yml; a regex manager in renovate.json5 keeps both current.
   TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
   TITLE: Vulnerabilities in running images
 
@@ -68,7 +68,7 @@ jobs:
           if [ "$STATUS" = 1 ]; then
             body="$(cat report.md)
 
-          Fixable HIGH/CRITICAL findings (details: $RUN_URL). Fix with a dependency bump; the app workflow then publishes, scans and promotes a new image (decision 0016)."
+          Fixable HIGH/CRITICAL findings (details: $RUN_URL). Fix with a dependency bump; CD · app then publishes, scans and promotes a new image (decision 0016)."
             if [ -n "$issue" ]; then gh issue comment "$issue" --body "$body"
             else gh issue create --title "$TITLE" --label security --body "$body"; fi
           elif [ "$STATUS" = 0 ] && [ -n "$issue" ]; then

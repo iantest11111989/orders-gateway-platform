@@ -1,4 +1,4 @@
-name: alerts
+name: CI · alerts
 
 on:
   pull_request:

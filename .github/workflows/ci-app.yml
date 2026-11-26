@@ -1,0 +1,118 @@
+# CI for the app: every pull request that touches it. Tests, lints, builds
+# both architectures, scans and rehearses signing. Nothing is pushed or
+# deployed; CD (cd-app.yml) does that after the merge.
+name: CI · app
+
+on:
+  pull_request:
+    paths: ["app/**", "!app/k6/**", "!app/**/*.md", ".github/workflows/ci-app.yml", ".github/workflows/cd-app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh", "scripts/promotion-kind.sh"]
+
+# Least privilege: jobs read the repo, and only the `image` job (the signing
+# rehearsal) may request an OIDC token. Nothing here writes packages or the
+# repo: that's CD (cd-app.yml).
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-app-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/orders-gateway
+  # Vulnerability scanner for scripts/scan-image.sh, pinned by tag and digest;
+  # a regex manager in renovate.json5 keeps it current.
+  TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  # The app (server.js) has no dependencies, so its own tests run in the same
+  # pinned Node image the Dockerfile builds from: no setup action to pin.
+  test:
+    name: "1 · Test"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Tests and syntax check (npm test, npm run lint)
+        run: |
+          node_image=$(sed -n 's/^FROM \(node:[^ ]*\) AS app$/\1/p' Dockerfile)
+          docker run --rm -v "$PWD":/app -w /app "$node_image" sh -c 'npm test && npm run lint'
+
+  lint:
+    name: "1 · Lint (Dockerfile)"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: docker run --rm -i hadolint/hadolint:v2.14.0@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e < Dockerfile
+
+  # Pull requests build the image without pushing: only main publishes, so
+  # every published image comes from reviewed code (and, with signing,
+  # verifies against this workflow on refs/heads/main).
+  # It also rehearses the signing on main: the image goes to a throwaway
+  # registry on localhost (nothing public), and scripts/sign-images.sh signs
+  # and checks it exactly as the `sign` job does, so a broken signing step
+  # fails here instead of after main has published. The keyless signature
+  # names this PR's ref and lands in the public Rekor log, like main's do.
+  image:
+    name: "2 · Build, scan and sign (rehearsal: nothing pushed)"
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write # keyless signing of the localhost image
+    services:
+      registry:
+        image: docker.io/library/registry:3.1.2@sha256:82f6ff4a7f982960c8aa51617fea3aabc485df6e55cce80d22deb1de36f1bc3c
+        ports: ["5000:5000"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: network=host # so BuildKit can reach localhost:5000
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: app
+          platforms: linux/amd64,linux/arm64
+          push: true
+          sbom: true
+          tags: localhost:5000/orders-gateway:pr
+          build-args: |
+            VERSION=ci
+            COMMIT=${{ github.sha }}
+      # The v2-bad demo stage, so a PR that breaks it fails before main.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: app
+          target: bad
+          platforms: linux/amd64,linux/arm64
+          push: false
+          build-args: |
+            VERSION=ci-bad
+            COMMIT=${{ github.sha }}
+            FEATURES=delivery-estimates
+      - uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
+      - name: Signing rehearsal (localhost registry)
+        # Fork PRs get no OIDC token, so they skip the rehearsal.
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        working-directory: .
+        env:
+          IMAGE: localhost:5000/orders-gateway
+          # .../.github/workflows/app.yml@refs/pull/<n>/merge
+          IDENTITY: ${{ github.server_url }}/${{ github.workflow_ref }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: scripts/sign-images.sh "$DIGEST"
+      # Fixable HIGH/CRITICAL vulnerabilities fail the PR (decision 0016).
+      - name: Vulnerability scan (Trivy)
+        working-directory: .
+        env:
+          TRIVY_INSECURE: "true" # the localhost registry is plain HTTP
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: scripts/scan-image.sh "localhost:5000/orders-gateway@$DIGEST"

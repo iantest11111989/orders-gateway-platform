@@ -26,7 +26,11 @@ The brief (section 9.3) asks for signed images with an SBOM, which a Kyverno pol
 
 ```sh
 cosign verify ghcr.io/iantest11111989/orders-gateway@sha256:<digest> \
-  --certificate-identity https://github.com/iantest11111989/orders-gateway-platform/.github/workflows/app.yml@refs/heads/main \
+  --certificate-identity-regexp '^https://github\.com/iantest11111989/orders-gateway-platform/\.github/workflows/(cd-app|app)\.yml@refs/heads/main$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 docker buildx imagetools inspect ghcr.io/iantest11111989/orders-gateway@sha256:<digest> --format '{{ json .SBOM }}'
 ```
+
+## Addendum, 2026-11-25: the CI/CD split
+
+The app workflow split into `ci-app.yml` (pull requests) and `cd-app.yml` (merges to `main`), so signing now runs in `cd-app.yml` and the certificate identity names that file. `verify-image-signatures` accepts either file name with `subjectRegExp` (one identity entry; a second entry would also have to match), so images signed before the split, by `app.yml`, still verify.

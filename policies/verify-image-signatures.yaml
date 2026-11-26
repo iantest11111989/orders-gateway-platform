@@ -38,12 +38,15 @@ spec:
     - name: cosign
       cosign:
         keyless:
+          # CD signs since the CI/CD split (cd-app.yml); images signed before
+          # it carry app.yml, the workflow's old name. One identity matching
+          # both (a second identity entry would also have to match).
           identities:
             - issuer: https://token.actions.githubusercontent.com
-              subject: https://github.com/iantest11111989/orders-gateway-platform/.github/workflows/app.yml@refs/heads/main
+              subjectRegExp: ^https://github\.com/iantest11111989/orders-gateway-platform/\.github/workflows/(cd-app|app)\.yml@refs/heads/main$
   validations:
     - expression: >-
         images.containers.map(image, verifyImageSignatures(image, [attestors.cosign])).all(e, e > 0)
       message: >-
-        The orders-gateway image must be signed by the app workflow on main
+        The orders-gateway image must be signed by the app's CD workflow on main
         (see docs/decisions/0013-image-signing.md).

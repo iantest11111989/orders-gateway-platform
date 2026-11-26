@@ -2,7 +2,7 @@
 # Points one environment at an app image: sets image.tag and image.digest in
 # environments/<env>/values.yaml, keeping every comment and line around them.
 # Promotion is this one Git change (decision 0009); CI runs it for dev on
-# every merge to main (.github/workflows/app.yml, job promote-dev).
+# every merge to main (.github/workflows/cd-app.yml, job promote-dev).
 #   scripts/set-image.sh dev sha-0123456789ab sha256:<64 hex>
 # Plain bash + awk, so it runs on a bare CI runner as well as in the toolbox.
 set -euo pipefail
