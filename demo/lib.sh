@@ -200,6 +200,17 @@ delete_app() {
 start_load() { # start_load [requests/s, default 10]
   local rate=${1:-10}
   step "Starting k6: ~$rate requests/s to $URL (log: $K6_LOG)"
+  # Argo CD reports Healthy as soon as the pods are ready; Traefik picks up a
+  # new Ingress a few seconds later and answers 404 until then.
+  local i code=''
+  show "curl -s -o /dev/null -w '%{http_code}' $URL/version   # until Traefik routes to the copy"
+  for i in $(seq 1 60); do
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$URL/version" || true)
+    [ "$code" = 200 ] && break
+    sleep 1
+  done
+  printf '      %s (after %s s)\n' "$code" "$((i - 1))"
+  [ "$code" = 200 ] || die "Traefik doesn't route $URL to $APP after 60 s (it answers $code)"
   note "k6 is a load-testing tool (not part of the app); apps/orders-gateway/k6/load.js was written for this repo"
   note "its mix: 60% GET /work, 30% POST /echo, 10% GET /version, through Traefik to the demo copy"
   show "k6 run --quiet --summary-mode=compact -e BASE_URL=$URL -e RATE=$rate -e DURATION=30m apps/orders-gateway/k6/load.js > $K6_LOG 2>&1 &"
