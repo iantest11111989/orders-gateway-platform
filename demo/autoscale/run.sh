@@ -53,7 +53,6 @@ demo_autoscale() {
   max=$(get kubectl -n "$NS" get hpa orders-gateway -o jsonpath='{.spec.maxReplicas}')
   run kubectl -n "$NS" get deployment orders-gateway -o jsonpath='{.spec.template.spec.containers[0].resources}{"\n"}'
   note "the HPA's CPU % is of the 100m request above"
-  run kubectl -n "$NS" top pods -l app.kubernetes.io/name=orders-gateway || true
   ok "HPA $NS/orders-gateway scales the Deployment between $min and $max pods on CPU"
   start_load "$rate"
   where_to_watch

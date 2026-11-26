@@ -59,6 +59,7 @@ versions_run_in() { # versions_run_in <env>
   local c
   showcmd "git log --format=%H -- cd/$APP/$1.yaml   # then each commit's version: line"
   for c in $(git -C "$tmp/r" log --format=%H -- "cd/$APP/$1.yaml"); do
+    git -C "$tmp/r" cat-file -e "$c:cd/$APP/$1.yaml" 2>/dev/null || continue
     git -C "$tmp/r" show "$c:cd/$APP/$1.yaml" | yq '.version // ""'
   done | grep -v '^$' | sort -u
 }
@@ -200,6 +201,8 @@ case "$cmd" in
     cur=$(release_of <"$values")
     rels=()
     for c in $(git -C "$tmp/r" log --reverse --format=%H -- "cd/$APP/$env.yaml"); do
+      # Skip commits where the file is gone (hello-world's teardown deletes it).
+      git -C "$tmp/r" cat-file -e "$c:cd/$APP/$env.yaml" 2>/dev/null || continue
       rels+=("$(git -C "$tmp/r" show "$c:cd/$APP/$env.yaml" | release_of)")
     done
     first=-1
