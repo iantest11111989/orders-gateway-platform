@@ -45,6 +45,9 @@ ok "soft-serve ready ($IN_CLUSTER_URL)"
 
 # Reach its SSH port from here through the API server (no host port needed).
 pf_log="$tmp/pf.log"
+# Create the log first: the backgrounded redirect creates it only once the
+# child runs, and a sed that gets there first fails (and set -e stops us).
+: >"$pf_log"
 kubectl -n git port-forward svc/git :23231 >"$pf_log" 2>&1 &
 pf=$!
 trap 'kill "$pf" 2>/dev/null || true; rm -rf "$tmp"' EXIT
