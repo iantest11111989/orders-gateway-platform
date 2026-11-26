@@ -194,8 +194,8 @@ Argo CD Agent (one UI, agents pulling in each cluster) was also considered. Revi
 
 **How each cluster's Argo CD is set up:**
 - Terraform installs it once per cluster (HA, SSO through the IdP) together with the root Application. After that Argo CD manages its own release, as it does locally.
-- The root renders the existing `gitops/apps` chart with this cluster's values: `{env, aws: {...}}`, carrying Terraform's outputs (role ARNs, the ACM cert ARN, the WAF ACL ARN, the hosted zone, the cluster name). Templates keep `destination.server: https://kubernetes.default.svc`, so **the app-of-apps and its sync waves work unchanged**.
-- Only that environment's Application is on: the dev cluster runs `orders-gateway-dev`, prod runs `orders-gateway-prod`. Locally the three run side by side in one cluster, under the same names.
+- The root renders the existing `gitops/apps` chart with this cluster's values: `{env, aws: {...}}`, carrying Terraform's outputs (role ARNs, the ACM cert ARN, the WAF ACL ARN, the hosted zone, the cluster name). Templates keep `destination.server: https://kubernetes.default.svc`, so **the app-of-apps and its sync waves work as they do locally**.
+- Only that environment's Application is on: the dev cluster runs `orders-gateway-dev`, prod runs `orders-gateway-prod`. That needs one small change: a guard in each environment's Application template that renders it only when `env` is unset or matches. Locally `env` is unset, so the three run side by side in one cluster, under the same names.
 - RBAC per Argo CD: developers can sync dev; the release group syncs staging and prod. Prod also gets sync windows (no syncs outside working hours unless labelled `hotfix`).
 - One AppProject per Argo CD restricts sources to this repo and destinations to the cluster's own namespaces.
 - `gitops/values/` splits into `base/` (today's files minus kind-isms), `eks/`, and per-env overrides where needed (e.g. `gitops/values/prod/karpenter.yaml`).
