@@ -64,7 +64,12 @@ jobs:
         # Compose can report success at the wait timeout without `ready` being
         # healthy, so check it here: a slow start then fails at this step,
         # not later on a missing out/kubeconfig.yaml.
+        # The ready container's log is streamed while Compose waits, so a
+        # hang shows where it is live, not only after the timeout.
         run: |
+          (for _ in $(seq 1 120); do [ -n "$(docker compose ps -aq ready 2>/dev/null)" ] && break; sleep 1; done
+           exec docker compose logs -f --no-log-prefix ready) & follow=$!
+          trap 'kill "$follow" 2>/dev/null || true' EXIT
           docker compose up -d --wait --wait-timeout 1500
           status=$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q ready)" 2>/dev/null || echo missing)
           [ "$status" = healthy ] || { echo "::error::ready is $status after docker compose up --wait"; docker compose ps; exit 1; }
