@@ -334,10 +334,16 @@ data:
 
 
     def report_deployments(gh=github_ok, kube_get=kube):
+        if not TOKEN:
+            # Nothing to write, and the anonymous API allows only 60 calls an hour.
+            log("GitHub deployments: not reported (dry run, no token)")
+            return
         for env in ENVIRONMENTS:
             try:
                 log(f"{env}: GitHub deployment {report_environment(env, gh, kube_get)}")
-            except RuntimeError as e:
+            # Anything (network, timeouts, odd payloads): reporting must never
+            # stop the promotions that follow (decision 0033).
+            except Exception as e:  # noqa: BLE001
                 hint = " (the token needs Deployments: read and write)" if "HTTP 403" in str(e) or "HTTP 404" in str(e) else ""
                 log(f"{env}: GitHub deployment not reported: {e}{hint}")
 

@@ -270,6 +270,32 @@ class Deployments(unittest.TestCase):
         self.assertEqual(len(lines), 3)
         self.assertTrue(all("Deployments: read and write" in line for line in lines))
 
+    def test_network_errors_do_not_stop_the_pass(self):
+        def gh(method, path, body=None):
+            raise OSError("timed out")
+        lines = []
+        log, promoter.log = promoter.log, lines.append
+        try:
+            promoter.report_deployments(gh, lambda p: {"status": {"sync": {"status": "Synced", "revision": "r"},
+                                                                   "health": {"status": "Healthy"}}})
+            promoter.report_deployments(lambda *a: {}, lambda p: {})  # odd payloads: KeyError-free, skipped
+        finally:
+            promoter.log = log
+        self.assertEqual(len([line for line in lines if "timed out" in line]), 3)
+
+    def test_without_a_token_nothing_is_called(self):
+        promoter.TOKEN = ""
+
+        def boom(*a, **k):
+            raise AssertionError("no GitHub or cluster calls without a token")
+        lines = []
+        log, promoter.log = promoter.log, lines.append
+        try:
+            promoter.report_deployments(boom, boom)
+        finally:
+            promoter.log = log
+        self.assertEqual(len(lines), 1)
+
 
 class Parsing(unittest.TestCase):
     def test_trailer(self):
