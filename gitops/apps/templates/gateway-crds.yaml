@@ -2,7 +2,7 @@
 # (EnvoyProxy, ClientTrafficPolicy, ...), in their own Application at wave -10
 # so the gateway config (wave 25) and later Argo Rollouts' Gateway API plugin
 # find them installed. envoy-gateway.yaml runs with crds.enabled: false.
-# Keep the version equal to envoy-gateway.yaml's. See decision 0008.
+# Keep the version equal to envoy-gateway.yaml's.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

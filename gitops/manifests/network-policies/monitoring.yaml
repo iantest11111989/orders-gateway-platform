@@ -1,6 +1,7 @@
 # Baseline for monitoring: deny ingress by default; allow its own pods and the
-# nodes (kubelet, API server webhooks and service proxy; see
-# docs/decisions/0017-network-policies.md for why "nodes" is an ipBlock).
+# nodes (kubelet, API server webhooks and service proxy). "The nodes" is an
+# ipBlock, everything outside the pod range 10.244.0.0/16: on kindnet a
+# deny-all would also drop the control-plane node's traffic to pods.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -74,7 +75,7 @@ spec:
       ports:
         - {port: 9090, protocol: TCP}
 ---
-# The patch promoter reads the soak gates from Prometheus (decision 0024).
+# The patch promoter reads the soak gates from Prometheus.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

@@ -101,7 +101,7 @@ results:
     result: pass
 
   # Needs network: it fetches real signatures from GHCR and Sigstore's trust
-  # root. signed-app is a digest that main's `sign` job signed (#19);
+  # root. signed-app is a digest that main's `sign` job signed;
   # unsigned-app is the digest published before signing existed.
   - policy: verify-image-signatures
     resources: [signed-app, other-image]

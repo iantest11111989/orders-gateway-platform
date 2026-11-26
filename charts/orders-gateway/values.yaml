@@ -1,5 +1,5 @@
 # Defaults for every environment. environments/<env>/values.yaml overrides
-# them; Argo CD passes both (gitops/apps/templates/orders-<env>.yaml).
+# them; Argo CD passes both (gitops/apps/templates/<env>.yaml).
 
 # Environment name: the `env` label on pods (Loki, Grafana).
 env: dev
@@ -27,12 +27,12 @@ config:
 
 # Node with no dependencies idles at about 45 MiB. /work burns CPU on the
 # single event loop, so the CPU request is what the HPA's 70% is measured
-# against: 100m. No CPU limit (it would only throttle; decision 0012).
+# against: 100m. No CPU limit (it would only throttle).
 resources:
   requests: {cpu: 100m, memory: 48Mi}
   limits: {memory: 128Mi}
 
-# Shared Gateway from gitops/manifests/gateway/ (decision 0008).
+# Shared Gateway from gitops/manifests/gateway/.
 route:
   enabled: true
   hostname: orders.dev.localtest.me
@@ -41,7 +41,7 @@ route:
     namespace: envoy-gateway-system
     sectionName: https
 
-# The contract's endpoint, http://localhost:8080 with no hostname: prod only
+# The app's plain-HTTP endpoint, http://localhost:8080 with no hostname: prod only
 # (environments/prod/values.yaml). Same Gateway, listener "app".
 publicRoute:
   enabled: false
@@ -94,7 +94,7 @@ rollout:
     count: 4          # 4 measurements (2 minutes) per analysis step
     failureLimit: 1   # a second failed measurement aborts and rolls back
     inconclusiveLimit: 1  # a second no-data measurement pauses for a human
-    maxErrorRatio: 0.005        # SLO: 99.5% of /work and /echo non-5xx (decision 0027)
+    maxErrorRatio: 0.005        # SLO: 99.5% of /work and /echo non-5xx
     maxP99LatencySeconds: 0.25  # SLO: /echo and /version under 250 ms (the app has no 0.3 bucket)
 
 # preStop sleep (5 s, so endpoints drop the pod before it stops accepting)

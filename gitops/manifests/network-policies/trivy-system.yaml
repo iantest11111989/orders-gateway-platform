@@ -1,5 +1,5 @@
 # Baseline for trivy-system: deny ingress by default; allow its own pods (scan
-# Jobs reach the built-in Trivy server) and the nodes (decision 0017).
+# Jobs reach the built-in Trivy server) and the nodes.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

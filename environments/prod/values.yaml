@@ -16,7 +16,7 @@ autoscaling:
 route:
   hostname: orders.localtest.me
 
-# http://localhost:8080 (the contract's app endpoint).
+# http://localhost:8080 (the app's plain-HTTP endpoint).
 publicRoute:
   enabled: true
 
@@ -27,8 +27,8 @@ topologySpread:
   enabled: true
 
 
-# A plain Deployment named app, as the contract requires: a Rollout would
+# A plain Deployment named app, which the platform expects: a Rollout would
 # own the pods and leave the Deployment at 0 replicas. The canary demos
-# turn the Rollout on in their copy of prod (scripts/demo.sh, decision 0020).
+# turn the Rollout on in their copy of prod (scripts/demo.sh).
 rollout:
   enabled: false

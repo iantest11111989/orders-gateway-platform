@@ -1,6 +1,6 @@
 # Loki values (chart grafana/loki): single binary, filesystem storage on a
 # local volume, 2 days of retention, no caches or gateway. One pod, about
-# 256 Mi. See decision 0007.
+# 256 Mi.
 
 deploymentMode: SingleBinary
 

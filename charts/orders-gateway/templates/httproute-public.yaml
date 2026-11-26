@@ -1,5 +1,5 @@
 {{- if .Values.publicRoute.enabled }}
-# prod on http://localhost:8080 (the contract's app endpoint, decision 0028):
+# prod on http://localhost:8080 (the app's plain-HTTP endpoint):
 # the Gateway's plain-HTTP listener on 8080, no hostname, everything the app
 # serves except /admin/*.
 apiVersion: gateway.networking.k8s.io/v1
