@@ -13,19 +13,7 @@ spec:
   hostnames: [{{ .Values.route.hostname | quote }}]
   rules:
     - backendRefs:
-        {{- if .Values.rollout.enabled }}
-        # Argo Rollouts changes these weights during a canary (Argo CD
-        # ignores the weights: gitops/apps/templates/prod.yaml, which the demo
-        # copies; prod itself runs without a Rollout).
-        - name: {{ include "orders-gateway.name" . }}-stable
-          port: 80
-          weight: 100
-        - name: {{ include "orders-gateway.name" . }}-canary
-          port: 80
-          weight: 0
-        {{- else }}
         - name: {{ include "orders-gateway.name" . }}
           port: 80
-        {{- end }}
     {{- include "orders-gateway.adminDeny" . | nindent 4 }}
 {{- end }}

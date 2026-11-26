@@ -56,25 +56,6 @@ spec:
         - {port: 9090, protocol: TCP}
         - {port: 9093, protocol: TCP}
 ---
-# Argo Rollouts runs the canary analysis queries against Prometheus.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-rollouts-to-prometheus
-  namespace: monitoring
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: prometheus
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: argo-rollouts
-      ports:
-        - {port: 9090, protocol: TCP}
----
 # The patch promoter reads the soak gates from Prometheus.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

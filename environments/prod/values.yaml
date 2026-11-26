@@ -27,10 +27,3 @@ podDisruptionBudget:
 
 topologySpread:
   enabled: true
-
-
-# A plain Deployment named app, which the platform expects: a Rollout would
-# own the pods and leave the Deployment at 0 replicas. The canary demos
-# turn the Rollout on in their copy of prod (scripts/demo.sh).
-rollout:
-  enabled: false

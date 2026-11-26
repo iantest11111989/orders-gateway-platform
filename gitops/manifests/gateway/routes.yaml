@@ -66,23 +66,6 @@ spec:
         - name: kube-prometheus-stack-alertmanager
           port: 9093
 ---
-# Read-only Argo Rollouts dashboard (no login; promote/abort from the CLI).
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: argo-rollouts-dashboard
-  namespace: argo-rollouts
-spec:
-  parentRefs:
-    - name: platform
-      namespace: envoy-gateway-system
-      sectionName: https
-  hostnames: [rollouts.localtest.me]
-  rules:
-    - backendRefs:
-        - name: argo-rollouts-dashboard
-          port: 3100
----
 # Grafana, Prometheus and Alertmanager on their host ports (plain
 # HTTP, no hostname). The HTTPS routes above stay.
 apiVersion: gateway.networking.k8s.io/v1

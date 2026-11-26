@@ -63,9 +63,6 @@ tool k6 "$(gh grafana/k6 "$K6_VERSION" "k6-$K6_VERSION-linux-$A.tar.gz")" \
 tool argocd "$(gh argoproj/argo-cd "$ARGOCD_VERSION" "argocd-linux-$A")" \
   "$(gh argoproj/argo-cd "$ARGOCD_VERSION" cli_checksums.txt)"
 
-tool kubectl-argo-rollouts "$(gh argoproj/argo-rollouts "$ROLLOUTS_VERSION" "kubectl-argo-rollouts-linux-$A")" \
-  "$(gh argoproj/argo-rollouts "$ROLLOUTS_VERSION" argo-rollouts-checksums.txt)"
-
 tool jq "$(gh jqlang/jq "$JQ_VERSION" "jq-linux-$A")" "$(gh jqlang/jq "$JQ_VERSION" sha256sum.txt)"
 
 tool yq "$(gh mikefarah/yq "$YQ_VERSION" "yq_linux_$A")" "$(gh mikefarah/yq "$YQ_VERSION" checksums-bsd)"

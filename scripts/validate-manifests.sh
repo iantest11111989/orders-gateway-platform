@@ -2,7 +2,7 @@
 # Renders everything Argo CD applies, so CI can validate it in seconds,
 # without a cluster (CI · platform, "Validate manifests"):
 #   - helm lint, then helm template of charts/orders-gateway for dev, staging
-#     and prod with their values files (and prod with the demo's canary on)
+#     and prod with their values files
 #   - the app-of-apps chart (gitops/apps)
 #   - every folder in gitops/manifests (Kustomize where it has a
 #     kustomization.yaml, the YAML files as they are otherwise)
@@ -26,12 +26,9 @@ for env in dev staging prod; do
     NS="$env" yq '(select(.metadata.namespace == null) | .metadata.namespace) = strenv(NS)' >"$OUT/app-$env.yaml"
   ok "$env: $(grep -c '^kind:' "$OUT/app-$env.yaml") objects"
 done
-helm template app charts/orders-gateway -f environments/prod/values.yaml --namespace demo \
-  --set rollout.enabled=true | yq '(select(.metadata.namespace == null) | .metadata.namespace) = "demo"' >"$OUT/app-canary.yaml"
 # One file for kyverno apply (its CLI takes one --resource reliably).
 mkdir -p out/policy-input
-cat "$OUT"/app-dev.yaml "$OUT"/app-staging.yaml "$OUT"/app-prod.yaml "$OUT"/app-canary.yaml >out/policy-input/apps.yaml
-ok "canary (demo): $(grep -c '^kind:' "$OUT/app-canary.yaml") objects"
+cat "$OUT"/app-dev.yaml "$OUT"/app-staging.yaml "$OUT"/app-prod.yaml >out/policy-input/apps.yaml
 
 step "The app-of-apps (gitops/apps), in both modes"
 # The in-stack Git server (default) and GitHub mode: some templates (the
