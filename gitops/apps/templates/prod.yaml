@@ -41,7 +41,11 @@ spec:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
       jqPathExpressions:
-        - .spec.rules[].backendRefs[].weight
+        # `[]?`: the /admin rule has no backendRefs, and a plain `[]` errors on
+        # it, which drops the whole expression: Argo CD then sees the canary's
+        # weights as drift and resets them every sync, the canary only gets
+        # traffic part of the time, and its analysis comes back Inconclusive.
+        - .spec.rules[].backendRefs[]?.weight
   syncPolicy:
     automated:
       prune: true
