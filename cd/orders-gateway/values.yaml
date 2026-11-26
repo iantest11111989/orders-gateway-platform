@@ -5,7 +5,8 @@
 # (a promotion changes that and nothing else), replicas and the entrypoint.
 
 image:
-  repository: ghcr.io/iantest11111989/orders-gateway
+  # The in-stack registry (system/registry/); ./pipeline publishes here.
+  repository: localhost:30500/orders-gateway
 
 # Traefik serves every environment (system/traefik/values.yaml).
 ingress:

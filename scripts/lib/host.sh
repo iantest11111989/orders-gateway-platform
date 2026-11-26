@@ -63,7 +63,6 @@ run_toolbox() {
     -v ogp-kube:/root/.kube \
     -w /work \
     -e TOOLBOX_IMAGE="$img" \
-    -e REVISION="${REVISION:-}" \
     -e PRELOAD_IMAGES="${PRELOAD_IMAGES:-}" \
     -e ARGOCD_OPTS="--port-forward --port-forward-namespace argocd --plaintext" \
     "$img" "$@"

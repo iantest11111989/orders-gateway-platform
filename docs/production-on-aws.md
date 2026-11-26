@@ -60,7 +60,7 @@ flowchart TB
 
 | Local (repo reference) | Production | Why |
 | --- | --- | --- |
-| `docker-compose.yml`, the `ready` service and toolbox (`toolbox/`, `scripts/up.sh`) | Terraform roots run from CI, plus a one-off Argo CD install in each cluster | Compose exists locally to give one command and a health signal. In production the cluster's lifecycle belongs to IaC with reviewed plans. **Keep Compose and kind as the local dev loop and as the PR integration test** (`platform.yml`'s cluster job). |
+| `docker-compose.yml`, the `ready` service and toolbox (`toolbox/`, `scripts/up.sh`) | Terraform roots run from CI, plus a one-off Argo CD install in each cluster | Compose exists locally to give one command and a health signal. In production the cluster's lifecycle belongs to IaC with reviewed plans. **Keep Compose and kind as the local dev loop and as the PR integration test** (`e2e.yml`, the fresh-install E2E). |
 | kind, 1 control plane + 2 workers, fake zones (`cluster/kind.yaml`) | EKS per environment, 3 real AZs, Karpenter on Graviton | Managed control plane, real failure domains |
 | dev/staging/prod as namespaces in one cluster (`bootstrap/apps/templates/orders-gateway-{dev,staging,prod}.yaml`) | One cluster per environment, each in its own account | Blast radius, IAM separation, separate upgrade cadence. Not a shared non-prod cluster: dev and staging get the same isolation as prod |
 | In-stack Git server, soft-serve (`system/git-server/`) | GitHub only | Its only purpose was offline use |

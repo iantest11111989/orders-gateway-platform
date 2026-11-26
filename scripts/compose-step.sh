@@ -7,7 +7,8 @@
 #   argocd     Argo CD is running (and the in-stack Git server, unless
 #              Argo CD follows GitHub)
 #   platform   every platform Application is Synced and Healthy
-#   apps       orders-gateway-dev, -staging and -prod are Synced and Healthy
+#   apps       every <app>-<env> (one per cd/<app>/<env>.yaml) is Synced and
+#              Healthy
 # `ready` (scripts/ready-check.sh) still decides when the platform is ready.
 # Like it, a step stays healthy once passed, and then costs one `docker
 # inspect`, until the cluster is replaced: then it checks again. For the full story: docker compose logs -f ready
@@ -40,6 +41,24 @@ not_ready() {
       | $n end' <<<"$root" 2>/dev/null || echo "Applications not readable yet"
 }
 
+# The apps' Applications, <app>-<env> for each cd/<app>/<env>.yaml (the
+# ApplicationSet apps generates them, so the root doesn't list them), that
+# don't exist yet or aren't Synced/Healthy. One without auto-sync counts as
+# Synced once a sync succeeded: a change may be waiting for its Sync click.
+apps_not_ready() {
+  local want
+  want=$(cd "$(dirname "$0")/.." && for f in cd/*/dev.yaml cd/*/staging.yaml cd/*/prod.yaml; do
+    [ -f "$f" ] && { d=${f%/*}; e=${f##*/}; echo "${d#cd/}-${e%.yaml}"; }
+  done | jq -R . | jq -sc .)
+  kubectl -n argocd get applications.argoproj.io -o json 2>/dev/null | jq -r --argjson want "$want" '
+    [.items[] | {key: .metadata.name, value: .}] | from_entries as $live
+    | $want[] as $n | $live[$n] as $a
+    | select($a == null or $a.status.health.status != "Healthy"
+        or ($a.status.sync.status != "Synced"
+            and ($a.spec.syncPolicy.automated == null and $a.status.operationState.phase == "Succeeded" | not)))
+    | $n' || echo "Applications not readable yet"
+}
+
 case "${1:-}" in
   cluster)
     n=$(kubectl get nodes --no-headers 2>/dev/null | awk '$2 == "Ready"' | wc -l)
@@ -57,10 +76,10 @@ case "${1:-}" in
     [ -n "$url" ] || { echo "root Application not created yet"; exit 1; }
     running git/soft-serve ;;
   platform)
-    left=$(not_ready '^(?!orders-gateway-(dev|staging|prod)$)')
+    left=$(not_ready '.')
     [ -z "$left" ] || { echo "not Synced/Healthy yet: $(tr "\n" " " <<<"$left")"; exit 1; } ;;
   apps)
-    left=$(not_ready '^orders-gateway-(dev|staging|prod)$')
+    left=$(apps_not_ready)
     [ -z "$left" ] || { echo "not Synced/Healthy yet: $(tr "\n" " " <<<"$left")"; exit 1; } ;;
   *) echo "usage: $0 cluster|argocd|platform|apps" >&2; exit 2 ;;
 esac

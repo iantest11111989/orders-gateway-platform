@@ -1,9 +1,15 @@
-# staging: promoted from dev by a pull request the owner approves.
+# staging: promoted from dev with ./pipeline cd (only a version dev has run).
 env: staging
 
+# The published version this environment runs: image
+# localhost:30500/orders-gateway:<version> and chart orders-gateway <version>
+# from the in-stack registry. Set by ./pipeline cd; without a version (a
+# dev-only build) the chart is helm/orders-gateway as it is in Git.
+version: 0.1.0
+
 image:
-  tag: sha-9ab553b08d9f
-  digest: sha256:4a3e5f1af2371bd526a8eed0b4fcf23f86d7475cf26350d93e0e41af684f9735
+  tag: 0.1.0
+  digest: ""
 
 replicas: 2
 

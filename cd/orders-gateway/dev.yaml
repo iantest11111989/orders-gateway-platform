@@ -1,11 +1,16 @@
-# dev: runs helm/orders-gateway as it is. Overrides values.yaml next to it.
+# dev: what ./pipeline cd orders-gateway dev deploys (a published version or a
+# dev-only build). Overrides values.yaml next to it.
 env: dev
 
+# The published version this environment runs: image
+# localhost:30500/orders-gateway:<version> and chart orders-gateway <version>
+# from the in-stack registry. Set by ./pipeline cd; without a version (a
+# dev-only build) the chart is helm/orders-gateway as it is in Git.
+version: 0.1.0
+
 image:
-  # Set by ./pipeline cd orders-gateway dev (or rollback). In production, CI
-  # sets it after a merge to main (docs/ci-cd-in-production.md).
-  tag: sha-afea67f310e9
-  digest: sha256:7cafa47104eacf31746748aa17290166676ed7f0d2117dc9a6d1559fcaecb6a1
+  tag: 0.1.0
+  digest: ""
 
 replicas: 1
 

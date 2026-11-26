@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-# The deploy half of ./platform ship / rollback and ./pipeline cd / rollback:
-# ship a version of an app, or roll back the last one, by Git change.
+# The deploy half of ./pipeline cd / rollback: change what an environment
+# runs by Git change, then wait for Argo CD to roll it out.
 #
-#   ship [--env ENV] [TAG]    build apps/$APP/ as localhost/$APP:TAG (default
-#                             local-YYYYMMDD-HHMMSS), then load + deploy
-#   load TAG                  load localhost/$APP:TAG into every kind node
-#   deploy [--env ENV] TAG    point cd/$APP/ENV.yaml at localhost/$APP:TAG,
-#                             push the checkout to the in-stack Git server and
-#                             wait for Argo CD to roll it out
-#   rollback [--env ENV]      put back the image ENV ran before its last image
-#                             change (read from the in-stack Git history), then
-#                             push the same way
-# APP defaults to orders-gateway; ENV to prod for ship/rollback (./pipeline
-# always passes it).
+#   deploy --env ENV --version V [--force]
+#         a published version (image and chart in the in-stack registry).
+#         staging takes only a version dev has run, prod only one staging
+#         has run (the env files' history on the in-stack Git server), and
+#         the promotion gate (scripts/promotion-gate.sh) must pass. --force
+#         skips both, for emergencies.
+#   deploy --env dev --tag T
+#         a dev-only build (localhost:30500/$APP:T, already pushed): no
+#         version, so Argo CD renders helm/$APP as it is in Git.
+#   rollback --env ENV
+#         put back the version (or build) ENV ran before its last change,
+#         read from the in-stack Git history. Always allowed.
 #
 # Each edits cd/$APP/ENV.yaml in this checkout: the change is a normal file
 # change you can see, commit or revert. Not `kubectl rollout undo` or
@@ -24,151 +25,181 @@ source "$(dirname "$0")/lib.sh"
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 IN_STACK=http://git.git.svc.cluster.local:23232/platform.git
 APP=${APP:-orders-gateway}
-LOCAL_REPO=localhost/$APP
+# The app's Deployment in each environment's namespace.
+DEPLOYMENT=${DEPLOYMENT:-app}
+REPO=localhost:30500/$APP
 
 cmd=${1:-}; shift || true
-env=prod
-[ "${1:-}" = --env ] && { env=${2:?"--env needs dev, staging or prod"}; shift 2; }
+env='' version='' tag='' force=false
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --env) env=${2:?--env needs dev, staging or prod}; shift 2 ;;
+    --version) version=${2:?--version needs a value}; shift 2 ;;
+    --tag) tag=${2:?--tag needs a value}; shift 2 ;;
+    --force) force=true; shift ;;
+    *) die "unexpected argument: $1" ;;
+  esac
+done
 case "$env" in dev|staging|prod) ;; *) die "--env must be dev, staging or prod" ;; esac
 values="$ROOT/cd/$APP/$env.yaml"
+[ -f "$values" ] || die "no cd/$APP/$env.yaml"
 
 in_stack_only() {
   local repo
   repo=$(kubectl -n argocd get applications.argoproj.io root -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || true)
-  # A cluster started by an older version may still follow GitHub.
-  [ "$repo" = "$IN_STACK" ] || die "Argo CD syncs from ${repo:-?}, not the in-stack Git server: run ./platform up, which points it back at this checkout"
+  [ "$repo" = "$IN_STACK" ] || die "Argo CD syncs from ${repo:-?}, not the in-stack Git server: start the cluster with ./platform up"
 }
 
-# Change only the image lines of the values file, leaving every other line,
-# blank line and comment as it was (as a promotion PR would). A yq rewrite
-# reformatted the whole file, so ship then rollback left the checkout differing
-# from Git and the next git pull of a promotion conflicted.
-# repository: an empty value removes the line, so the chart's default applies
-# (rollback to an image that came from Git, whose file has no repository line).
-# The new line goes right after `image:`. digest: an empty value is written
-# as "" (a local build has no registry digest).
+# The in-stack repository, cloned to $tmp/r (its history is what each
+# environment actually ran).
+clone_in_stack() {
+  [ -d "$tmp/r" ] && return 0
+  kubectl -n git port-forward svc/git :23232 >"$tmp/pf" 2>&1 & pf=$!
+  local port=''
+  for _ in $(seq 1 30); do port=$(sed -n 's/^Forwarding from 127.0.0.1:\([0-9]*\) .*/\1/p' "$tmp/pf" | head -1); [ -n "$port" ] && break; sleep 0.5; done
+  [ -n "$port" ] || die "couldn't reach the in-stack Git server"
+  git clone -q "http://127.0.0.1:$port/platform.git" "$tmp/r"
+}
+tmp=$(mktemp -d); pf=''
+trap '[ -z "$pf" ] || kill "$pf" 2>/dev/null || true; rm -rf "$tmp"' EXIT
+
+# What an env file deploys, as one comparable value: the version and the
+# image block (key order, quoting and an empty digest vs none don't count).
+release_of() { yq -o json -I0 '{"version": .version, "image": .image}' | jq -cS '.image |= with_entries(select(.value != "" and .value != null)) | with_entries(select(.value != null))'; }
+
+# Every version an environment's file has pinned, in the in-stack history.
+versions_run_in() { # versions_run_in <env>
+  clone_in_stack
+  local c
+  for c in $(git -C "$tmp/r" log --format=%H -- "cd/$APP/$1.yaml"); do
+    git -C "$tmp/r" show "$c:cd/$APP/$1.yaml" | yq '.version // ""'
+  done | grep -v '^$' | sort -u
+}
+
+# Change only the version line and the image lines of the values file,
+# leaving every other line, blank line and comment as it was. A yq rewrite
+# reformats the whole file. An empty version removes its line; a missing one
+# goes in just before `image:`. An empty repository removes its line (the
+# app's values.yaml default applies); an empty digest is written as "".
 # Rewriting through cat keeps the file owned by you (the toolbox is root).
-set_image() { # set_image <repository> <tag> <digest>
-  # Two passes over the file: the first only notes whether image: already has
-  # a repository line; the second writes the result.
-  REPO="$1" TAG="$2" DIGEST="${3:-\"\"}" awk '
+set_release() { # set_release <version> <repository> <tag> <digest>
+  V="$1" REPO="$2" TAG="$3" DIGEST="${4:-\"\"}" awk '
     /^[^[:space:]#]/ { inimage = ($0 ~ /^image:[[:space:]]*$/) }
-    NR == FNR { if (inimage && /^  repository:/) hasrepo = 1; next }
+    NR == FNR { if (inimage && /^  repository:/) hasrepo = 1; if (/^version:/) hasversion = 1; next }
+    /^version:/ { if (ENVIRON["V"] != "") print "version: " ENVIRON["V"]; v++; next }
+    /^image:[[:space:]]*$/ && !hasversion && ENVIRON["V"] != "" { print "version: " ENVIRON["V"]; print "" }
     inimage && /^  repository:/ { if (ENVIRON["REPO"] != "") print "  repository: " ENVIRON["REPO"]; r++; next }
     inimage && /^  tag:/        { print "  tag: " ENVIRON["TAG"]; t++; next }
     inimage && /^  digest:/     { print "  digest: " ENVIRON["DIGEST"]; d++; next }
     { print }
     /^image:[[:space:]]*$/ { n++; if (!hasrepo && ENVIRON["REPO"] != "") print "  repository: " ENVIRON["REPO"] }
-    END { if (n != 1 || t != 1 || d != 1 || r > 1) { printf "expected one image: block with one tag, one digest and at most one repository line; found %d, %d, %d, %d\n", n, t, d, r > "/dev/stderr"; exit 1 } }
-  ' "$values" "$values" >"$values.tmp" || { rm -f "$values.tmp"; die "couldn't update the image lines in $values"; }
+    END { if (n != 1 || t != 1 || d != 1 || r > 1 || v > 1) { printf "expected one image: block with one tag, one digest and at most one repository line, and at most one version line; found %d, %d, %d, %d, %d\n", n, t, d, r, v > "/dev/stderr"; exit 1 } }
+  ' "$values" "$values" >"$values.tmp" || { rm -f "$values.tmp"; die "couldn't update $values"; }
   cat "$values.tmp" >"$values" && rm -f "$values.tmp"
 }
 
-show() { # what prod serves now, and its 5-minute availability SLO
-  # Running pods only (from the API server): counting app_info series in
-  # Prometheus would include pods that just terminated, until they go stale.
+show() { # what the environment serves now
   echo "  Pods running in $env, by version:" >&2
-  kubectl -n "$env" get pods -l app.kubernetes.io/name=app -o json |
+  kubectl -n "$env" get pods -l "app.kubernetes.io/name=$DEPLOYMENT" -o json |
     jq -r '[.items[] | select(.metadata.deletionTimestamp == null and .status.phase == "Running")
             | .metadata.labels["app.kubernetes.io/version"] // "?"] | group_by(.) | .[] | "    \(.[0]): \(length) pod(s)"' >&2 || true
   local q
   q="slo:orders_availability_errors:ratio_rate5m{namespace=\"$env\"}"
   curl -s --max-time 5 "http://localhost:9090/api/v1/query" --data-urlencode "query=$q" |
     jq -r '.data.result[0].value[1] // empty | tonumber * 100 | "  5xx share, last 5 min: \(. * 100 | round / 100)%"' >&2 || true
-  if [ "$env" = prod ]; then
-    echo "  http://localhost:8080/version: $(curl -s --max-time 5 http://localhost:8080/version || echo unreachable)" >&2
-  fi
 }
 
-roll_out() { # push the checkout, then wait for the Deployment
+# On a timeout: what Argo CD says about the environment's Application.
+app_status() {
+  kubectl -n argocd get applications.argoproj.io "$APP-$env" -o json 2>/dev/null |
+    jq -r '"  Argo CD \(.metadata.name): sync \(.status.sync.status // "?"), health \(.status.health.status // "?")",
+           (.status.conditions // [] | .[] | "    \(.type): \(.message)"),
+           (.status.operationState.message // empty | "    last sync: \(.)")' >&2 || true
+}
+
+roll_out() { # roll_out <image>: push the checkout, then wait for the Deployment
   bash "$(dirname "$0")/git-sync.sh"
-  step "Waiting for Argo CD to roll $env out (Deployment app)"
-  local want=$1 deadline=$(( $(date +%s) + 300 ))
+  step "Waiting for Argo CD to roll $env out (Deployment $DEPLOYMENT)"
+  local want=$1 img deadline=$(( $(date +%s) + 300 ))
   while :; do
-    img=$(kubectl -n "$env" get deploy app -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
+    img=$(kubectl -n "$env" get deploy "$DEPLOYMENT" -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
     [ "$img" = "$want" ] && break
-    [ "$(date +%s)" -lt "$deadline" ] || die "Argo CD hasn't applied $want to $env/app after 5 minutes (it shows ${img:-nothing}); see ./platform verify"
+    [ "$(date +%s)" -lt "$deadline" ] || { app_status; die "Argo CD hasn't applied $want to $env/$DEPLOYMENT after 5 minutes (it shows ${img:-nothing}); see ./platform verify"; }
     sleep 3
   done
-  kubectl -n "$env" rollout status deploy/app --timeout=300s
+  kubectl -n "$env" rollout status "deploy/$DEPLOYMENT" --timeout=300s
   ok "$env runs $want"
   show
 }
 
-load() { # load <tag>: the local image into every kind node
-  step "Loading $LOCAL_REPO:$1 into the kind nodes (no registry involved)"
-  docker image inspect "$LOCAL_REPO:$1" >/dev/null 2>&1 || die "no local image $LOCAL_REPO:$1 (./pipeline ci $APP builds it)"
-  kind get clusters 2>/dev/null | grep -qx "$CLUSTER_NAME" || die "no kind cluster $CLUSTER_NAME: start it with ./platform up"
-  kind load docker-image "$LOCAL_REPO:$1" --name "$CLUSTER_NAME" >/dev/null
-  ok "loaded into every node"
-}
-
-deploy() { # deploy <tag>: point the env file at the local image and roll it out
-  step "Pointing $env at it: $values"
-  set_image "$LOCAL_REPO" "$1" ""
-  ok "image $LOCAL_REPO:$1 (digest empty: a local build has no registry digest)"
-  roll_out "$LOCAL_REPO:$1"
+image_ref() { # image_ref <repository> <tag> <digest>
+  if [ -n "$3" ]; then echo "$1@$3"; else echo "$1:$2"; fi
 }
 
 case "$cmd" in
-  ship)
-    in_stack_only
-    tag=${1:-local-$(date -u +%Y%m%d-%H%M%S)}
-    [[ $tag != latest ]] || die "pick a real tag: :latest is refused in the app namespaces"
-    step "Building apps/$APP/ as $LOCAL_REPO:$tag"
-    docker build -q -t "$LOCAL_REPO:$tag" --build-arg "VERSION=$tag" "$ROOT/apps/$APP" >/dev/null
-    ok "built"
-    load "$tag"
-    deploy "$tag"
-    echo
-    if [ "$env" = prod ]; then echo "  Roll back: ./platform rollback" >&2
-    else echo "  Roll back: ./platform rollback --env $env" >&2; fi
-    ;;
-  load)
-    load "${1:?usage: ship.sh load TAG}"
-    ;;
   deploy)
     in_stack_only
-    deploy "${1:?usage: ship.sh deploy [--env ENV] TAG}"
+    if [ -n "$tag" ]; then
+      [ -z "$version" ] || die "--tag and --version together: a deploy is one or the other"
+      [ "$env" = dev ] || die "$tag is a dev-only build: staging and prod take only published versions (./pipeline ci $APP --version X)"
+      d=$(bash "$(dirname "$0")/registry.sh" digest "$APP" "$tag")
+      step "Pointing dev at the dev-only build $REPO:$tag: $values"
+      set_release "" "$REPO" "$tag" "$d"
+      ok "no version (Argo CD renders helm/$APP from Git), image $REPO:$tag"
+      roll_out "$(image_ref "$REPO" "$tag" "$d")"
+      exit 0
+    fi
+    [ -n "$version" ] || die "deploy needs --version or --tag"
+    bash "$(dirname "$0")/registry.sh" published "$APP" "$version" ||
+      die "$APP $version isn't published: ./pipeline ci $APP --version $version"
+    from=''
+    case "$env" in staging) from=dev ;; prod) from=staging ;; esac
+    if [ -n "$from" ]; then
+      if $force; then
+        warn "--force: not checking that $from ran $version, nor the promotion gate"
+      else
+        step "Has $from run $APP $version? (in-stack history of cd/$APP/$from.yaml)"
+        versions_run_in "$from" | grep -qxF "$version" ||
+          die "$from has never run $APP $version: promote in order (dev, staging, prod), or --force"
+        ok "yes"
+        gate="$(dirname "$0")/promotion-gate.sh"
+        [ -f "$gate" ] || die "no scripts/promotion-gate.sh: the promotion gate can't run, so nothing is promoted (--force overrides)"
+        bash "$gate" "$APP" "$env" || die "the promotion gate refused $APP into $env (reasons above); --force overrides"
+      fi
+    fi
+    d=$(bash "$(dirname "$0")/registry.sh" digest "$APP" "$version")
+    step "Pointing $env at $APP $version: $values"
+    set_release "$version" "$REPO" "$version" "$d"
+    ok "version $version (image $REPO:$version@${d:0:19}…, chart $APP $version)"
+    roll_out "$(image_ref "$REPO" "$version" "$d")"
     ;;
   rollback)
     in_stack_only
-    step "Finding $env's previous image in the in-stack Git history"
-    tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-    kubectl -n git port-forward svc/git :23232 >"$tmp/pf" 2>&1 & pf=$!
-    trap 'kill $pf 2>/dev/null; rm -rf "$tmp"' EXIT
-    port=''
-    for _ in $(seq 1 30); do port=$(sed -n 's/^Forwarding from 127.0.0.1:\([0-9]*\) .*/\1/p' "$tmp/pf" | head -1); [ -n "$port" ] && break; sleep 0.5; done
-    [ -n "$port" ] || die "couldn't reach the in-stack Git server"
-    git clone -q "http://127.0.0.1:$port/platform.git" "$tmp/r"
-    # The image before the current one *first* appeared: so a second rollback
-    # goes further back instead of toggling to the build just rolled back
-    # from (v0, v1, v2, rollback -> v1, rollback -> v0).
-    # Compare image blocks by value: key order, quoting and an empty digest
-    # vs none don't make two images different.
-    norm() { yq -o json -I0 '.image' | jq -cS 'with_entries(select(.value != "" and .value != null))'; }
-    cur=$(norm <"$values")
-    imgs=()
+    step "Finding $env's previous release in the in-stack Git history"
+    clone_in_stack
+    # The release before the current one *first* appeared: so a second
+    # rollback goes further back instead of toggling to the one just rolled
+    # back from (v0, v1, v2, rollback -> v1, rollback -> v0).
+    cur=$(release_of <"$values")
+    rels=()
     for c in $(git -C "$tmp/r" log --reverse --format=%H -- "cd/$APP/$env.yaml"); do
-      imgs+=("$(git -C "$tmp/r" show "$c:cd/$APP/$env.yaml" | norm)")
+      rels+=("$(git -C "$tmp/r" show "$c:cd/$APP/$env.yaml" | release_of)")
     done
     first=-1
-    for i in "${!imgs[@]}"; do [ "${imgs[$i]}" = "$cur" ] && { first=$i; break; }; done
+    for i in "${!rels[@]}"; do [ "${rels[$i]}" = "$cur" ] && { first=$i; break; }; done
+    [ "$first" -ge 0 ] || die "$env's current release isn't in the in-stack history; push the checkout first (./platform up)"
     prev=''
     for (( i = first - 1; i >= 0; i-- )); do
-      [ "${imgs[$i]}" != "$cur" ] && { prev=${imgs[$i]}; break; }
+      [ "${rels[$i]}" != "$cur" ] && { prev=${rels[$i]}; break; }
     done
-    [ "$first" -ge 0 ] || die "$env's current image isn't in the in-stack history; push the checkout first (./platform up)"
-    [ -n "$prev" ] || die "$env runs the oldest image in the in-stack history: nothing earlier to roll back to"
-    # Put back the repository line as that commit had it: none means the
-    # chart's default, so ship then rollback leaves the file as Git has it.
-    r=$(jq -r '.repository // ""' <<<"$prev")
-    t=$(jq -r '.tag' <<<"$prev"); d=$(jq -r '.digest // ""' <<<"$prev")
-    set_image "$r" "$t" "$d"
+    [ -n "$prev" ] || die "$env runs the oldest release in the in-stack history: nothing earlier to roll back to"
+    v=$(jq -r '.version // ""' <<<"$prev")
+    r=$(jq -r '.image.repository // ""' <<<"$prev")
+    t=$(jq -r '.image.tag' <<<"$prev"); d=$(jq -r '.image.digest // ""' <<<"$prev")
+    set_release "$v" "$r" "$t" "$d"
     r=${r:-$(yq '.image.repository' "$ROOT/cd/$APP/values.yaml")}
-    ok "back to $r:$t${d:+@${d:0:19}…}"
-    want="$r:$t"; [ -z "$d" ] || want="$r@$d"
-    roll_out "$want"
+    ok "back to ${v:+version $v, }$r:$t${d:+@${d:0:19}…}"
+    roll_out "$(image_ref "$r" "$t" "$d")"
     ;;
-  *) die "usage: ship.sh ship|deploy [--env dev|staging|prod] [TAG] | load TAG | rollback [--env dev|staging|prod]" ;;
+  *) die "usage: ship.sh deploy --env ENV (--version V [--force] | --tag T) | rollback --env ENV" ;;
 esac

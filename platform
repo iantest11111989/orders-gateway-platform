@@ -14,9 +14,6 @@
 #                         gitops-revert (clean removes the demo copy)
 #   ./platform shell [script]  open a shell (or run a script) in the toolbox
 #   ./platform kubectl …  run kubectl in the toolbox
-#   ./platform ship [--env ENV] [TAG]  build apps/orders-gateway/, load it into kind, roll it
-#                         out by Git change (default prod)
-#   ./platform rollback [--env ENV]  back to the image before the last change
 #
 # Environment:
 #   TOOLBOX_IMAGE   use this toolbox image instead of the pinned one
@@ -30,7 +27,7 @@ REPO_ROOT=$(pwd)
 . scripts/lib/host.sh
 
 usage() {
-  sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -97,10 +94,11 @@ case "$cmd" in
     check_docker
     compose_down
     run_toolbox bash scripts/down.sh "$@" ;;
-  doctor|urls|verify|budget|demo|ship|rollback)
+  ship|rollback)
+    die "./platform $cmd is now ./pipeline: ./pipeline ci <app> [--version V], ./pipeline cd <app> <env>, ./pipeline rollback <app> <env>" ;;
+  doctor|urls|verify|budget|demo)
     check_docker
     [ "$cmd" != doctor ] || host_ports || true
-    case "$cmd" in ship|rollback) set -- "$cmd" "$@"; cmd=ship ;; esac
     run_toolbox bash "scripts/$cmd.sh" "$@" ;;
   shell)
     check_docker

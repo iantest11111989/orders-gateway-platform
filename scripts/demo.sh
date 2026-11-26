@@ -70,14 +70,28 @@ create_app() { # create_app <source app> <image tag> [helm-param=value ...]
                 labels: {"app.kubernetes.io/part-of": "orders-gateway-platform", "demo": "true", "demo-source": $src},
                 # deleting the Application deletes what it created
                 finalizers: ["resources-finalizer.argocd.argoproj.io"]},
+     # One source: helm/orders-gateway from Git with the source
+     # environment'"'"'s values files, whatever the source Application uses
+     # (it may take its chart from the in-stack registry), and the demo
+     # images v1/v2 from GHCR.
      spec: (.spec
+       | ([.sources[]?, (.source // empty)] | map(select(.ref == null and .chart == null)) | first) as $git
+       | ([.sources[]?, (.source // empty)] | map(select(.ref == "values")) | first) as $vals
        | .destination.namespace = $ns
-       | (if $rev != "" then .source.targetRevision = $rev else . end)
-       | .source.helm.parameters = ([
-           {name: "ingress.entrypoint", value: "demo"},
-           {name: "image.tag", value: $tag},
-           {name: "image.digest", value: ""}]
-           + ($ARGS.positional | map(split("=") | {name: .[0], value: (.[1:] | join("="))}))))}' "$@" |
+       | del(.sources)
+       | .source = {
+           repoURL: ($git.repoURL // $vals.repoURL),
+           targetRevision: (if $rev != "" then $rev else ($git.targetRevision // $vals.targetRevision) end),
+           path: "helm/orders-gateway",
+           helm: {
+             releaseName: "app",
+             valueFiles: ["../../cd/orders-gateway/values.yaml", ("../../cd/orders-gateway/" + ($src | sub("^orders-gateway-"; "")) + ".yaml")],
+             parameters: ([
+               {name: "ingress.entrypoint", value: "demo"},
+               {name: "image.repository", value: "ghcr.io/iantest11111989/orders-gateway"},
+               {name: "image.tag", value: $tag},
+               {name: "image.digest", value: ""}]
+               + ($ARGS.positional | map(split("=") | {name: .[0], value: (.[1:] | join("="))})))}})}' "$@" |
     kubectl apply -f - >/dev/null
   ok "Argo CD Application argocd/$APP (namespace $NS, $URL)"
 }

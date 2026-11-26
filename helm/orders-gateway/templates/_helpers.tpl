@@ -17,7 +17,7 @@ env: {{ .Values.env }}
 {{- end -}}
 
 {{- define "orders-gateway.image" -}}
-{{- $tag := required "image.tag is required (a sha-<12> tag from CI, or v1/v2)" .Values.image.tag -}}
+{{- $tag := required "image.tag is required (a published version such as 1.2.0, or a local-<time> build)" .Values.image.tag -}}
 {{- with .Values.image.digest -}}
 {{ $.Values.image.repository }}@{{ . }}
 {{- else -}}

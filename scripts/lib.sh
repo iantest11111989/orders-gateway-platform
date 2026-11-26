@@ -36,3 +36,25 @@ cluster_exists() {
 node_containers() {
   docker ps -a --filter "label=io.x-k8s.kind.cluster=$CLUSTER_NAME" --format '{{.Names}}' | sort
 }
+
+# The apps' Applications (<app>-dev, -staging, -prod) used to be plain
+# Applications in the app-of-apps; the ApplicationSet apps generates them
+# now. If the root pruned an old one, its resources finalizer would delete
+# that environment's workloads. Prune=false makes it a handover: the root
+# leaves the old Application alone, and the ApplicationSet adopts it (same
+# name; it rewrites the metadata, so the root stops tracking it) along with
+# its workloads. Does nothing on a new cluster or once the ApplicationSet
+# owns them.
+hand_over_app_applications() {
+  local dir app owner
+  for dir in "$(dirname "${BASH_SOURCE[0]}")"/../cd/*/; do
+    for app in "$(basename "$dir")"-{dev,staging,prod}; do
+      owner=$(kubectl -n argocd get applications.argoproj.io "$app" \
+        -o jsonpath='{.metadata.ownerReferences[0].kind}' 2>/dev/null) || continue
+      [ "$owner" = ApplicationSet ] && continue
+      kubectl -n argocd annotate applications.argoproj.io "$app" --overwrite \
+        argocd.argoproj.io/sync-options=Prune=false >/dev/null
+      ok "$app: handed over to the ApplicationSet apps (its workloads stay)"
+    done
+  done
+}

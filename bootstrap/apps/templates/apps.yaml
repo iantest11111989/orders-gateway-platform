@@ -1,0 +1,103 @@
+{{- $envs := list }}
+{{- range list "dev" "staging" "prod" }}
+{{- if or (not $.Values.env) (eq $.Values.env .) }}{{ $envs = append $envs . }}{{ end }}
+{{- end }}
+{{- /* One cluster per environment (the AWS design) sets env; locally it's
+     unset, so every environment renders. */}}
+# The apps: one Application per app and environment, <app>-<env> (e.g.
+# orders-gateway-staging), generated from each env file cd/<app>/<env>.yaml.
+# The app runs in the namespace of the same name as the environment.
+# - The env file pins a published version (version: X, by ./pipeline cd):
+#   the chart <app> X from the in-stack registry, with
+#   cd/<app>/values.yaml + <env>.yaml from Git.
+# - No version (a dev-only build, ./pipeline cd <app> dev with a local
+#   build): the chart helm/<app> as it is in Git, with the same values.
+# Wave 40 (apps), after the edge and monitoring.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: apps
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: orders-gateway-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "40"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    # One set of parameters per env file: its keys (.env, .version, .image,
+    # ...) plus .path.basename (the app) and .path.filename.
+    - git:
+        repoURL: {{ .Values.repo.url }}
+        revision: {{ .Values.repo.revision }}
+        files:
+          {{- range $envs }}
+          - path: cd/*/{{ . }}.yaml
+          {{- end }}
+  template:
+    metadata:
+      name: {{ `'{{ .path.basename }}-{{ .env }}'` }}
+      namespace: argocd
+      labels:
+        app.kubernetes.io/part-of: orders-gateway-platform
+        app.kubernetes.io/name: {{ `'{{ .path.basename }}'` }}
+      # Pruning or deleting this Application also deletes what it created.
+      finalizers: [resources-finalizer.argocd.argoproj.io]
+    spec:
+      project: default
+      # Set by templatePatch below: one of the two sources.
+      sources: []
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: {{ `'{{ .env }}'` }}
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        # Auto-sync does not retry a failed sync of the same revision on its own;
+        # this covers transient failures such as a CRD not yet Established.
+        retry:
+          limit: 5
+          backoff: {duration: 5s, factor: 2, maxDuration: 1m}
+        managedNamespaceMetadata:
+          labels:
+            pod-security.kubernetes.io/enforce: restricted
+            pod-security.kubernetes.io/warn: restricted
+            pod-security.kubernetes.io/audit: restricted
+        syncOptions:
+          - CreateNamespace=true
+  templatePatch: |
+    {{`{{- $app := .path.basename }}
+    {{- $values := printf "%s/values.yaml" .path.path }}
+    {{- $env := printf "%s/%s" .path.path .path.filename }}`}}
+    metadata:
+      annotations:
+        # The files each rendering reads, so a commit that touches none of
+        # them skips the re-render (pays off with a Git webhook).
+        argocd.argoproj.io/manifest-generate-paths: {{`'{{ if hasKey . "version" }}{{ else }}/helm/{{ $app }};{{ end }}/{{ $values }};/{{ $env }}'`}}
+    spec:
+    {{`{{- if hasKey . "version" }}`}}
+      sources:
+        - repoURL: registry.registry.svc.cluster.local:5000/charts
+          chart: {{`'{{ $app }}'`}}
+          targetRevision: {{`'{{ .version }}'`}}
+          helm:
+            releaseName: app
+            valueFiles:
+              - {{`'$values/{{ $values }}'`}}
+              - {{`'$values/{{ $env }}'`}}
+        - repoURL: {{ .Values.repo.url }}
+          targetRevision: {{ .Values.repo.revision }}
+          ref: values
+    {{`{{- else }}`}}
+      sources:
+        - repoURL: {{ .Values.repo.url }}
+          targetRevision: {{ .Values.repo.revision }}
+          path: {{`'helm/{{ $app }}'`}}
+          helm:
+            releaseName: app
+            valueFiles:
+              - {{`'../../{{ $values }}'`}}
+              - {{`'../../{{ $env }}'`}}
+    {{`{{- end }}`}}

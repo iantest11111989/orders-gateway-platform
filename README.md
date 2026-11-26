@@ -140,13 +140,13 @@ while true; do curl -s -o /dev/null -w '%{http_code} ' 'http://localhost:8080/wo
 **Step by step, like CI: `./pipeline`.** The same thing split into stages, for any app with `apps/<app>/`, `helm/<app>/` and `cd/<app>/`:
 
 ```sh
-./pipeline ci orders-gateway                # test, build, scan (Trivy), load into kind
-./pipeline cd orders-gateway dev            # deploy that build to dev ...
-./pipeline cd orders-gateway staging        # ... then staging, then prod
-./pipeline rollback orders-gateway staging  # back to staging's previous image
+./pipeline ci orders-gateway --version 1.2.0          # test, build, scan (Trivy), publish image + chart 1.2.0
+./pipeline cd orders-gateway dev --version 1.2.0      # deploy it to dev ...
+./pipeline cd orders-gateway staging --version 1.2.0  # ... then staging, then prod
+./pipeline rollback orders-gateway staging            # back to staging's previous version
 ```
 
-`ci` refuses a tag it has already built (`--tag T` picks one), and `cd` deploys the last `ci` build unless given `--tag`. The environment is always named: there's no default.
+A published version is never overwritten. Without `--version`, `ci` makes a dev-only build that only dev can run. Promotion goes in order: staging takes only a version dev has run, prod only one staging has run, and only while the previous environment is healthy (Argo CD Synced and Healthy, no firing alerts for the app). `--force` skips those checks for emergencies; rollback is always allowed. The environment is always named: there's no default.
 
 These are Git changes on purpose: `kubectl set image` or `kubectl rollout undo` would be reverted by Argo CD within seconds.
 
