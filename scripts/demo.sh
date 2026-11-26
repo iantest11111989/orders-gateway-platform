@@ -131,6 +131,12 @@ wait_ns_gone() {
 }
 
 delete_app() {
+  # A copy made before the rename was called "demo". Delete it too, but only
+  # if it carries the demo=true label, so nothing else named demo is touched.
+  if [ "$(kubectl -n argocd get applications.argoproj.io demo -o jsonpath='{.metadata.labels.demo}' 2>/dev/null)" = true ]; then
+    step "Deleting the old demo copy (named demo, from before the rename)"
+    kubectl -n argocd delete applications.argoproj.io demo --wait=true --timeout=180s >/dev/null
+  fi
   app_exists || { ok "no $APP to delete"; return 0; }
   local src; src=$(app_source)
   step "Deleting $APP (the Application and everything it created)"
