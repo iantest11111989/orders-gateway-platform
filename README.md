@@ -259,6 +259,27 @@ What we'd test next: killing Envoy Gateway's proxy (one replica here, so a short
 
 **GitOps** [optional]. The default mode is exactly what the assignment describes: Argo CD reconciles the cluster from a Git server the stack hosts itself, with self-heal and prune, and every change, `ship` and `rollback` included, is a Git commit ([0029](docs/decisions/0029-in-stack-git-server.md)). GitHub mode adds promotion by pull request and the **patch promoter**, a CronJob that merges a staging or prod promotion PR once it has soaked (an hour on the previous environment, SLO held, no alerts, healthy pods); feature releases still need the owner's approval ([0024](docs/decisions/0024-patch-promoter.md)).
 
+**The pipeline, end to end.** GitHub Actions does the CI half; Argo CD and the patch promoter, inside the cluster, do the CD half. Every arrow into an environment is a Git commit, which Argo CD syncs.
+
+```mermaid
+flowchart LR
+  pr["Pull request<br/>1 · test, lint<br/>2 · build both arches<br/>rehearse signing"] -->|review, merge| main["main"]
+  main --> build["2 · build and push to GHCR<br/>3 · sign (cosign) · scan (Trivy)"]
+  build --> devc["4 · commit image to<br/>environments/dev"]
+  devc --> devs(["Argo CD syncs dev"])
+  build --> prs["5 · promotion PRs<br/>for staging and prod"]
+  devs --> soak1{"soak 1 h on dev:<br/>SLO held, no alerts"}
+  prs --> soak1
+  soak1 -->|"promoter merges<br/>(patch release)"| stc["environments/staging"]
+  stc --> sts(["Argo CD syncs staging"])
+  sts --> soak2{"soak 1 h on staging"}
+  soak2 -->|"promoter merges a patch;<br/>a feature waits for the owner"| prc["environments/prod"]
+  prc --> prs2(["Argo CD syncs prod"])
+  localship["Locally: ./platform ship / rollback"] -->|"commit to the in-stack Git server"| prs2
+```
+
+The top row is GitHub mode (`REPO_URL` set, decision [0024](docs/decisions/0024-patch-promoter.md)). The default mode has no CI in the loop: `./platform ship` and `rollback` build locally and commit to the in-stack Git server, and Argo CD syncs from there (decisions [0029](docs/decisions/0029-in-stack-git-server.md), [0030](docs/decisions/0030-ship-and-rollback.md)). Watch Argo CD sync in its UI at <http://localhost:8081>.
+
 **CI/CD** [optional]. [`.github/workflows/`](.github/workflows/) runs on real GitHub:
 
 | Workflow | What it does |
