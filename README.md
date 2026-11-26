@@ -286,7 +286,7 @@ The full plan for running this on AWS (accounts, EKS, IAM, ECR, Argo CD across c
 | Here (local) | In the cloud | Why it's this way locally |
 | --- | --- | --- |
 | kind in Docker, 3 nodes, two labelled "zones" | A managed control plane, nodes in 3 real zones, Karpenter adding nodes | One machine |
-| dev, staging and prod as namespaces in one cluster | prod in its own cluster at least | The budget |
+| dev, staging and prod as namespaces in one cluster, one Argo CD | One account, cluster and Argo CD per environment | The budget |
 | Envoy on host ports, one proxy | A cloud load balancer in front of 2+ proxies across zones | No load balancer locally |
 | Demo CA, `*.localtest.me` | Real certificates and DNS | No public DNS |
 | Sealed Secrets with a demo key in Git | External Secrets from a secret manager | Must work offline from a clone |
