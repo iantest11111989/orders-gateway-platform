@@ -11,7 +11,7 @@ Grafana is <http://localhost:3000> (`admin` / `admin12345`); the other logins ar
 
 ## 1. Argo CD: Git is the truth (5 min)
 
-1. Open <https://argocd.localtest.me> and log in as `admin`. Each tile is an **Application**: a folder or chart in Git, deployed to one namespace. Open `dev` to see the tree of everything it created (Deployment, ReplicaSet, Pods, Service, HTTPRoute...).
+1. Open <http://localhost:8081> and log in as `admin` / `admin12345`. Each tile is an **Application**: a folder or chart in Git, deployed to one namespace. Open `dev` to see the tree of everything it created (Deployment, ReplicaSet, Pods, Service, HTTPRoute...).
 2. In Grafana, open the **Argo CD** dashboard (<http://localhost:3000/d/argocd>). **Out of sync** and **Not healthy** should both be 0, and **Every Application** lists the same apps as the tiles, from the `argocd_app_info` metric.
 3. Now change something behind Argo CD's back:
 
