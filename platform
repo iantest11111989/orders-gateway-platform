@@ -112,6 +112,43 @@ run_toolbox() {
 # Runs on the host, not in the toolbox: the Keychain is a macOS service.
 KEYCHAIN_SERVICE=ogp-promoter-github
 NODE=ogp-control-plane
+# macOS only: the toolbox runs inside Docker's VM (Colima, Docker Desktop),
+# so `doctor` there sees the VM's ports, not the Mac's. Check what the Mac's
+# own browser would reach on each contract port (decision 0032).
+host_ports() {
+  [ "$(uname -s)" = Darwin ] || return 0
+  hp_name="${CLUSTER_NAME:-ogp}" hp_up='' hp_bad=0
+  [ -n "$(docker ps -q --filter "name=^${hp_name}-control-plane$" 2>/dev/null)" ] && hp_up=1
+  printf '==> Ports on this Mac\n'
+  while read -r port path want label; do
+    body=$(curl -s --max-time 3 "http://127.0.0.1:$port$path" 2>/dev/null || true)
+    if [ -z "$hp_up" ]; then
+      if nc -z -w 1 127.0.0.1 "$port" 2>/dev/null; then
+        printf '  ✗ Port %s is already used by another program on this Mac (%s needs it). Stop it, then re-run.\n' "$port" "$label"; hp_bad=1
+      else
+        printf '  ✓ Port %s is free\n' "$port"
+      fi
+    elif printf '%s' "$body" | grep -q "$want"; then
+      printf '  ✓ %s answers on http://localhost:%s\n' "$label" "$port"
+    elif nc -z -w 1 127.0.0.1 "$port" 2>/dev/null; then
+      printf '  ✗ Port %s on this Mac is answered by another program, not %s. Stop it; then run colima restart (or restart Docker) so the port is forwarded again.\n' "$port" "$label"; hp_bad=1
+    else
+      printf '  ! %s is not reachable on http://localhost:%s yet (still starting, or Docker did not forward the port: colima restart fixes that).\n' "$label" "$port"
+    fi
+  done <<'EOF2'
+8080 /version "version" the app (prod)
+3000 /api/health "database" Grafana
+9090 /-/ready Prometheus Prometheus
+9093 /-/ready OK Alertmanager
+8081 /api/version "Version" Argo CD
+EOF2
+  if [ "$(docker context show 2>/dev/null)" = colima ]; then
+    printf '  i https://*.localtest.me needs ports 80 and 443 on 127.0.0.1, which macOS only lets root open,\n'
+    printf '    so with Colima those names do not reach this Mac'"'"'s browser. The ports above cover every UI.\n'
+  fi
+  return "$hp_bad"
+}
+
 node_kubectl() { docker exec -i "$NODE" kubectl --kubeconfig /etc/kubernetes/admin.conf -n promoter "$@"; }
 
 promoter_token_load() {
@@ -157,10 +194,12 @@ case "$cmd" in
   -h|--help|help) usage 0 ;;
   up)
     check_docker
+    host_ports || [ -n "$(docker ps -q --filter "name=^${CLUSTER_NAME:-ogp}-control-plane$")" ] || die "free the ports above first"
     TOOLBOX_EXEC='' run_toolbox bash scripts/up.sh "$@"
     promoter_token_load ;;
   doctor|down|urls|verify|budget|demo|ship|rollback)
     check_docker
+    [ "$cmd" != doctor ] || host_ports || true
     case "$cmd" in ship|rollback) set -- "$cmd" "$@"; cmd=ship ;; esac
     run_toolbox bash "scripts/$cmd.sh" "$@" ;;
   promoter-token)

@@ -54,7 +54,7 @@ docker ps --filter name=control-plane --filter name=worker    # the nodes are Do
 
 **Where:** [`gitops/root.yaml`](../../gitops/root.yaml) → [`gitops/apps/templates/`](../../gitops/apps/templates/) (one Argo CD Application per component, each a Helm chart with values in [`gitops/values/`](../../gitops/values/)), [decision 0005](../decisions/0005-gitops-layout.md).
 
-**See it:** open Argo CD at <https://argocd.localtest.me> (`admin` / `admin12345`; accept the certificate warning), or:
+**See it:** open Argo CD at <http://localhost:8081> (`admin` / `admin12345`), or:
 
 ```sh
 ./platform kubectl -n argocd get applications
@@ -76,7 +76,7 @@ docker ps --filter name=control-plane --filter name=worker    # the nodes are Do
 | **Kubeconfig** at `./out/kubeconfig.yaml` | `kubectl --kubeconfig out/kubeconfig.yaml get pods -A` | `scripts/up.sh` |
 | **Namespaces**: dev, staging, prod, each a Deployment `app` labelled `app.kubernetes.io/name=app` | `kubectl --kubeconfig out/kubeconfig.yaml get deploy -A -l app.kubernetes.io/name=app` | [`charts/orders-gateway/`](../../charts/orders-gateway/) |
 | **App endpoint**: prod at `http://localhost:8080`, `/admin/*` not reachable from outside | `curl localhost:8080/version` → 200; `curl -X POST localhost:8080/admin/fault` → 403 | [`httproute-public.yaml`](../../charts/orders-gateway/templates/httproute-public.yaml), [`httproutefilter.yaml`](../../charts/orders-gateway/templates/httproutefilter.yaml), [decision 0028](../decisions/0028-contract-ports-on-the-gateway.md) |
-| **Logins**: admin / admin12345 | Grafana <http://localhost:3000>, Argo CD <https://argocd.localtest.me> | [`gitops/values/argocd.yaml`](../../gitops/values/argocd.yaml) (a bcrypt hash), Grafana's SealedSecret |
+| **Logins**: admin / admin12345 | Grafana <http://localhost:3000>, Argo CD <http://localhost:8081> | [`gitops/values/argocd.yaml`](../../gitops/values/argocd.yaml) (a bcrypt hash), Grafana's SealedSecret |
 | **Dashboards**: Grafana :3000, Prometheus :9090, Alertmanager :9093 | open each | [`cluster/kind.yaml`](../../cluster/kind.yaml) port mappings → the gateway |
 | **Persistence and restarts** | `docker compose stop && docker compose start`, then check Grafana still has its history | `restart: unless-stopped` in `docker-compose.yml`; volumes for Prometheus, Loki and the Git server |
 

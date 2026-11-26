@@ -21,6 +21,7 @@ echo "  http://localhost:8080      the app in prod (/admin/* is refused)"
 echo "  http://localhost:3000      Grafana"
 echo "  http://localhost:9090      Prometheus"
 echo "  http://localhost:9093      Alertmanager"
+echo "  http://localhost:8081      Argo CD (admin / admin12345)"
 echo
 
 step "HTTPS (demo CA)"

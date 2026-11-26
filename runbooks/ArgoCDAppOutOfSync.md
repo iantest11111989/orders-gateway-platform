@@ -21,7 +21,7 @@ argocd app diff <name>                      # what differs from Git
 kubectl -n argocd get applications.argoproj.io <name> -o jsonpath='{.status.conditions}'
 ```
 
-Or open `https://argocd.localtest.me/applications/argocd/<name>`: the sync status and the resources marked OutOfSync. The **Argo CD** dashboard in Grafana shows when it started.
+Or open `http://localhost:8081/applications/argocd/<name>`: the sync status and the resources marked OutOfSync. The **Argo CD** dashboard in Grafana shows when it started.
 
 ## Fix
 
