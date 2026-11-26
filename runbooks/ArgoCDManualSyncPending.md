@@ -10,6 +10,7 @@ The apps' staging and prod Applications sync by hand: `./pipeline cd <app> <env>
 
 ```sh
 ./platform shell
+argocd login --username admin --password admin12345   # once per shell (./platform urls)
 argocd app diff <name>          # what Git would change
 git -C . log -3 -- cd/<app>/<env>.yaml   # the change waiting (in your checkout)
 ```
