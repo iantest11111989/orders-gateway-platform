@@ -63,10 +63,10 @@ flowchart TB
 | `docker-compose.yml`, the `ready` service and toolbox (`toolbox/`, `scripts/up.sh`) | Terraform roots run from CI, plus a one-off Argo CD install in each cluster | Compose exists locally to give one command and a health signal. In production the cluster's lifecycle belongs to IaC with reviewed plans. **Keep Compose and kind as the local dev loop and as the PR integration test** (`platform.yml`'s cluster job). |
 | kind, 1 control plane + 2 workers, fake zones (`cluster/kind.yaml`) | EKS per environment, 3 real AZs, Karpenter on Graviton | Managed control plane, real failure domains |
 | dev/staging/prod as namespaces in one cluster (`bootstrap/apps/templates/orders-gateway-{dev,staging,prod}.yaml`) | One cluster per environment, each in its own account | Blast radius, IAM separation, separate upgrade cadence. Not a shared non-prod cluster: dev and staging get the same isolation as prod |
-| In-stack Git server, soft-serve (`system/git-server/`) | GitHub only (today's "GitHub mode") | Its only purpose was offline use |
+| In-stack Git server, soft-serve (`system/git-server/`) | GitHub only | Its only purpose was offline use |
 | Root Application applied by `./platform up` (`bootstrap/root.yaml`) | The same root Application, created by Terraform in each cluster with that cluster's values | Keeps the app-of-apps and sync waves unchanged |
-| `./platform ship` / `rollback` with `kind load` | Promotion PRs and revert PRs. `localhost/` images are not admitted | Only CI-built, signed images run |
-| GHCR (`cd-app.yml` `IMAGE: ghcr.io/...`) | ECR in shared-services. Optionally dual-push to GHCR during migration | IAM-native pulls, no external dependency in the data path, Inspector scanning |
+| `./pipeline ci`/`cd`/`rollback` (and `./platform ship`) with `kind load` | Promotion PRs and revert PRs. `localhost/` images are not admitted | Only CI-built, signed images run |
+| Local `localhost/` builds (no registry) | CI pushes to ECR in shared-services ([`ci-cd-in-production.md`](ci-cd-in-production.md)) | IAM-native pulls, no external dependency in the data path, Inspector scanning |
 | cosign keyless + BuildKit SBOM | Keep. Change the registry glob and the identity in `policies/verify-image-signatures.yaml` | Already the right design |
 | Kyverno, 1 replica, `failurePolicy: Ignore` | Kyverno, 3 replicas, `Fail` for app namespaces, every policy on Enforce | What production needs |
 | Traefik on NodePorts, 2 replicas, plain HTTP | ALB (LBC, ACM, WAF) to Traefik, 3 replicas across AZs with a PDB | WAF and ACM need an ALB. Traefik keeps the chart's Ingresses and the `/admin` middleware, and Argo Rollouts can split traffic through it |
@@ -79,7 +79,7 @@ flowchart TB
 | `alerts/*.yaml` PrometheusRules + promtool tests | Datadog SLOs + burn-rate monitors + regular monitors, as code. Tests become fire drills in staging (§3.9) | |
 | Alertmanager → `alert-receiver` | Datadog monitors → PagerDuty (or Datadog On-Call) for pages, Slack/Jira for tickets | |
 | `runbooks/*.md` | Keep in Git. Every monitor message links to one. Rewrite the PromQL/LogQL sections as Datadog queries | |
-| Trivy in CI, `rescan.yml` | Keep Trivy as the CI gate. Replace the daily rescan with Inspector continuous ECR scanning | Inspector re-scans when a new CVE is published |
+| Trivy in `./pipeline ci` and on pull requests | Keep Trivy as the CI gate. Add Inspector continuous ECR scanning for CVEs published later | Inspector re-scans when a new CVE is published |
 | Trivy Operator | Drop. Use Inspector for images and Kyverno Enforce for config | Cuts duplicate tooling. *(Alternative: Datadog Cloud Security if it's licensed)* |
 | NetworkPolicies on kindnet | VPC CNI network-policy enforcement (an EKS add-on option). Same policies, plus default-deny egress | FQDN egress needs Cilium or Network Firewall (§3.13) |
 | `local-path` volumes | gp3 EBS through the CSI driver. Almost nothing stateful is left once Prometheus and Loki go | |
@@ -158,7 +158,7 @@ Roles, one per controller per cluster, least privilege:
 - `gha-ecr-push` (shared-services): trust `sub = repo:iantest11111989/orders-gateway-platform:ref:refs/heads/main` and `aud = sts.amazonaws.com`. Permissions: `ecr:PutImage`, `InitiateLayerUpload` and friends on `orders-gateway` only. **No delete or tag-mutation rights.** PRs get no role; they build without pushing, as `ci-app.yml` already does.
 - `gha-tf-plan-<acct>`: read-only plus the state bucket, trusted for `pull_request` events. `gha-tf-apply-<acct>`: trusted for `environment:<env>` only, so prod applies need the GitHub Environment's required reviewers.
 - **CI never talks to a cluster.** Argo CD pulls, so no kube credentials exist in GitHub at all. That's the strongest property the repo already has; keep it.
-- Use a **GitHub App**, whose private key lives in Secrets Manager (shared-services account), for the patch promoter and for opening promotion PRs, instead of today's `GITHUB_TOKEN` PR-opening trick. Production needs individual human and bot identities, or approvals mean nothing.
+- Use a **GitHub App**, whose private key lives in Secrets Manager (shared-services account), for the patch promoter and for opening promotion PRs. Production needs individual human and bot identities, or approvals mean nothing.
 
 **Repo changes:** `helm/orders-gateway/templates/serviceaccount.yaml` is unchanged. New Terraform modules `pod-identity`, `github-oidc`. `system/argocd/values.yaml` gains OIDC, RBAC and HA.
 
@@ -167,7 +167,7 @@ Roles, one per controller per cluster, least privilege:
 **Recommend:**
 - **ECR in shared-services**, repository `orders-gateway`:
   - **Tag immutability ON.** This breaks today's practice of re-pushing `v1`/`v2` from every main commit. Move the demo images to a separate `orders-gateway-demo` repository with mutable tags, never admitted in prod. Immutability still allows *adding* a tag to an existing digest, which promotion uses below.
-  - **Enhanced scanning (Inspector), continuous** on `orders-gateway`, scan-on-push on the rest. Findings go to Security Hub and Datadog. This replaces `rescan.yml`'s daily job; keep `rescan.yml` until Inspector has run in parallel for a month.
+  - **Enhanced scanning (Inspector), continuous** on `orders-gateway`, scan-on-push on the rest. Findings go to Security Hub and Datadog. It covers CVEs published after an image was built.
   - **Lifecycle:** expire untagged manifests after 7 days *(careful: cosign v3 bundles and BuildKit SBOM manifests are referrers/index children. Check that the lifecycle rules don't treat them as untagged orphans. Unsure; test it in dev first.)* Keep the last 100 `sha-*` images. Never expire `release-*`, which the promotion job adds to a digest when it reaches prod.
   - **Encryption** with a shared-services KMS CMK. The repo policy grants pull to the org (`aws:PrincipalOrgID` plus the `Workloads` OU path condition) for the node roles. **Cross-account pull, not replication, within one region.** Cross-region **replication** only to the DR region (§3.11).
   - **Pull-through cache** rules for `docker.io`, `quay.io`, `registry.k8s.io`, `ghcr.io` and `public.ecr.aws`, so third-party charts' images come through ECR. That removes the rate-limit failure mode in the README's troubleshooting table, and Inspector scans them too. Kyverno's `restrict-image-registries` then allows **only** `<shared-acct>.dkr.ecr.<region>.amazonaws.com/` (plus a few exceptions while migrating). The sketch has the GHCR rule. Docker Hub needs credentials in Secrets Manager.
@@ -175,12 +175,12 @@ Roles, one per controller per cluster, least privilege:
   - **ECR as an OCI registry** is the usual AWS choice: repository `charts/orders-gateway`, `helm push oci://<acct>.dkr.ecr.<region>.amazonaws.com/charts`. Argo CD reads OCI charts natively, the tags are immutable, pulls go through the same cross-account IAM as the images, and Inspector and lifecycle rules apply as above.
   - **S3 with the `helm-s3` plugin** also works (a versioned bucket as a classic Helm repo), but Argo CD then needs a plugin or a proxy to read it. Prefer ECR.
   - Either way, CI publishes only when the chart's version goes up and refuses to overwrite a version, cosign signs the chart by digest, and staging and prod each pin a chart version alongside the image, promoted by the same PRs (§3.5).
-- **Signing: keep cosign keyless**. It's free and keyless, and the identity check (`cd-app.yml@refs/heads/main`, `policies/verify-image-signatures.yaml`) is exactly the right policy. ECR supports the OCI 1.1 referrers API that cosign v3 bundles use *(unsure: confirm with a real push, because Kyverno 1.20's referrer lookup was only verified on GHCR)*. Alternatives:
+- **Signing: keep cosign keyless**. It's free and keyless, and the identity check (the CD workflow on `refs/heads/main`, `policies/verify-image-signatures.yaml`) is exactly the right policy. ECR supports the OCI 1.1 referrers API that cosign v3 bundles use *(unsure: confirm with a real push, because Kyverno 1.20's referrer lookup was only verified on GHCR)*. Alternatives:
   - **AWS Signer + Notation:** AWS-native, but Kyverno's Notary verification is less mature, and the signing key moves to AWS. Not worth the switch.
   - **cosign with a KMS key:** removes the dependency on public Sigstore (Fulcio/Rekor) at admission. Worth it if the org won't accept public transparency-log entries naming its repo. Open question.
 - **Add SLSA build provenance** (`actions/attest-build-provenance` or `cosign attest --type slsaprovenance`), and have Kyverno require it in prod. Keep the BuildKit SBOMs.
 - **Admission:** Kyverno HA (3 replicas, PDB, `system` node pool), **`failurePolicy: Fail`** on the image policies in the app namespaces. Exclude `kube-system` and `kyverno` as today. Turn on the background and reports controllers so already-running pods are re-checked (closing the gap where a pod created while Kyverno is down stays running). Every Audit policy in `policies/` moves to Enforce once clean,.
-- **CI changes in `.github/workflows/cd-app.yml`:** `aws-actions/configure-aws-credentials` with the OIDC role, then `aws-actions/amazon-ecr-login`. Push by digest, sign, verify, and fail on an empty SBOM, as now. During migration, push to both GHCR and ECR. `promote-dev` writes the ECR repository into `cd/orders-gateway/dev.yaml`, and `scripts/set-image.sh` learns a repository argument.
+- **The CD workflow** ([`ci-cd-in-production.md`](ci-cd-in-production.md)): `aws-actions/configure-aws-credentials` with the OIDC role, then `aws-actions/amazon-ecr-login`. Push by digest, sign, verify, and fail on an empty SBOM. Its deploy-dev job writes the ECR image into `cd/orders-gateway/dev.yaml`.
 
 ### 3.5 GitOps and promotion across clusters
 
@@ -493,7 +493,7 @@ The table prices the chosen layout: one account, cluster and Argo CD per environ
   - **branch protection on `main`** (`main` has none today), required reviews, and CODEOWNERS for `cd/*/prod.yaml`, `policies/` and `infra/`.
   - Required status checks. Secret scanning and push protection. Dependabot alerts alongside Renovate.
   - Actions pinned by SHA (already done). Environments with required reviewers for `terraform apply` in prod.
-  - Note that the promotion bot's direct push to main (`promote-dev`) then needs a bypass for the GitHub App only.
+  - Note that the promotion bot's direct push to main (its deploy-dev job) then needs a bypass for the GitHub App only.
 - **Access:** SSO everywhere. No shared logins (`admin12345` dies). Short sessions for prod. Break-glass with alerts.
 - **Compliance:** unknown target (SOC 2? ISO 27001? PCI if "orders" ever means card data?). Security Hub standards and Config conformance packs give evidence cheaply. Open question.
 
@@ -566,7 +566,7 @@ infra/
 
 **Phase 1: images (≈1 week)**
 - ECR + pull-through cache + GitHub OIDC push role.
-- `cd-app.yml` dual-pushes GHCR and ECR, signing both. The demo tags move to a separate repo.
+- The CD workflow pushes to ECR and signs there. The demo tags move to a separate repo.
 - Kyverno policies accept both registries (in the local stack too, so CI keeps testing the policies).
 
 **Phase 2: the dev account and cluster (2–3 weeks)**

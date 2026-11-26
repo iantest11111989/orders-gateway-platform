@@ -8,9 +8,7 @@
 #                it serving
 #   gitops-revert  a bad config commit (30% of requests fail) on a demo branch
 #                that a copy of dev follows; Argo CD syncs it, then a
-#                `git revert` heals it. In the default mode it pushes to the
-#                in-stack Git server; in GitHub mode it needs GITHUB_TOKEN (push
-#                access to the repo Argo CD syncs from, e.g. your fork)
+#                `git revert` heals it. It pushes to the in-stack Git server
 #   policy       Kyverno refuses, in namespace demo, an orders-gateway image that
 #                main's app workflow didn't sign (the old staging/prod image)
 #                and a :latest image; a signed image is admitted (dry run)
@@ -263,13 +261,8 @@ instack_remote() {
   INSTACK_REMOTE="ssh://127.0.0.1:$port/platform.git"
 }
 
-# git with GITHUB_TOKEN sent as an HTTP header for this one command: it is
-# never written into the clone's config or shown in a remote URL or error.
-# Against the in-stack server the SSH key does the work instead.
-gitauth() {
-  if [ -n "$INSTACK_REMOTE" ]; then git -c safe.directory='*' "$@"; return; fi
-  git -c http.extraHeader="Authorization: Basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')" "$@"
-}
+# git against the in-stack server (instack_remote's SSH key does the auth).
+gitauth() { git -c safe.directory='*' "$@"; }
 
 # Deletes a branch on <repo> without needing the checkout to be a usable git
 # repository (in a worktree checkout /work/.git points outside the mount):
@@ -283,23 +276,19 @@ delete_branch() { # delete_branch <repo url> <branch>
   return "$rc"
 }
 
-# Deletes leftover demo branches (an interrupted run, or --keep). Only with
-# GITHUB_TOKEN; otherwise prints how to.
+# Deletes leftover demo branches (an interrupted run, or --keep) on the
+# in-stack Git server.
 clean_branches() {
   local repo b
   repo=$(kubectl -n argocd get applications.argoproj.io root -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || true)
-  [ -n "$repo" ] || return 0
-  if [ "$repo" = "$IN_STACK" ]; then instack_remote; repo=$INSTACK_REMOTE; fi
+  [ "$repo" = "$IN_STACK" ] || return 0
+  instack_remote; repo=$INSTACK_REMOTE
   # Run outside /work: in a git worktree checkout, /work/.git points outside
   # the container's mount and git would refuse to start. ls-remote on a URL
   # needs no repository.
   for b in $(git -C / ls-remote --heads "$repo" 'demo/gitops-revert-*' 2>/dev/null | awk '{sub("refs/heads/", "", $2); print $2}'); do
-    if [ -n "${GITHUB_TOKEN:-}" ] || [ -n "$INSTACK_REMOTE" ]; then
-      if delete_branch "$repo" "$b"; then ok "${DRY_RUN:+would have }deleted the leftover demo branch $b"
-      else warn "couldn't delete the leftover demo branch $b (token without push access?)"; fi
-    else
-      warn "leftover demo branch $b: delete it with GITHUB_TOKEN=\$(gh auth token) ./platform demo clean, or git push origin --delete $b"
-    fi
+    if delete_branch "$repo" "$b"; then ok "${DRY_RUN:+would have }deleted the leftover demo branch $b"
+    else warn "couldn't delete the leftover demo branch $b"; fi
   done
 }
 
@@ -406,15 +395,8 @@ demo_gitops_revert() {
   local repo base branch work remote
   repo=$(kubectl -n argocd get applications.argoproj.io root -o jsonpath='{.spec.source.repoURL}')
   base=$(kubectl -n argocd get applications.argoproj.io root -o jsonpath='{.spec.source.targetRevision}')
-  if [ "$repo" = "$IN_STACK" ]; then
-    # Default mode: push to the in-stack Git server; no token needed.
-    instack_remote; remote=$INSTACK_REMOTE
-  elif [[ $repo == https://github.com/* ]]; then
-    [ -n "${GITHUB_TOKEN:-}" ] || die "Argo CD syncs from GitHub ($repo): needs push access: GITHUB_TOKEN=\$(gh auth token) ./platform demo gitops-revert"
-    remote=$repo
-  else
-    die "Argo CD syncs from $repo; this demo pushes to the in-stack Git server or to GitHub over HTTPS"
-  fi
+  [ "$repo" = "$IN_STACK" ] || die "Argo CD syncs from $repo, not the in-stack Git server: run ./platform up, which points it back at this checkout"
+  instack_remote; remote=$INSTACK_REMOTE
   branch="demo/gitops-revert-$(date -u +%Y%m%d-%H%M%S)"
   work=$(mktemp -d); GIT_WORK=$work
   DEMO_BRANCH=$branch DEMO_REPO=$remote

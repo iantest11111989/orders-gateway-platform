@@ -81,7 +81,6 @@ services:
     <<: *toolbox
     command: ["bash", "scripts/compose-ready.sh"]
     environment:
-      REPO_URL: ${REPO_URL:-}
       REVISION: ${REVISION:-}
       PRELOAD_IMAGES: ${PRELOAD_IMAGES:-}  # CI's image cache (scripts/images.sh)
     healthcheck:

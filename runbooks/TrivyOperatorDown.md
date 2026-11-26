@@ -4,7 +4,7 @@
 
 ## What it means
 
-Trivy Operator hasn't answered a Prometheus scrape for 15 minutes. While it's down, images that start running aren't scanned, and existing reports aren't refreshed. CI's daily rescan of the environments' images still runs, so the app image is still covered.
+Trivy Operator hasn't answered a Prometheus scrape for 15 minutes. While it's down, images that start running aren't scanned, and existing reports aren't refreshed. Until it's back, scan the image by hand: `scripts/scan-image.sh` (or `./pipeline ci`, which scans every build).
 
 ## Likely causes
 

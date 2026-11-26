@@ -18,8 +18,7 @@
 # change you can see, commit or revert. Not `kubectl rollout undo` or
 # `kubectl set image`: Argo CD's self-heal would put Git's version back
 # within seconds.
-# Needs the default in-stack mode. In GitHub mode, commit the values change
-# and push it to GitHub instead. Runs in the toolbox.
+# Argo CD follows the in-stack Git server (./platform up). Runs in the toolbox.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -36,11 +35,12 @@ values="$ROOT/cd/$APP/$env.yaml"
 in_stack_only() {
   local repo
   repo=$(kubectl -n argocd get applications.argoproj.io root -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || true)
-  [ "$repo" = "$IN_STACK" ] || die "Argo CD syncs from ${repo:-?}, not the in-stack Git server: ship and rollback work in the default mode (docker compose up, or ./platform up without REPO_URL). In GitHub mode, change $values, commit and push to GitHub."
+  # A cluster started by an older version may still follow GitHub.
+  [ "$repo" = "$IN_STACK" ] || die "Argo CD syncs from ${repo:-?}, not the in-stack Git server: run ./platform up, which points it back at this checkout"
 }
 
 # Change only the image lines of the values file, leaving every other line,
-# blank line and comment as it was (like scripts/set-image.sh). A yq rewrite
+# blank line and comment as it was (as a promotion PR would). A yq rewrite
 # reformatted the whole file, so ship then rollback left the checkout differing
 # from Git and the next git pull of a promotion conflicted.
 # repository: an empty value removes the line, so the chart's default applies

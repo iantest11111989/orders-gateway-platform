@@ -145,9 +145,9 @@ kubectl -n dev scale deploy app --replicas=3
 kubectl -n dev get deploy app -w            # back to 1 within seconds: self-heal
 ```
 
-**Understand:** the Git server (soft-serve) runs inside the cluster. Argo CD reads from it; `ready`, `./platform up`, `ship` and `rollback` push to it. With `REPO_URL=https://github.com/...`, Argo CD follows GitHub instead, and promotions are pull requests.
+**Understand:** the Git server (soft-serve) runs inside the cluster. Argo CD reads from it; `ready`, `./platform up`, `./pipeline cd`/`rollback`, `ship` and `rollback` push to it. CI/CD is local; GitHub only checks pull requests.
 
-Read `ci-app.yml` (pull requests) and then `cd-app.yml` (merges to `main`). Pull requests build and scan without pushing, smoke-test the image (`scripts/smoke-test-image.sh`, which you can run locally on any image) and hold a 60-second k6 run to the SLOs (`app/k6/perf-gate.js`). `main` pushes, signs with cosign (no keys), attaches an SBOM and commits the new image to dev. The **CI · platform** workflow's **E2E · Fresh install** job runs the whole start-up on a fresh runner and ships and rolls back under traffic.
+Read `./pipeline` (CI and CD on your machine) and then `ci-app.yml`, the pull request checks: build and scan without pushing, rehearse signing, smoke-test the image (`scripts/smoke-test-image.sh`, which you can run locally on any image) and hold a 60-second k6 run to the SLOs (`apps/orders-gateway/k6/perf-gate.js`). `docs/ci-cd-in-production.md` describes what production adds: push, sign with cosign (no keys), an SBOM, and promotion by pull request. The **CI · platform** workflow's **E2E · Fresh install** job runs the whole start-up on a fresh runner and ships and rolls back under traffic.
 
 **Check yourself:** what stops an unsigned image from running in prod? (Find the Kyverno policy in `policies/`.) Then explain why `./platform ship`'s unsigned `localhost/orders-gateway:` builds are still admitted: look at `policies/restrict-image-registries.yaml`.
 

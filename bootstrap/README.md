@@ -2,7 +2,7 @@
 
 Everything Argo CD syncs, as an app of apps: one root Application renders one child Application per component, ordered by sync wave.
 
-- `root.yaml`: the root Application. `./platform up` applies it once, with `REPO_URL`/`REVISION`.
+- `root.yaml`: the root Application. `./platform up` applies it, pointed at the in-stack Git server.
 - `apps/`: a Helm chart. Each template is one Argo CD Application, and every template uses `{{ .Values.repo.url }}` and `{{ .Values.repo.revision }}` for this repo.
 
 What the Applications deploy lives elsewhere in the repo:

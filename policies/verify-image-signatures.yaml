@@ -37,9 +37,11 @@ spec:
     - name: cosign
       cosign:
         keyless:
-          # CD signs since the CI/CD split (cd-app.yml); images signed before
-          # it carry app.yml, the workflow's old name. One identity matching
-          # both (a second identity entry would also have to match).
+          # The images on GHCR were signed by the repo's former CD workflow
+          # (cd-app.yml, earlier app.yml) on main. CI/CD is local now
+          # (./pipeline builds unsigned localhost/ images, which this policy
+          # doesn't match); production signs in CI the same way
+          # (docs/ci-cd-in-production.md). One identity matching both names.
           identities:
             - issuer: https://token.actions.githubusercontent.com
               subjectRegExp: ^https://github\.com/iantest11111989/orders-gateway-platform/\.github/workflows/(cd-app|app)\.yml@refs/heads/main$
