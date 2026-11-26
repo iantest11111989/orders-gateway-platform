@@ -1,8 +1,6 @@
-# prod: promoted from staging by a pull request the owner approves. It runs
-# a plain Deployment (a rolling update, pods replaced one at a time), as the
-# contract requires; see the note at the bottom. The canary (Argo Rollouts:
-# 10% -> 25% -> 50% -> 100% with an SLO analysis after each step) runs in the
-# demo copies of prod (./platform demo canary).
+# prod: promoted from staging by a pull request the owner approves. A new
+# image is a rolling update: one extra pod comes up, and an old one stops only
+# once the new one is ready.
 env: prod
 
 image:
@@ -27,10 +25,3 @@ podDisruptionBudget:
 
 topologySpread:
   enabled: true
-
-
-# A plain Deployment named app, which the platform expects: a Rollout would
-# own the pods and leave the Deployment at 0 replicas. The canary demos
-# turn the Rollout on in their copy of prod (scripts/demo.sh).
-rollout:
-  enabled: false

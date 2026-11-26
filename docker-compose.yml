@@ -26,7 +26,7 @@ x-toolbox: &toolbox
   # (scripts/check-compose-toolbox.sh keeps the two in step, in CI).
   # If the tag isn't published yet (a branch that changes toolbox/),
   # Compose builds it from toolbox/.
-  image: ghcr.io/iantest11111989/orders-gateway-platform-toolbox:sha-8ff4ca6604ba
+  image: ghcr.io/iantest11111989/orders-gateway-platform-toolbox:sha-d15bdc4a86cb
   build: ./toolbox
   # Host network: kind's API server and the platform's ports are on the
   # host's 127.0.0.1, so ./out/kubeconfig.yaml works from the host as is.

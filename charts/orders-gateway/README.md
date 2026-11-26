@@ -13,30 +13,14 @@ Helm chart for `orders-gateway` (the app in `app/`). Each environment installs i
 | `hpa.yaml` | `autoscaling.enabled` | CPU-based HorizontalPodAutoscaler (metrics-server). |
 | `pdb.yaml` | `podDisruptionBudget.enabled` | At most one pod down during voluntary disruptions. |
 | (in the Deployment) | `topologySpread.enabled` | Spread across zones and nodes. |
-| `rollout.yaml`, `analysistemplate.yaml`, stable/canary Services | `rollout.enabled` | Canary with Argo Rollouts (prod). See below. |
 
-## Canary (`rollout.enabled`)
+## Releases
 
-The **Deployment stays the source of truth** (image, probes, resources, security). A `Rollout` points at it with `workloadRef`. Once the Rollout's own pods are up, it **scales the Deployment to zero and runs the pods itself**, and the HPA then targets the Rollout. That's why **prod itself runs without a Rollout** (`rollout.enabled: false`): the platform expects a plain Deployment named `app` that serves. The canary runs in the demo copy of prod (namespace `demo`, `./platform demo canary`), which turns the Rollout on.
-
-With the Rollout on, every image change becomes a canary. Argo Rollouts' Gateway API plugin moves traffic by changing the HTTPRoute's backend weights (`-stable` / `-canary` Services): 10% → analysis → 25% → analysis → 50% → analysis → 100% (after the last step Rollouts moves to 100% on its own). Each analysis (`AnalysisTemplate` `app-slo`) asks Prometheus, about the canary pods only (`rollouts_pod_template_hash`), for:
-
-- the 5xx ratio of `/work` and `/echo`, which must be ≤ 0.5%
-- the p99 latency of `/echo` and `/version`, which must be ≤ 250 ms
-
-Each waits 60 s for data, then is checked every 30 s, 4 times per step. A second failure aborts the rollout and sends all traffic back to stable. With no canary traffic, the measurements are Inconclusive, and a second one pauses the rollout until someone promotes or aborts it, which is why the demos run k6. The demos start k6 before changing the image; otherwise the canary pauses at 10% and looks stuck.
-
-Watch or drive it from `./platform shell`, or read-only at https://rollouts.localtest.me:
-
-```sh
-kubectl argo rollouts get rollout app -n demo --watch
-kubectl argo rollouts promote app -n demo   # skip the current step
-kubectl argo rollouts abort app -n demo
-```
+A new image is a rolling update of the Deployment: one extra pod comes up (`maxSurge: 1`), and an old one stops only once the new one is ready (`maxUnavailable: 0`), so capacity never drops. Pods get a 5 s `preStop` pause so the gateway stops sending them traffic before they shut down. To undo a release, put the previous image back in Git (`./platform rollback`, or a revert of the promotion commit) and Argo CD rolls back the same way.
 
 ## Image
 
-`image.tag` is required: a `sha-<12>` tag that CI publishes from `main`, or a demo tag (`v1`, `v2`, `v2-bad`). Set `image.digest` (`sha256:...`) to pin exactly what runs: the pod then uses `repository@digest`, and the tag stays as the version label and `APP_VERSION`.
+`image.tag` is required: a `sha-<12>` tag that CI publishes from `main`, or a demo tag (`v1`, `v2`). Set `image.digest` (`sha256:...`) to pin exactly what runs: the pod then uses `repository@digest`, and the tag stays as the version label and `APP_VERSION`.
 
 ## Test
 

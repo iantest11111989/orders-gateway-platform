@@ -16,7 +16,6 @@ Sync waves: -10 CRDs, 0 Argo CD, 10 controllers, 20 observability, 30 policies, 
 | `argocd` | 0 | Argo CD, managing itself |
 | `cert-manager` | 10 | Certificates from the demo CA |
 | `envoy-gateway` | 10 | Gateway API controller (Envoy) |
-| `argo-rollouts` | 10 | Argo Rollouts controller + Gateway API plugin, read-only dashboard |
 | `metrics-server` | 10 | CPU/memory metrics for HPAs and `kubectl top` |
 | `platform-gateway` | 15 | Demo CA, `*.localtest.me` certificate, Gateway, HTTP→HTTPS redirect, UI routes (`manifests/gateway/`) |
 | `kube-prometheus-stack` | 20 | Prometheus, Alertmanager, Grafana, exporters |

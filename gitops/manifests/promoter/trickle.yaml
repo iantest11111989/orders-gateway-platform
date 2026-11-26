@@ -1,6 +1,6 @@
 # About two rounds a second (GET /work?ms=10 and POST /echo) to each environment, through the gateway like a real
-# client (scripts/promoter.py trickle), so the soak gates and prod's canary
-# analysis have traffic to judge. Orders use customer_id "cust-trickle".
+# client (scripts/promoter.py trickle), so the soak gates have traffic
+# to judge. Orders use customer_id "cust-trickle".
 apiVersion: apps/v1
 kind: Deployment
 metadata:
