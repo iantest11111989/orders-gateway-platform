@@ -242,8 +242,9 @@ GitHub Actions only checks pull requests and `main`; nothing there builds a pack
 | Workflow | When | What it does |
 | --- | --- | --- |
 | **CI · app** (`ci-app.yml`) | pull requests touching the app | nothing is pushed; also the reference for production's CI stages · 1 · test, lint → 2 · build (amd64 + arm64), scan, rehearse signing → 3 · smoke-test the image as Kubernetes runs it (non-root, read-only: warm-up, endpoints, metrics, a clean SIGTERM drain) → 4 · a 60 s k6 performance gate held to the SLOs |
-| **CI · platform** | pull requests and `main` | shellcheck and actionlint · manifest validation (the chart for every environment, every manifest, checked against Kubernetes and CRD schemas and our policies) · toolbox build · **E2E · Fresh install**: `docker compose up -d --wait` on a fresh runner, restart, re-run, verify, ship and roll back under traffic, budget. It takes about 20 minutes, so on a pull request it runs only with the `run-e2e` label; it always runs on `main` and nightly |
-| **CI · alerts / policies** | pull requests and `main` | alert unit tests, runbook links and dashboard checks; `kyverno test` |
+| **CI · infra** (`infra.yml`) | pull requests and `main` touching the platform | shellcheck and actionlint · manifest validation (the chart for every environment, every manifest, checked against Kubernetes and CRD schemas and our policies) · toolbox build |
+| **E2E** (`e2e.yml`) | `main`, by hand, and pull requests with the `run-e2e` label (about 20 minutes) | one fresh cluster, four stages reported in the job summary: **1 · Platform build** (`docker compose up -d --wait` from a clean checkout) → **2 · Platform verify** (kubeconfig, restart, re-run, `./platform verify`, budget) → **3 · App CI** (`./pipeline ci`) → **4 · App CD** (`./pipeline cd` dev → staging → prod, then rollback, with traffic on prod and zero failed requests allowed) |
+| **CI · infra · alerts / policies** | pull requests and `main` | alert unit tests, runbook links and dashboard checks; `kyverno test` |
 | **CI · security** | pull requests, `main`, weekly | CodeQL; gitleaks over the whole history |
 | **CI · secrets / renovate config** | pull requests and `main` | no plain secrets; Renovate's config is valid |
 | **Scheduled** | daily | full start-up, verify, the autoscale and gitops-revert demos on fresh x86-64 and arm64 runners |

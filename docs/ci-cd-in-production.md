@@ -22,7 +22,7 @@ The stages are the ones `./pipeline ci` and [`ci-app.yml`](../.github/workflows/
 
 | Stage | Locally (`./pipeline ci`) | On a pull request (`ci-app.yml`, today) | On main (production) |
 | --- | --- | --- | --- |
-| **Lint** | `npm run lint` | `npm run lint`, hadolint (Dockerfile), plus shellcheck and actionlint in `platform.yml` | same as the pull request |
+| **Lint** | `npm run lint` | `npm run lint`, hadolint (Dockerfile), plus shellcheck and actionlint in `infra.yml` | same as the pull request |
 | **Test** | `npm test` in the Dockerfile's Node image | the same, then a smoke test of the built image (non-root, read-only, endpoints, SIGTERM drain) and a 60 s k6 gate held to the SLOs | same as the pull request |
 | **Build** | `docker build`, loaded into kind as `localhost/<app>:<tag>` | both architectures (amd64 and arm64), pushed nowhere | both architectures, pushed by digest |
 | **Scan** | Trivy, the version CI pins; fails on a HIGH or CRITICAL with a fix | same | same, on the pushed digest. The registry rescans continuously (ECR + Inspector) for CVEs published later |

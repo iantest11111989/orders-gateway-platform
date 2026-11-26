@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Renders everything Argo CD applies, so CI can validate it in seconds,
-# without a cluster (CI · platform, "Validate manifests"):
+# without a cluster (CI · infra, "Validate manifests"):
 #   - helm lint, then helm template of helm/orders-gateway for dev, staging
 #     and prod with their values files
 #   - the app-of-apps chart (bootstrap/apps)

@@ -74,7 +74,7 @@ if [ "$over" -ne 0 ]; then
   die "nodes advertise more than their cap, so pods could be OOM-killed. This cluster was created before reservations were added; recreate it: ./platform down && ./platform up"
 fi
 
-# CI only (PRELOAD_IMAGES, set by .github/workflows/platform.yml): import the
+# CI only (PRELOAD_IMAGES, set by .github/workflows/e2e.yml): import the
 # cached images before Argo CD starts pulling, so a cold start doesn't hinge
 # on every registry answering. Best effort; scripts/images.sh explains.
 if [ -n "${PRELOAD_IMAGES:-}" ]; then

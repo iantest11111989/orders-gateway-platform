@@ -72,7 +72,7 @@
     },
     {
       // Images CI runs with docker run, pinned by tag and digest: kubeconform
-      // (CI · platform, Validate manifests) and gitleaks (CI · security).
+      // (CI · infra, Validate manifests) and gitleaks (CI · security).
       customType: 'regex',
       description: 'kubeconform and gitleaks images in workflows',
       managerFilePatterns: ['/^\\.github/workflows/(platform|security)\\.yml$/'],

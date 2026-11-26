@@ -1,0 +1,271 @@
+name: E2E
+
+# The cluster test: a fresh kind cluster on a runner, in four stages, each
+# reported in the job summary:
+#   1 · Platform build   docker compose up from a clean checkout
+#   2 · Platform verify  the kubeconfig works from the host; a restart and a
+#                        re-run of ./platform up (idempotent) come back
+#                        healthy; ./platform verify; the Argo CD health
+#                        check; the resource budget
+#   3 · App CI           ./pipeline ci: test, build, scan, load into kind
+#   4 · App CD           ./pipeline cd to dev, staging and prod, then
+#                        rollback, with traffic on prod the whole time
+# A stage runs only if the ones before it passed. Argo CD syncs from the
+# in-stack Git server, which the bootstrap fills with this job's checkout,
+# exactly what a fresh clone gets. About 20 minutes, so pull requests run it
+# only with the run-e2e label; it always runs on main and by hand. The
+# nightly run is nightly.yml. The fast checks are ci-app.yml (app) and
+# infra.yml (platform).
+on:
+  pull_request:
+    # labeled: adding the run-e2e label starts it.
+    types: [opened, synchronize, reopened, labeled]
+    paths: ["platform", "pipeline", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "bootstrap/**", "system/**", "apps/**", "helm/**", "cd/**", "alerts/**", "policies/**", ".github/workflows/e2e.yml"]
+  push:
+    branches: [main]
+    paths: ["platform", "pipeline", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "bootstrap/**", "system/**", "apps/**", "helm/**", "cd/**", "alerts/**", "policies/**", ".github/workflows/e2e.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: "E2E: platform build → platform verify → app CI → app CD"
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-e2e')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: "1 · Platform build: pre-flight (./platform doctor)"
+        id: s1_doctor
+        run: ./platform doctor # runners have 4 CPUs: a warning, not a failure
+      # The images a recent run on main used, so a cold start doesn't hinge on
+      # every registry answering (ECR Public 429s, ErrImagePull; see
+      # scripts/images.sh). The key never matches exactly: restore-keys picks
+      # the newest cache for this runner's architecture.
+      - name: "1 · Platform build: restore the image cache"
+        id: images
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/images
+          key: images-v2-${{ runner.arch }}-${{ github.run_id }}
+          restore-keys: images-v2-${{ runner.arch }}-
+      # The one-command start: Compose's
+      # `ready` service bootstraps everything and is healthy only when every
+      # Argo CD Application is Synced and Healthy and prod serves.
+      - name: "1 · Platform build: start (docker compose up -d --wait)"
+        id: s1_start
+        # Compose can report success at the wait timeout without `ready` being
+        # healthy, so check it here: a slow start then fails at this step,
+        # not later on a missing out/kubeconfig.yaml.
+        run: |
+          docker compose up -d --wait --wait-timeout 1500
+          status=$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q ready)" 2>/dev/null || echo missing)
+          [ "$status" = healthy ] || { echo "::error::ready is $status after docker compose up --wait"; docker compose ps; exit 1; }
+        env:
+          PRELOAD_IMAGES: .cache/images
+      - name: "1 · Platform build: Compose logs (on failure)"
+        if: failure()
+        run: docker compose logs --tail=200 ready || true
+      # ./out/kubeconfig.yaml must work from the host, with the host's kubectl.
+      - name: "2 · Platform verify: kubeconfig from the host"
+        id: s2_kubeconfig
+        run: kubectl --kubeconfig out/kubeconfig.yaml get nodes
+      # Restarts: stopping and starting Compose must come back healthy with the
+      # cluster (and its data) untouched.
+      - name: "2 · Platform verify: restart (stop, then up again)"
+        id: s2_restart
+        run: |
+          docker compose stop
+          docker compose up -d --wait --wait-timeout 600
+          status=$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q ready)" 2>/dev/null || echo missing)
+          [ "$status" = healthy ] || { echo "::error::ready is $status after the restart"; docker compose ps; docker compose logs --tail=80 ready; exit 1; }
+          kubectl --kubeconfig out/kubeconfig.yaml get nodes
+      # A cold start is mostly image pulls (nothing is cached on a runner),
+      # so list the slowest: a slow `up` can be explained from this log.
+      - name: "2 · Platform verify: slowest image pulls (from the start)"
+        run: |
+          ./platform kubectl get events -A --field-selector reason=Pulled \
+            -o jsonpath='{range .items[*]}{.message}{"\n"}{end}' |
+            awk 'match($0, /^Successfully pulled image "[^"]+" in [0-9hms.]+/) {
+              split(substr($0, RSTART, RLENGTH), f, "\"")
+              d = f[3]; sub(/^ in /, "", d); s = 0; rest = d
+              if (match(rest, /[0-9.]+h/)) { s += substr(rest, RSTART, RLENGTH - 1) * 3600 }
+              if (match(rest, /[0-9.]+m[^s]/) || match(rest, /[0-9.]+m$/)) { v = substr(rest, RSTART); sub(/m.*/, "", v); s += v * 60 }
+              if (match(rest, /[0-9.]+ms/)) { s += substr(rest, RSTART, RLENGTH - 2) / 1000 }
+              else if (match(rest, /[0-9.]+s/)) { s += substr(rest, RSTART, RLENGTH - 1) }
+              printf "%7.1fs  %s\n", s, f[2]
+            }' | sort -rn | head -20
+      - name: "2 · Platform verify: re-run (./platform up, idempotent)"
+        id: s2_rerun
+        run: ./platform up # idempotent
+      - name: "2 · Platform verify: nodes, Applications, Traefik pods"
+        run: |
+          ./platform kubectl get nodes -L topology.kubernetes.io/zone
+          ./platform kubectl -n argocd get applications
+          ./platform kubectl -n traefik get pods -o wide
+      # Apps, scrape targets, logs, alerts, the host ports and policies.
+      # Right after `up` a target may not have been scraped yet: retry a bit.
+      - name: "2 · Platform verify: ./platform verify"
+        id: s2_verify
+        run: |
+          for attempt in 1 2 3; do
+            ./platform verify && exit 0
+            echo "verify attempt $attempt failed; retrying in 30s"
+            sleep 30
+          done
+          exit 1
+      # The Application health check the root's sync waves rely on (#31).
+      - name: "2 · Platform verify: Argo CD health check"
+        id: s2_health
+        run: ./platform shell scripts/test-argocd-health.sh
+      # Measured CPU/memory against the 6 CPU / 12 GiB budget, plus OOM kills.
+      - name: "2 · Platform verify: resource budget (./platform budget)"
+        id: s2_budget
+        run: ./platform budget --watch 30
+      # Two builds: ci-ship-0, a known baseline (cd/orders-gateway/prod.yaml
+      # may pin an older image), and ci-ship-1, the new version.
+      - name: "3 · App CI: ./pipeline ci orders-gateway (test, build, scan, load)"
+        id: s3_ci
+        run: |
+          ./pipeline ci orders-gateway --tag ci-ship-0
+          ./pipeline ci orders-gateway --tag ci-ship-1
+      # Promote ci-ship-1 in order, dev → staging → prod, with three clients
+      # on prod (:8080) the whole time; any non-200 fails the step. Then roll
+      # prod back.
+      - name: "4 · App CD: ./pipeline cd dev → staging → prod, then rollback, under traffic"
+        id: s4_cd
+        run: |
+          ./pipeline cd orders-gateway prod --tag ci-ship-0
+          before=ci-ship-0
+          # rollout status returns once the new pods are ready, but an old pod
+          # stays in Traefik's endpoints for its 5 s preStop, so a request
+          # right after can still reach it. Wait (up to 20 s) until 5 requests
+          # in a row answer the expected version. serves <version> [port]
+          serves() {
+            local port=${2:-8080} n=0
+            for _ in $(seq 1 80); do
+              if [ "$(curl -s --max-time 2 "http://localhost:$port/version" | jq -r '.version // empty')" = "$1" ]; then
+                n=$((n + 1)); [ "$n" -ge 5 ] && return 0
+              else
+                n=0
+              fi
+              sleep 0.25
+            done
+            echo "::error:::$port didn't settle on version $1 within 20 s"; return 1
+          }
+          : >"$RUNNER_TEMP/codes"
+          # Three clients at once: two fast, and one slow (/work?ms=200) so
+          # requests are in flight while old pods drain.
+          for q in 'work?ms=5' 'echo' 'work?ms=200'; do
+            (while [ ! -f "$RUNNER_TEMP/stop" ]; do
+               if [ "$q" = echo ]; then
+                 curl -s -o /dev/null -w '%{http_code}\n' --max-time 5 -X POST -d '{"ci":1}' "http://localhost:8080/$q"
+               else
+                 curl -s -o /dev/null -w '%{http_code}\n' --max-time 5 "http://localhost:8080/$q"
+               fi >>"$RUNNER_TEMP/codes"
+               sleep 0.05
+             done) &
+          done
+          ./pipeline cd orders-gateway dev --tag ci-ship-1
+          serves ci-ship-1 8082
+          ./pipeline cd orders-gateway staging --tag ci-ship-1
+          serves ci-ship-1 8083
+          ./pipeline cd orders-gateway prod --tag ci-ship-1
+          serves ci-ship-1
+          ./pipeline rollback orders-gateway prod
+          serves "$before"
+          touch "$RUNNER_TEMP/stop"; wait
+          total=$(grep -c . "$RUNNER_TEMP/codes"); bad=$(grep -vc '^200$' "$RUNNER_TEMP/codes" || true)
+          echo "requests to prod during the promotion and rollback: $total, not 200: $bad"
+          sort "$RUNNER_TEMP/codes" | uniq -c
+          [ "$bad" -eq 0 ]
+          # A second rollback goes further back (to what prod pinned before
+          # ci-ship-0), not back to ci-ship-1. Traffic is stopped first: that
+          # older image may be a different app.
+          ./pipeline rollback orders-gateway prod
+          # Read the image first: inside test, a failed kubectl would compare
+          # an empty string and pass.
+          image=$(kubectl --kubeconfig out/kubeconfig.yaml -n prod get deploy app -o jsonpath='{.spec.template.spec.containers[0].image}')
+          echo "prod after the second rollback: $image"
+          [ -n "$image" ] && [ "$image" != localhost/orders-gateway:ci-ship-1 ]
+      - name: Stages (job summary)
+        if: always()
+        env:
+          S1: ${{ steps.s1_doctor.outcome }} ${{ steps.s1_start.outcome }}
+          S2: ${{ steps.s2_kubeconfig.outcome }} ${{ steps.s2_restart.outcome }} ${{ steps.s2_rerun.outcome }} ${{ steps.s2_verify.outcome }} ${{ steps.s2_health.outcome }} ${{ steps.s2_budget.outcome }}
+          S3: ${{ steps.s3_ci.outcome }}
+          S4: ${{ steps.s4_cd.outcome }}
+        run: |
+          result() { # failure if any step failed, skipped if none ran, else success
+            case " $1 " in
+              *" failure "*|*" cancelled "*) echo "❌ failed" ;;
+              *" success "*) echo "✅ passed" ;;
+              *) echo "⏭️ not run" ;;
+            esac
+          }
+          {
+            echo "| Stage | Result |"
+            echo "| --- | --- |"
+            echo "| 1 · Platform build | $(result "$S1") |"
+            echo "| 2 · Platform verify | $(result "$S2") |"
+            echo "| 3 · App CI | $(result "$S3") |"
+            echo "| 4 · App CD | $(result "$S4") |"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      # Refresh the image cache from main when the set of images changed (a
+      # chart or image bump). Only main and manual runs save: PR caches are
+      # scoped to their branch and would only crowd out main's (10 GB cap).
+      - name: Image cache up to date?
+        id: imagelist
+        if: github.event_name != 'pull_request'
+        run: |
+          # The same list scripts/images.sh save writes (tagged images, kind's
+          # own left out), so the key changes exactly when the cache would.
+          ./platform shell scripts/images.sh list >"$RUNNER_TEMP/images.txt"
+          key="images-v2-${RUNNER_ARCH}-$(sha256sum "$RUNNER_TEMP/images.txt" | cut -c1-16)"
+          echo "key=$key" >>"$GITHUB_OUTPUT"
+          if [ "$key" = "${{ steps.images.outputs.cache-matched-key }}" ]; then
+            echo "the restored cache ($key) already has these images"
+          else
+            echo "save=1" >>"$GITHUB_OUTPUT"
+            echo "image set changed: restored '${{ steps.images.outputs.cache-matched-key }}', now $key"
+          fi
+      - name: Build the image cache
+        if: steps.imagelist.outputs.save == '1'
+        run: ./platform shell scripts/images.sh save .cache/images
+      - name: Save the image cache
+        if: steps.imagelist.outputs.save == '1'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/images
+          key: ${{ steps.imagelist.outputs.key }}
+      # On failure, show why: pods that aren't ready, their descriptions
+      # (image pulls, probes, OOM) and recent events. Best effort: the cluster
+      # may not exist if `up` failed early.
+      - name: Diagnostics (on failure)
+        if: failure()
+        run: |
+          ./platform kubectl get pods -A -o wide || true
+          ./platform kubectl get events -A --sort-by=.lastTimestamp || true
+          # Not ready, or restarted: a pod that crashed and came back is
+          # Ready again by the time this runs, but its last run explains it.
+          ./platform kubectl get pods -A --no-headers 2>/dev/null \
+            | awk '{ split($3, r, "/") } (r[1] != r[2] || $5 + 0 > 0) && $4 != "Completed"' \
+            | while read -r ns pod _; do
+                echo "::group::describe $ns/$pod"
+                ./platform kubectl -n "$ns" describe pod "$pod" || true
+                ./platform kubectl -n "$ns" logs "$pod" --all-containers --tail=50 || true
+                # A crash-looping container's useful output is in its last run.
+                ./platform kubectl -n "$ns" logs "$pod" --all-containers --tail=50 --previous 2>/dev/null || true
+                echo "::endgroup::"
+              done
+      - if: always()
+        run: |
+          docker compose down || true
+          ./platform down
