@@ -255,14 +255,31 @@ jobs:
       # The Application health check the root's sync waves rely on (#31).
       - name: Argo CD health check
         run: ./platform shell scripts/test-argocd-health.sh
-      # The README's "ship a new version" and "roll back", while traffic flows
+      # ./pipeline ci, cd and rollback against prod, while traffic flows
       #: a request loop against prod at :8080 for the whole
       # time; any non-200 fails the step.
-      - name: "Ship and roll back under traffic"
+      - name: "Release and roll back under traffic (./pipeline)"
         run: |
           # A known baseline first: cd/orders-gateway/prod.yaml may pin an older image.
-          ./platform ship ci-ship-0
+          ./pipeline ci orders-gateway --tag ci-ship-0
+          ./pipeline cd orders-gateway prod --tag ci-ship-0
           before=ci-ship-0
+          # rollout status returns once the new pods are ready, but an old pod
+          # stays in Traefik's endpoints for its 5 s preStop, so a request
+          # right after can still reach it. Wait (up to 20 s) until 5 requests
+          # in a row answer the expected version.
+          serves() {
+            n=0
+            for _ in $(seq 1 80); do
+              if [ "$(curl -s --max-time 2 http://localhost:8080/version | jq -r '.version // empty')" = "$1" ]; then
+                n=$((n + 1)); [ "$n" -ge 5 ] && return 0
+              else
+                n=0
+              fi
+              sleep 0.25
+            done
+            echo "::error::prod didn't settle on version $1 within 20 s"; return 1
+          }
           : >"$RUNNER_TEMP/codes"
           # Three clients at once: two fast, and one slow (/work?ms=200) so
           # requests are in flight while old pods drain.
@@ -276,20 +293,25 @@ jobs:
                sleep 0.05
              done) &
           done
-          ./platform ship ci-ship-1
-          test "$(curl -s http://localhost:8080/version | jq -r '.version // empty')" = ci-ship-1
-          ./platform rollback
-          test "$(curl -s http://localhost:8080/version | jq -r '.version // empty')" = "$before"
+          ./pipeline ci orders-gateway --tag ci-ship-1
+          ./pipeline cd orders-gateway prod
+          serves ci-ship-1
+          ./pipeline rollback orders-gateway prod
+          serves "$before"
           touch "$RUNNER_TEMP/stop"; wait
           total=$(grep -c . "$RUNNER_TEMP/codes"); bad=$(grep -vc '^200$' "$RUNNER_TEMP/codes" || true)
-          echo "requests during ship + rollback: $total, not 200: $bad"
+          echo "requests during cd + rollback: $total, not 200: $bad"
           sort "$RUNNER_TEMP/codes" | uniq -c
           [ "$bad" -eq 0 ]
           # A second rollback goes further back (to what prod pinned before
           # ci-ship-0), not back to ci-ship-1. Traffic is stopped first: that
           # older image may be a different app.
-          ./platform rollback
-          test "$(kubectl --kubeconfig out/kubeconfig.yaml -n prod get deploy app -o jsonpath='{.spec.template.spec.containers[0].image}')" != localhost/orders-gateway:ci-ship-1
+          ./pipeline rollback orders-gateway prod
+          # Read the image first: inside test, a failed kubectl would compare
+          # an empty string and pass.
+          image=$(kubectl --kubeconfig out/kubeconfig.yaml -n prod get deploy app -o jsonpath='{.spec.template.spec.containers[0].image}')
+          echo "prod after the second rollback: $image"
+          [ -n "$image" ] && [ "$image" != localhost/orders-gateway:ci-ship-1 ]
       # Measured CPU/memory against the 6 CPU / 12 GiB budget, plus OOM kills.
       - name: "Resource budget (./platform budget)"
         run: ./platform budget --watch 30
