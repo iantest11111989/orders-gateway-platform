@@ -31,11 +31,29 @@ values="$ROOT/environments/$env/values.yaml"
 repo=$(kubectl -n argocd get applications.argoproj.io root -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || true)
 [ "$repo" = "$IN_STACK" ] || die "Argo CD syncs from ${repo:-?}, not the in-stack Git server: ship and rollback work in the default mode (docker compose up, or ./platform up without REPO_URL). In GitHub mode, change $values, commit and push to GitHub."
 
-# Write the image block into the values file in place (the toolbox is root;
-# rewriting keeps the file owned by you, which yq -i's rename wouldn't).
+# Change only the image lines of the values file, leaving every other line,
+# blank line and comment as it was (like scripts/set-image.sh). A yq rewrite
+# reformatted the whole file, so ship then rollback left the checkout differing
+# from Git and the next git pull of a promotion conflicted.
+# repository: an empty value removes the line, so the chart's default applies
+# (rollback to an image that came from Git, whose file has no repository line).
+# The new line goes right after `image:`. digest: an empty value is written
+# as "" (a local build has no registry digest).
+# Rewriting through cat keeps the file owned by you (the toolbox is root).
 set_image() { # set_image <repository> <tag> <digest>
-  REPO="$1" TAG="$2" DIGEST="$3" yq '.image.repository = strenv(REPO) | .image.tag = strenv(TAG) | .image.digest = strenv(DIGEST)' \
-    "$values" >"$values.tmp" && cat "$values.tmp" >"$values" && rm -f "$values.tmp"
+  # Two passes over the file: the first only notes whether image: already has
+  # a repository line; the second writes the result.
+  REPO="$1" TAG="$2" DIGEST="${3:-\"\"}" awk '
+    /^[^[:space:]#]/ { inimage = ($0 ~ /^image:[[:space:]]*$/) }
+    NR == FNR { if (inimage && /^  repository:/) hasrepo = 1; next }
+    inimage && /^  repository:/ { if (ENVIRON["REPO"] != "") print "  repository: " ENVIRON["REPO"]; r++; next }
+    inimage && /^  tag:/        { print "  tag: " ENVIRON["TAG"]; t++; next }
+    inimage && /^  digest:/     { print "  digest: " ENVIRON["DIGEST"]; d++; next }
+    { print }
+    /^image:[[:space:]]*$/ { n++; if (!hasrepo && ENVIRON["REPO"] != "") print "  repository: " ENVIRON["REPO"] }
+    END { if (n != 1 || t != 1 || d != 1 || r > 1) { printf "expected one image: block with one tag, one digest and at most one repository line; found %d, %d, %d, %d\n", n, t, d, r > "/dev/stderr"; exit 1 } }
+  ' "$values" "$values" >"$values.tmp" || { rm -f "$values.tmp"; die "couldn't update the image lines in $values"; }
+  cat "$values.tmp" >"$values" && rm -f "$values.tmp"
 }
 
 show() { # what prod serves now, and its 5-minute availability SLO
@@ -99,10 +117,13 @@ case "$cmd" in
     # The image before the current one *first* appeared: so a second rollback
     # goes further back instead of toggling to the build just rolled back
     # from (v0, v1, v2, rollback -> v1, rollback -> v0).
-    cur=$(yq -o json -I0 '.image' "$values")
+    # Compare image blocks by value: key order, quoting and an empty digest
+    # vs none don't make two images different.
+    norm() { yq -o json -I0 '.image' | jq -cS 'with_entries(select(.value != "" and .value != null))'; }
+    cur=$(norm <"$values")
     imgs=()
     for c in $(git -C "$tmp/r" log --reverse --format=%H -- "environments/$env/values.yaml"); do
-      imgs+=("$(git -C "$tmp/r" show "$c:environments/$env/values.yaml" | yq -o json -I0 '.image')")
+      imgs+=("$(git -C "$tmp/r" show "$c:environments/$env/values.yaml" | norm)")
     done
     first=-1
     for i in "${!imgs[@]}"; do [ "${imgs[$i]}" = "$cur" ] && { first=$i; break; }; done
@@ -112,10 +133,13 @@ case "$cmd" in
     done
     [ "$first" -ge 0 ] || die "$env's current image isn't in the in-stack history; push the checkout first (./platform up)"
     [ -n "$prev" ] || die "$env runs the oldest image in the in-stack history: nothing earlier to roll back to"
-    r=$(jq -r '.repository // "ghcr.io/iantest11111989/orders-gateway"' <<<"$prev")
+    # Put back the repository line as that commit had it: none means the
+    # chart's default, so ship then rollback leaves the file as Git has it.
+    r=$(jq -r '.repository // ""' <<<"$prev")
     t=$(jq -r '.tag' <<<"$prev"); d=$(jq -r '.digest // ""' <<<"$prev")
-    ok "back to $r:$t${d:+@${d:0:19}…}"
     set_image "$r" "$t" "$d"
+    r=${r:-$(yq '.image.repository' "$ROOT/charts/orders-gateway/values.yaml")}
+    ok "back to $r:$t${d:+@${d:0:19}…}"
     want="$r:$t"; [ -z "$d" ] || want="$r@$d"
     roll_out "$want"
     ;;
