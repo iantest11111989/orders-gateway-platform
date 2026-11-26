@@ -17,10 +17,13 @@ spec:
   groups:
     - name: platform-delivery
       rules:
-        # Self-heal puts a manual change back within seconds, so an app that
-        # stays OutOfSync means Argo CD can't apply what's in Git.
+        # Auto-sync apps only. Self-heal puts a manual change back within
+        # seconds, so an app that stays OutOfSync means Argo CD can't apply
+        # what's in Git. The apps' staging and prod sync by hand (someone
+        # clicks Sync after ./pipeline cd), so for them OutOfSync is normal
+        # for a while: see ArgoCDManualSyncPending.
         - alert: ArgoCDAppOutOfSync
-          expr: max by (name) (argocd_app_info{sync_status="OutOfSync"}) == 1
+          expr: max by (name) (argocd_app_info{sync_status="OutOfSync", autosync_enabled!="false"}) == 1
           for: 15m
           labels:
             severity: ticket
@@ -30,6 +33,22 @@ spec:
               The live state of {{ $labels.name }} differs from Git and Argo CD hasn't
               been able to sync it. Changes merged for it aren't reaching the cluster.
             runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/ArgoCDAppOutOfSync.md
+
+        # A manual-sync app (staging, prod) left OutOfSync: a promotion was
+        # pushed to Git but nobody clicked Sync, so the environment still
+        # runs the old version. A reminder, not an outage.
+        - alert: ArgoCDManualSyncPending
+          expr: max by (name) (argocd_app_info{sync_status="OutOfSync", autosync_enabled="false"}) == 1
+          for: 1h
+          labels:
+            severity: ticket
+          annotations:
+            summary: "Argo CD application {{ $labels.name }} has waited an hour for a manual Sync"
+            description: >-
+              Git has a change for {{ $labels.name }} that nobody has synced, so it still runs
+              what it ran before. Sync it (the Argo CD UI, or ./pipeline cd --sync), or
+              revert the change in Git.
+            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/ArgoCDManualSyncPending.md
 
         # Degraded: something it deployed is failing (pods crashing, a
         # Deployment that can't get ready). Missing: a resource Git expects doesn't exist.

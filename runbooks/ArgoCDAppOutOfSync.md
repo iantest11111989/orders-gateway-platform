@@ -4,7 +4,7 @@
 
 ## What it means
 
-The live state of an Argo CD Application has differed from Git for 15 minutes. Every Application here has self-heal on, so a manual change is put back within seconds. An app that *stays* OutOfSync means Argo CD keeps trying and failing to apply what's in Git. The `name` label says which one.
+The live state of an Argo CD Application has differed from Git for 15 minutes. It fires only for Applications with auto-sync (the platform components and the apps' dev); those have self-heal on, so a manual change is put back within seconds. The apps' staging and prod sync by hand and raise `ArgoCDManualSyncPending` instead. An app that *stays* OutOfSync means Argo CD keeps trying and failing to apply what's in Git. The `name` label says which one.
 
 ## Likely causes
 

@@ -22,15 +22,23 @@ proxy() { kubectl get --raw "/api/v1/namespaces/$1/services/$2/proxy$3"; }
 step "Argo CD: every Application Synced and Healthy"
 # Demo copies (label demo=true, ./platform demo) aren't part of the stack:
 # one left with --keep may be mid-demo. Note them, don't fail on them.
+# The fourth column says whether the app syncs on its own: the apps' staging
+# and prod sync by hand, so OutOfSync there is a promotion waiting for its
+# Sync click, not a failure (a warning; ArgoCDManualSyncPending after 1 h).
 apps=$(kubectl -n argocd get applications.argoproj.io -l 'demo!=true' \
-  -o jsonpath='{range .items[*]}{.metadata.name} {.status.sync.status} {.status.health.status}{"\n"}{end}')
+  -o jsonpath='{range .items[*]}{.metadata.name} {.status.sync.status} {.status.health.status} {.spec.syncPolicy.automated}{"\n"}{end}' |
+  awk '{print $1, $2, $3, ($4 == "" ? "manual" : "auto")}')
 demos=$(kubectl -n argocd get applications.argoproj.io -l demo=true \
   -o jsonpath='{range .items[*]}{.metadata.name} ({.status.sync.status}, {.status.health.status}) {end}' 2>/dev/null || true)
 [ -z "$demos" ] || warn "demo copy running, not checked: $demos(./platform demo clean removes it)"
 [ -n "$apps" ] || miss "no Applications found (is the cluster up?)"
-bad=$(awk '$2 != "Synced" || $3 != "Healthy"' <<<"$apps")
-if [ -z "$bad" ]; then pass "$(grep -c . <<<"$apps") Applications Synced and Healthy"
-else while read -r n s h; do miss "$n: ${s:-Unknown}, ${h:-Unknown}"; done <<<"$bad"; fi
+pending=$(awk '$4 == "manual" && $2 == "OutOfSync" && $3 == "Healthy" {print $1}' <<<"$apps")
+for n in $pending; do warn "$n: OutOfSync, waiting for a manual Sync (http://localhost:8081, or ./pipeline cd --sync)"; done
+bad=$(awk '!($4 == "manual" && $2 == "OutOfSync" && $3 == "Healthy") && ($2 != "Synced" || $3 != "Healthy")' <<<"$apps")
+if [ -z "$bad" ]; then
+  if [ -z "$pending" ]; then pass "$(grep -c . <<<"$apps") Applications Synced and Healthy"
+  else pass "$(grep -c . <<<"$apps") Applications Healthy; Synced but for $(wc -w <<<"$pending" | tr -d ' ') waiting for a manual Sync"; fi
+else while read -r n s h _; do miss "$n: ${s:-Unknown}, ${h:-Unknown}"; done <<<"$bad"; fi
 
 step "Prometheus: every scrape target up"
 if res=$(proxy monitoring kube-prometheus-stack-prometheus:9090 '/api/v1/query?query=up' 2>/dev/null); then
