@@ -402,7 +402,7 @@ Principle: every promotion step requires evidence from the step before, collecte
 
 ### 3.10 Release safety: canaries in prod
 
-Locally every release is a rolling update of a plain Deployment named `app`. In production every prod release should be a canary, with **Argo Rollouts** added to the platform.
+Locally every release is a rolling update of a plain Deployment named after its app. In production every prod release should be a canary, with **Argo Rollouts** added to the platform.
 
 **Recommend:**
 - Add a `Rollout` to the chart, on in prod and staging (so the canary path is itself tested before prod). A native `Rollout` template is clearer for on-call than `workloadRef`, which leaves the Deployment at 0/0.

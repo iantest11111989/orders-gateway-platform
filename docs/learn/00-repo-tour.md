@@ -57,7 +57,7 @@ Open Argo CD at <http://localhost:8081> (`admin` / `admin12345`), or `./platform
 | --- | --- | --- |
 | The `ready` health signal | `docker compose ps` | [`scripts/ready-check.sh`](../../scripts/ready-check.sh): until it first passes, every Argo CD Application must be Synced and Healthy and prod must answer; after that only prod |
 | The kubeconfig | `kubectl --kubeconfig out/kubeconfig.yaml get pods -A` | `scripts/up.sh` |
-| dev, staging, prod: a Deployment `app` in each | `kubectl --kubeconfig out/kubeconfig.yaml get deploy -A -l app.kubernetes.io/name=app` | [`helm/orders-gateway/`](../../helm/orders-gateway/) |
+| dev, staging, prod: a Deployment `orders-gateway` in each | `kubectl --kubeconfig out/kubeconfig.yaml get deploy -A -l app.kubernetes.io/name=orders-gateway` | [`helm/orders-gateway/`](../../helm/orders-gateway/) |
 | prod `:8080`, dev `:8082`, staging `:8083`; `/admin/*` refused | `curl localhost:8080/version` → 200; `curl -X POST localhost:8080/admin/fault` → 403 | [`ingress.yaml`](../../helm/orders-gateway/templates/ingress.yaml), [`system/traefik/values.yaml`](../../system/traefik/values.yaml) |
 | Logins | Grafana <http://localhost:3000>, Argo CD <http://localhost:8081> | [`system/argocd/values.yaml`](../../system/argocd/values.yaml) (a bcrypt hash), Grafana's SealedSecret |
 | Prometheus :9090, Alertmanager :9093 | open each | [`cluster/kind.yaml`](../../cluster/kind.yaml) port mappings → Traefik → [`system/edge/`](../../system/edge/) |
@@ -141,8 +141,8 @@ Terminal 1 should show nothing but `200`. Watch it in Grafana → **orders-gatew
 
 ```sh
 ./platform shell
-kubectl -n dev scale deploy app --replicas=3
-kubectl -n dev get deploy app -w            # back to 1 within seconds: self-heal
+kubectl -n dev scale deploy orders-gateway --replicas=3
+kubectl -n dev get deploy orders-gateway -w            # back to 1 within seconds: self-heal
 ```
 
 **Understand:** the Git server (soft-serve) runs inside the cluster. Argo CD reads from it; `ready`, `./platform up`, `./pipeline cd`/`rollback`, `ship` and `rollback` push to it. CI/CD is local; GitHub only checks pull requests.

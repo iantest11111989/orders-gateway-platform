@@ -112,7 +112,7 @@ topk(10, count by (__name__) ({__name__=~".+"}))
 The biggest are the Kubernetes API server's histograms, at thousands of series each. Now the app:
 
 ```promql
-count by (__name__) ({job="app", __name__=~"http_.*|app_.*"})
+count by (__name__) ({job="orders-gateway", __name__=~"http_.*|app_.*"})
 ```
 
 The app's metrics stay small, but not by the app's own doing. Its `route` label is the raw path for any path it doesn't know, so a scanner trying `/wp-login.php`, `/.env`, `/a1`, `/a2`, ... would create a new series for each. Try it:

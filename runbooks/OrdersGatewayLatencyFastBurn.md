@@ -37,18 +37,18 @@ The alert's `namespace` label tells you which environment it is. Use it for `<na
    ```
 2. **Which requests are slow?** In Grafana Explore, choose Loki:
    ```logql
-   {namespace="<namespace>", app="app"} | json | route=~"/echo|/version" | duration_ms > 250
+   {namespace="<namespace>", app="orders-gateway"} | json | route=~"/echo|/version" | duration_ms > 250
 
    # Slow requests per minute by pod and version
-   sum by (pod, version) (count_over_time({namespace="<namespace>", app="app"} | json | route=~"/echo|/version" | duration_ms > 250 [1m]))
+   sum by (pod, version) (count_over_time({namespace="<namespace>", app="orders-gateway"} | json | route=~"/echo|/version" | duration_ms > 250 [1m]))
 
    # Big /work calls around the same time (the usual cause of slow /echo)
-   {namespace="<namespace>", app="app"} | json | route="/work" | duration_ms > 500
+   {namespace="<namespace>", app="orders-gateway"} | json | route="/work" | duration_ms > 500
    ```
 3. **Did something just change?**
    ```sh
    ./platform kubectl -n <namespace> get deploy,hpa,pods -o wide
-   ./platform kubectl -n <namespace> describe deploy app | grep -iE 'image|FAULT|requests|limits' -A1
+   ./platform kubectl -n <namespace> describe deploy orders-gateway | grep -iE 'image|FAULT|requests|limits' -A1
    ./platform kubectl top pods -n <namespace>
    ```
 
