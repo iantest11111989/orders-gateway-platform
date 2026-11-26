@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# Healthcheck of the Compose `ready` service (decision 0026): healthy only when
+# Healthcheck of the Compose `ready` service: healthy only when
 # the platform is fully installed and the app is serving.
 #   Until the first success: the bootstrap finished, every Argo CD Application
 #   is Synced and Healthy, and prod is serving.
-#   After that: only prod serving. A demo, a paused canary or a short Degraded
+#   After that: only prod serving. A demo or a short Degraded
 #   moment later on shouldn't make the whole platform read as unhealthy.
 # The marker is in /tmp, so restarting the container (compose stop/start)
 # brings back the full check. Demo copies (label demo=true) never count: one
-# kept with --keep (a canary-fail copy is Degraded by design) would otherwise
-# keep `ready` unhealthy after a restart. Quiet on success; says why on failure.
+# kept with --keep (possibly mid-demo) would otherwise keep `ready` unhealthy
+# after a restart. Quiet on success; says why on failure.
 set -euo pipefail
 INSTALLED=/tmp/installed-once
 
 serving() {
-  # prod's readiness (503 while starting or draining), at the contract's
-  # endpoint http://localhost:8080, through the Gateway.
+  # prod's readiness (503 while starting or draining), at
+  # http://localhost:8080, through the Gateway.
   curl -fsS -o /dev/null --max-time 5 http://localhost:8080/readyz ||
     { echo "prod isn't serving at http://localhost:8080"; return 1; }
 }

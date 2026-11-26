@@ -4,9 +4,8 @@ Grafana dashboards as JSON, provisioned automatically. Every panel has a plain-E
 
 | Dashboard | What it shows |
 | --- | --- |
-| [`orders-gateway`](orders-gateway.json) | Per environment: SLO error budget (last 24 h) and burn rates, firing SLO alerts, traffic and errors, latency percentiles and share under 250 ms, pods by version (canary), CPU and memory per pod, warn and error logs |
+| [`orders-gateway`](orders-gateway.json) | Per environment: SLO error budget (last 24 h) and burn rates, firing SLO alerts, traffic and errors, latency percentiles and share under 250 ms, pods by version, CPU and memory per pod, warn and error logs |
 | [`argocd`](argocd.json) | Applications out of sync or unhealthy, failed syncs, every Application's status, syncs per app, reconcile time, Git requests |
-| [`argo-rollouts`](argo-rollouts.json) | Each Rollout's phase and replicas, recent canary AnalysisRuns and their checks, Rollout events, controller errors |
 | [`kyverno`](kyverno.json) | Requests refused (Deny), Audit findings, policy errors, admission latency, results by policy, failures by policy and namespace (which policy is ready for Enforce) |
 | [`budget`](budget.json) | The whole stack's CPU and memory against 6 CPU / 12 GiB (the same numbers as `./platform budget`, over time), by namespace and per node against its cap, and OOM kills |
 | [`platform-overview`](platform-overview.json) | The first one to open: pages and tickets firing, Argo CD apps not Synced or Healthy, pods not Ready, targets down, every firing alert, each environment's version, burn rate and order rate, the resource budget, and links to the rest |

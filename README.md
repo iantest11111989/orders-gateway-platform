@@ -68,7 +68,7 @@ Then open Grafana at <http://localhost:3000> and its **orders-gateway** dashboar
 
 > **Security note:** the `ready` container and the toolbox mount the Docker socket so kind can create its node containers. That's root-equivalent on the Docker host (normal for kind), so run it on a machine you control.
 
-**HTTPS names.** Every UI also has an HTTPS name under `*.localtest.me`, which resolves to `127.0.0.1`: `argocd`, `grafana`, `prometheus`, `alertmanager`, `rollouts`, and `orders`, `orders.dev`, `orders.staging` for the app. They use a certificate from the cluster's own demo CA (`./platform urls` shows how to trust it) and need ports 80 and 443 free. On macOS with Colima they don't reach the Mac's browser (only root can open ports below 1024 there), so use the plain ports.
+**HTTPS names.** Every UI also has an HTTPS name under `*.localtest.me`, which resolves to `127.0.0.1`: `argocd`, `grafana`, `prometheus`, `alertmanager`, and `orders`, `orders.dev`, `orders.staging` for the app. They use a certificate from the cluster's own demo CA (`./platform urls` shows how to trust it) and need ports 80 and 443 free. On macOS with Colima they don't reach the Mac's browser (only root can open ports below 1024 there), so use the plain ports.
 
 ## How it works
 
@@ -114,11 +114,10 @@ flowchart LR
 | Choice | Why | Instead of |
 | --- | --- | --- |
 | **kind**, 1 control plane + 2 workers, run from a toolbox container | Only Docker needed; upstream Kubernetes; two workers in two labelled zones make disruption budgets, drains and spreading real | k3d (k3s differs from upstream), minikube (built for one node) |
-| **One Helm chart, a values file per environment** | The app needs conditionals (HPA, PDB, canary, public route only in prod), which Helm expresses simply | Kustomize overlays |
+| **One Helm chart, a values file per environment** | The app needs conditionals (HPA, PDB and the public route only in prod), which Helm expresses simply | Kustomize overlays |
 | **Argo CD, app-of-apps, managing itself** | Everything comes from Git, sync waves give an ordered start-up, and its UI makes changes easy to follow | Flux (no UI) |
 | **A Git server inside the cluster** (soft-serve) | Works offline with no GitHub token; `ship` and `rollback` are Git commits | Gitea (heavier) |
 | **Gateway API with Envoy Gateway** | The successor to Ingress; per-path filters and traffic weights without annotations | ingress-nginx (retired) |
-| **A plain Deployment in prod; the canary runs in a demo copy** | prod is a Deployment named `app`; the canary with automatic SLO checks is shown with `./platform demo canary` | Argo Rollouts in prod |
 | **kube-prometheus-stack, Loki, Alloy** | The common open-source stack, trimmed to fit 12 GB | Elastic, or a SaaS |
 | **Burn-rate SLO alerts** | Page fast on real problems, stay quiet on blips | Plain error-rate thresholds |
 | **Sealed Secrets** | Encrypted secrets live in Git and work offline. The key is committed so any clone can decrypt: **demo only** | External Secrets (needs a secret manager) |
@@ -205,7 +204,7 @@ The app is a single Node event loop with a 3-second warm-up, a `/readyz` that tu
 | **App metrics** | `http_requests_total`, `http_request_duration_seconds`, `app_info`, `app_ready`, `app_inflight_requests`; unknown paths are dropped at scrape time so a scanner can't explode the series count | Prometheus `:9090` |
 | **Cluster metrics** | kube-state-metrics, node-exporter, kubelet/cAdvisor, and every platform component | Prometheus |
 | **Logs** | Alloy ships every pod's output to Loki with four labels (`namespace`, `app`, `env`, `pod`); the app's JSON fields come out with `\| json` | Grafana → Explore → Loki |
-| **Dashboards** | 7 dashboards as JSON in [`dashboards/`](dashboards/README.md), loaded automatically; CI checks every query parses. **orders-gateway** for on-call, **platform-overview** for the cluster, plus Argo CD, Rollouts, Kyverno, security and budget | Grafana `:3000` |
+| **Dashboards** | 6 dashboards as JSON in [`dashboards/`](dashboards/README.md), loaded automatically; CI checks every query parses. **orders-gateway** for on-call, **platform-overview** for the cluster, plus Argo CD, Kyverno, security and budget | Grafana `:3000` |
 | **SLOs** | Availability: 99.5% of `/work` and `/echo` requests aren't 5xx. Latency: 99.5% of `/echo` and `/version` answer within 250 ms (`/work` takes as long as the caller asks, so it's left out) | [`alerts/orders-gateway-slo.yaml`](alerts/orders-gateway-slo.yaml) |
 | **Alerts** | Burn-rate alerts: a fast burn pages, a slow burn opens a ticket. Plus delivery and security alerts (Argo CD, certificates, Kyverno, Sealed Secrets, Trivy, memory). Each has a runbook and a unit test; a healthy system fires only Watchdog | Alertmanager `:9093`, [`runbooks/`](runbooks/README.md) |
 | **Alert delivery** | Alertmanager → `alert-receiver`, which logs each alert as JSON, routed by severity | Loki: `{namespace="monitoring", app="alert-receiver"}` |
@@ -246,7 +245,7 @@ flowchart LR
 | **CI · alerts / policies / promoter** | pull requests and `main` | alert unit tests, runbook links and dashboard checks; `kyverno test`; the promoter's unit tests |
 | **CI · security** | pull requests, `main`, weekly | CodeQL; gitleaks over the whole history |
 | **CI · secrets / renovate config** | pull requests and `main` | no plain secrets; Renovate's config is valid |
-| **Scheduled** | daily | full start-up, verify and the canary demos on fresh x86-64 and arm64 runners; a re-scan of the running images |
+| **Scheduled** | daily | full start-up, verify, the autoscale and gitops-revert demos on fresh x86-64 and arm64 runners; a re-scan of the running images |
 
 Pull requests run checks only (read-only token, no secrets); pushes to `main` build, sign and promote. Every job declares least-privilege permissions and actions are pinned by commit SHA.
 
@@ -274,13 +273,11 @@ The largest users at idle: `kube-system` (API server, etcd) 2.3 GiB, `monitoring
 | `rolling-update` | v1 → v2 in a 3-pod copy of dev: pods replace one at a time; fails if fewer than 99.5% of requests meet the SLO | ~2 min |
 | `chaos` | delete a pod, then drain a worker; the disruption budget lets only one pod go at a time; fails if fewer than 99.5% of requests meet the SLO | ~3 min |
 | `gitops-revert` | a bad config commit (30% of requests fail) on a temporary branch that a copy of dev follows; Argo CD syncs it, then `git revert` heals it. Pushes to the cluster's Git server (in GitHub mode, needs `GITHUB_TOKEN`) | ~5 min |
-| `canary` | v1 → v2: Argo Rollouts moves traffic 10% → 25% → 50% → 100% and checks the SLO after each step | ~8 min |
-| `canary-fail` | v2 → v2-bad (10% errors): the first check fails, Rollouts aborts and sends all traffic back to v2 | ~3 min |
 | `autoscale` | k6 sends a fixed 20 requests/s (`AUTOSCALE_RATE`), mostly CPU-heavy `/work`; the HPA scales 3 → 6 pods, then back to 3 about 5 minutes after the load stops | ~8 min |
 | `policy` | Kyverno refuses an unsigned image and a `:latest` image, printing which policy refused each and why; a signed image is admitted | <1 min |
 | `clean` | delete the demo copy (after an interrupted demo, or `--keep`) | |
 
-Add `--keep` to leave the copy running. Watch in the Rollouts dashboard (`https://rollouts.localtest.me/rollouts/demo`), Argo CD or Grafana (environment `demo`).
+Add `--keep` to leave the copy running. Watch in Argo CD or Grafana (environment `demo`).
 
 ## Local vs a real cloud
 
@@ -302,7 +299,7 @@ The full plan for running this on AWS (accounts, EKS, IAM, ECR, Argo CD across c
 ## Limitations
 
 - **Envoy's proxy is a single replica.** Killing it interrupts traffic at the edge for a few seconds.
-- **prod runs a plain Deployment, not the canary.** The canary with automatic SLO checks works, in the `demo` copy.
+- **Releases are rolling updates, not canaries.** A bad version reaches every pod before anyone notices; the SLO alerts and `./platform rollback` are the safety net. [docs/production-on-aws.md](docs/production-on-aws.md) covers canaries for a real setup.
 - **Kyverno fails open.** If it's down, pods are admitted unchecked, so a policy outage can't block a rollback.
 - **Prometheus keeps 24 hours,** so the error-budget panels cover a day, not 30 days.
 - **The Sealed Secrets key is public,** by design. Anything sealed with it is effectively public.
@@ -310,7 +307,7 @@ The full plan for running this on AWS (accounts, EKS, IAM, ECR, Argo CD across c
 - **No tracing backend.** Requests correlate across logs by `trace_id` only.
 - **The app's latency fault only slows `/work`,** which the latency SLO leaves out, so injected latency doesn't trip the latency alert. Saturating the event loop with `/work` does (see [docs/learn/04-slos.md](docs/learn/04-slos.md)).
 
-**Next steps:** two Envoy replicas with a disruption budget; tracing with Tempo and OpenTelemetry; a real canary in prod; applying the Terraform to a sandbox account.
+**Next steps:** two Envoy replicas with a disruption budget; tracing with Tempo and OpenTelemetry; canary releases; applying the Terraform to a sandbox account.
 
 ## Repository layout
 

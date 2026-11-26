@@ -55,11 +55,7 @@ step "Prometheus and Alertmanager (no login; bound to 127.0.0.1 only)"
 echo "  https://prometheus.localtest.me"
 echo "  https://alertmanager.localtest.me"
 
-step "Argo Rollouts dashboard (read-only, no login)"
-echo "  https://rollouts.localtest.me"
-echo "  Canaries run in the demo copy of prod: ./platform demo canary"
-
 step "orders-gateway"
 echo "  https://orders.dev.localtest.me      dev"
 echo "  https://orders.staging.localtest.me  staging"
-echo "  https://orders.localtest.me          prod (canary via Argo Rollouts)"
+echo "  https://orders.localtest.me          prod"

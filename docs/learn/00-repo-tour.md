@@ -185,8 +185,7 @@ With Grafana's **orders-gateway** dashboard open (environment `demo`):
 ./platform demo rolling-update   # a release under load       (~2 min)
 ./platform demo chaos            # kill a pod, drain a node   (~3 min)
 ./platform demo autoscale        # HPA 3 → 6 → 3              (~8 min)
-./platform demo canary           # Argo Rollouts, SLO-checked (~8 min)
-./platform demo canary-fail      # a bad version, auto-abort  (~3 min)
+./platform demo gitops-revert    # a bad commit, git revert   (~5 min)
 ```
 
 Each fails if fewer than 99.5% of k6's requests meet the SLO. Run `./platform budget --watch 600` in another terminal to see the peak.

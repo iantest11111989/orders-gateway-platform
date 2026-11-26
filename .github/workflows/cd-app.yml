@@ -59,7 +59,7 @@ jobs:
 
   # Publishes multi-arch images to GHCR from main, after the tests pass:
   #   sha-<12 chars>, main   this commit (what environments/dev deploys)
-  #   v1, v2, v2-bad         the demo images, rebuilt from
+  #   v1, v2                 the demo images, rebuilt from
   #                          the same commit so they stay in step with the code
   # No :latest (policy rejects it). Each push exposes its digest as a job
   # output; `sign` signs those digests.
@@ -75,7 +75,6 @@ jobs:
       digest-main: ${{ steps.main.outputs.digest }}
       digest-v1: ${{ steps.v1.outputs.digest }}
       digest-v2: ${{ steps.v2.outputs.digest }}
-      digest-v2-bad: ${{ steps.v2-bad.outputs.digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -132,26 +131,11 @@ jobs:
             VERSION=v2
             COMMIT=${{ github.sha }}
             FEATURES=delivery-estimates
-      - id: v2-bad
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: app
-          target: bad
-          platforms: linux/amd64,linux/arm64
-          push: true
-          sbom: true
-          tags: ${{ env.IMAGE }}:v2-bad
-          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-          build-args: |
-            VERSION=v2-bad
-            COMMIT=${{ github.sha }}
-            FEATURES=delivery-estimates
       - name: Summary
         env:
           D_MAIN: ${{ steps.main.outputs.digest }}
           D_V1: ${{ steps.v1.outputs.digest }}
           D_V2: ${{ steps.v2.outputs.digest }}
-          D_V2_BAD: ${{ steps.v2-bad.outputs.digest }}
           SHORT: ${{ steps.short.outputs.sha }}
         run: |
           {
@@ -160,7 +144,6 @@ jobs:
             echo "| \`sha-$SHORT\`, \`main\` | \`$D_MAIN\` |"
             echo "| \`v1\` | \`$D_V1\` |"
             echo "| \`v2\` | \`$D_V2\` |"
-            echo "| \`v2-bad\` | \`$D_V2_BAD\` |"
           } >>"$GITHUB_STEP_SUMMARY"
 
   # Keyless cosign signatures (Sigstore, GitHub OIDC), by digest: the demo
@@ -193,9 +176,8 @@ jobs:
           D_MAIN: ${{ needs.publish.outputs.digest-main }}
           D_V1: ${{ needs.publish.outputs.digest-v1 }}
           D_V2: ${{ needs.publish.outputs.digest-v2 }}
-          D_V2_BAD: ${{ needs.publish.outputs.digest-v2-bad }}
         run: |
-          scripts/sign-images.sh "$D_MAIN" "$D_V1" "$D_V2" "$D_V2_BAD" |
+          scripts/sign-images.sh "$D_MAIN" "$D_V1" "$D_V2" |
             tee -a "$GITHUB_STEP_SUMMARY"
 
   # Scans the published image before dev gets it. The PR
@@ -262,7 +244,7 @@ jobs:
   # Opens (or refreshes) one promotion PR per environment for the image dev
   # just got: branch promote/<env>, rebuilt from main with only that env's
   # image line changed (scripts/set-image.sh). The owner approves and merges
-  # them; prod then goes through the Argo Rollouts canary.
+  # them.
   # Needs the repository setting "Allow GitHub Actions to create and approve
   # pull requests"; without it the job warns and main stays green. PRs opened
   # with GITHUB_TOKEN start no workflows, so it dispatches the platform checks

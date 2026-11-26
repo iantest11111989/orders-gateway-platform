@@ -1,4 +1,4 @@
-# Alerts for the delivery side of the platform: Argo CD, Argo Rollouts,
+# Alerts for the delivery side of the platform: Argo CD,
 # cert-manager, and the 6 CPU / 12 GiB budget.
 #
 # Severities match the routing (page | ticket), like the SLO alerts in
@@ -31,8 +31,8 @@ spec:
               been able to sync it. Changes merged for it aren't reaching the cluster.
             runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/ArgoCDAppOutOfSync.md
 
-        # Degraded: something it deployed is failing (pods crashing, a Rollout
-        # aborted). Missing: a resource Git expects doesn't exist.
+        # Degraded: something it deployed is failing (pods crashing, a
+        # Deployment that can't get ready). Missing: a resource Git expects doesn't exist.
         - alert: ArgoCDAppUnhealthy
           expr: max by (name, health_status) (argocd_app_info{health_status=~"Degraded|Missing"}) == 1
           for: 10m
@@ -43,23 +43,6 @@ spec:
             description: >-
               {{ $labels.name }} has been {{ $labels.health_status }} for 10 minutes.
             runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/ArgoCDAppUnhealthy.md
-
-        # A canary that aborted is already back on the stable version, so this
-        # is a ticket: find out why before trying again. The demo
-        # namespace is left out because the canary-fail demo aborts on purpose.
-        # prod is a plain Deployment now, so this covers any
-        # Rollout outside the demo copy; KubeDeploymentRolloutStuck covers prod.
-        - alert: RolloutAborted
-          expr: max by (exported_namespace, name) (rollout_info{phase="Abort", exported_namespace!="demo"}) == 1
-          for: 1m
-          labels:
-            severity: ticket
-          annotations:
-            summary: "Rollout {{ $labels.exported_namespace }}/{{ $labels.name }} aborted its canary"
-            description: >-
-              The canary failed its analysis (or was aborted by hand) and all traffic is
-              back on the stable version. The new version won't go further until fixed.
-            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/RolloutAborted.md
 
         - alert: CertificateNotReady
           expr: max by (exported_namespace, name) (certmanager_certificate_ready_status{condition="False"}) == 1

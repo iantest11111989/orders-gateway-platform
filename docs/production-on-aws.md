@@ -72,7 +72,7 @@ flowchart TB
 | GHCR (`cd-app.yml` `IMAGE: ghcr.io/...`) | ECR in shared-services. Optionally dual-push to GHCR during migration | IAM-native pulls, no external dependency in the data path, Inspector scanning |
 | cosign keyless + BuildKit SBOM | Keep. Change the registry glob and the identity in `policies/verify-image-signatures.yaml` | Already the right design |
 | Kyverno, 1 replica, `failurePolicy: Ignore` | Kyverno, 3 replicas, `Fail` for app namespaces, every policy on Enforce | What production needs |
-| Envoy Gateway on NodePorts, 1 proxy | ALB (LBC, ACM, WAF) to Envoy Gateway, 2+ proxies across AZs with a PDB | WAF and ACM need an ALB. Envoy keeps HTTPRoutes, the `/admin` filter and the Rollouts plugin |
+| Envoy Gateway on NodePorts, 1 proxy | ALB (LBC, ACM, WAF) to Envoy Gateway, 2+ proxies across AZs with a PDB | WAF and ACM need an ALB. Envoy keeps HTTPRoutes and the `/admin` filter, and works with Argo Rollouts' Gateway API plugin |
 | cert-manager + demo CA, `*.localtest.me` | ACM for public certificates. cert-manager only for the ALB→Envoy hop | ACM renews itself, and it's free on ALB |
 | No DNS | Route 53, a delegated subzone per env account, ExternalDNS per cluster | |
 | Sealed Secrets with a committed demo key | External Secrets Operator + Secrets Manager + KMS | The standard production path |
@@ -86,7 +86,7 @@ flowchart TB
 | Trivy Operator | Drop. Use Inspector for images and Kyverno Enforce for config | Cuts duplicate tooling. *(Alternative: Datadog Cloud Security if it's licensed)* |
 | NetworkPolicies on kindnet | VPC CNI network-policy enforcement (an EKS add-on option). Same policies, plus default-deny egress | FQDN egress needs Cilium or Network Firewall (§3.13) |
 | `local-path` volumes | gp3 EBS through the CSI driver. Almost nothing stateful is left once Prometheus and Loki go | |
-| Argo Rollouts in the demo copy only | Canary in prod, analysis through Rollouts' Datadog provider | Every prod release should be a canary |
+| Rolling updates only (no canary) | Argo Rollouts canary in prod, analysis through Rollouts' Datadog provider | Every prod release should be a canary |
 | Patch promoter CronJob with a fine-grained token | Keep it, in the hub. Gates read the Datadog SLO/monitor APIs and the hub's Argo CD API. Token from a GitHub App | |
 | Trickle Deployment (`gitops/manifests/promoter/trickle.yaml`) | Keep it in dev/staging. In prod use Datadog Synthetics plus real traffic | |
 | `admin` / `admin12345` | SSO everywhere (IAM Identity Center + IdP) | |
@@ -169,7 +169,7 @@ Roles, one per controller per cluster, least privilege:
 
 **Recommend:**
 - **ECR in shared-services**, repository `orders-gateway`:
-  - **Tag immutability ON.** This breaks today's practice of re-pushing `v1`/`v2`/`v2-bad` from every main commit. Move the demo images to a separate `orders-gateway-demo` repository with mutable tags, never admitted in prod. Immutability still allows *adding* a tag to an existing digest, which promotion uses below.
+  - **Tag immutability ON.** This breaks today's practice of re-pushing `v1`/`v2` from every main commit. Move the demo images to a separate `orders-gateway-demo` repository with mutable tags, never admitted in prod. Immutability still allows *adding* a tag to an existing digest, which promotion uses below.
   - **Enhanced scanning (Inspector), continuous** on `orders-gateway`, scan-on-push on the rest. Findings go to Security Hub and Datadog. This replaces `rescan.yml`'s daily job; keep `rescan.yml` until Inspector has run in parallel for a month.
   - **Lifecycle:** expire untagged manifests after 7 days *(careful: cosign v3 bundles and BuildKit SBOM manifests are referrers/index children. Check that the lifecycle rules don't treat them as untagged orphans. Unsure; test it in dev first.)* Keep the last 100 `sha-*` images. Never expire `release-*`, which the promotion job adds to a digest when it reaches prod.
   - **Encryption** with a shared-services KMS CMK. The repo policy grants pull to the org (`aws:PrincipalOrgID` plus the `Workloads` OU path condition) for the node roles. **Cross-account pull, not replication, within one region.** Cross-region **replication** only to the DR region (§3.11).
@@ -229,7 +229,7 @@ If the owner judges the hub-holds-prod risk too high, a sensible middle is **one
 | Keeps the repo's routes and tests | No, rewrite as Ingress | Yes | Yes | Mostly |
 | Extra hop and cost | none | NLB | ALB + Envoy pods | none |
 
-**Recommend ALB → Envoy Gateway.** WAF in prod is non-negotiable, and Envoy keeps every Gateway API route, the `/admin` filter, the JSON access logs and the canary plugin already proven locally. The ALB is created by LBC from a small `Ingress` (class `alb`) in `envoy-gateway-system`, with Envoy's Service as default backend (IP targets). Annotations:
+**Recommend ALB → Envoy Gateway.** WAF in prod is non-negotiable, and Envoy keeps every Gateway API route, the `/admin` filter, the JSON access logs, and Argo Rollouts' Gateway API plugin can split its traffic for canaries. The ALB is created by LBC from a small `Ingress` (class `alb`) in `envoy-gateway-system`, with Envoy's Service as default backend (IP targets). Annotations:
 
 - `certificate-arn` (or ACM auto-discovery by host), `wafv2-acl-arn`, `ssl-policy` = a TLS 1.2/1.3 policy, `ssl-redirect`
 - `healthcheck-path` against Envoy's ready endpoint
@@ -345,7 +345,7 @@ Principle: every promotion step requires evidence from the step before, collecte
 | Test | What and tool | Where it runs | Gates |
 | --- | --- | --- | --- |
 | Unit | `node --test` (existing `app/server.test.js`) | PR, main | merge |
-| Static | hadolint, shellcheck, actionlint, `helm lint` + `kubeconform` per env, `helm-unittest` for the chart's conditionals (rollout on/off, publicRoute), `kyverno test policies/tests`, `tflint`/`checkov` (or `trivy config`) on `infra/`, `terraform validate` | PR | merge |
+| Static | hadolint, shellcheck, actionlint, `helm lint` + `kubeconform` per env, `helm-unittest` for the chart's conditionals (HPA, PDB, publicRoute), `kyverno test policies/tests`, `tflint`/`checkov` (or `trivy config`) on `infra/`, `terraform validate` | PR | merge |
 | API | Write an **OpenAPI spec** for the black box (`app/openapi.yaml`: `/work` incl. the `ms` cap at 2000, `POST /echo`, `/version`, 404 shape, 503 `/readyz` while draining). Run **Schemathesis** against the built container in CI (property-based, catches 5xx on odd inputs). Plus a hand-written **Hurl** or k6 suite for exact behaviours: the SIGTERM drain (`/readyz` → 503, in-flight finishes), `connection: close` while shutting down, the `ms` cap, invalid JSON on `/admin/fault` → 500 *(that last is a real server.js behaviour: `JSON.parse` throws into the catch)* | PR (on the image built in the `image` job) | merge |
 | Integration | The existing kind cluster job (`platform.yml`): full `up`, `verify`, ship/rollback under traffic. Add an **EKS-layer render test**: `argocd app diff` preview, or [argo-cd-diff-preview](https://github.com/dag-andersen/argocd-diff-preview), posting rendered manifest diffs for every cluster on the PR | PR | merge |
 | Terraform plan | `terraform plan` per affected root, plan posted to the PR (read-only OIDC role) | PR | merge; apply on main with an environment approval for prod |
@@ -374,7 +374,7 @@ Principle: every promotion step requires evidence from the step before, collecte
 | Cost | Infracost on the plan, posted to the PR; AWS Budgets alerts | every PR / continuous | a change that quietly adds a NAT gateway per AZ in dev |
 
 **Gaps in the app's own tests, found in this repo.** Worth fixing before any of the above, because they hide failures:
-- **Injected latency can't trip the latency SLO.** server.js applies `FAULT_LATENCY_MS` only to `/work`, and the latency SLI measures `/echo` and `/version` (`/work` is left out on purpose: the caller chooses how long it takes). So `v2-bad`'s 400 ms, and any latency drill through `/admin/fault`, never moves the latency SLI. In `canary-fail` the canary is caught by its error rate alone. A real latency drill has to slow `/echo` indirectly, by saturating the event loop with `/work` calls on the same pods, or by adding latency at Envoy (a fault-injection `BackendTrafficPolicy`), which is the better production drill anyway.
+- **Injected latency can't trip the latency SLO.** server.js applies `FAULT_LATENCY_MS` only to `/work`, and the latency SLI measures `/echo` and `/version` (`/work` is left out on purpose: the caller chooses how long it takes). So a latency drill through `/admin/fault`, never moves the latency SLI. A real latency drill has to slow `/echo` indirectly, by saturating the event loop with `/work` calls on the same pods, or by adding latency at Envoy (a fault-injection `BackendTrafficPolicy`), which is the better production drill anyway.
 - **The canary's "no data" path.** A canary that gets too little traffic is Inconclusive and pauses, waiting for a human. That's correct (fail closed), but nothing alerts on a Rollout paused for a long time. Add a monitor on a Rollout `Paused` for over 30 minutes.
 
 **Promotion gates, summarised:**
@@ -384,17 +384,17 @@ Principle: every promotion step requires evidence from the step before, collecte
 
 ### 3.10 Release safety: canaries in prod
 
-Locally the canary only runs in the `demo` copy, and prod is a plain Deployment named `app`. In production every prod release should be a canary.
+Locally every release is a rolling update of a plain Deployment named `app`. In production every prod release should be a canary, with **Argo Rollouts** added to the platform.
 
 **Recommend:**
-- `rollout.enabled: true` in prod (and staging, so the canary path is itself tested before prod). Consider replacing `workloadRef` with a native `Rollout` template so `kubectl get deploy` doesn't show 0/0. The chart can do either; native is clearer for on-call.
-- **Traffic routing:** keep the Gateway API plugin (Envoy stays, §3.6). The `ignoreDifferences` on HTTPRoute weights stays (`gitops/apps/templates/prod.yaml`).
+- Add a `Rollout` to the chart, on in prod and staging (so the canary path is itself tested before prod). A native `Rollout` template is clearer for on-call than `workloadRef`, which leaves the Deployment at 0/0.
+- **Traffic routing:** Argo Rollouts' Gateway API plugin (Envoy stays, §3.6), with stable and canary Services as the HTTPRoute's two backends.
 - **Steps:** 5% (2 min analysis) → 25% → 50% → 100%, plus a **background analysis** throughout. `abortScaleDownDelaySeconds` so a rollback is instant. `dynamicStableScale: true` to avoid doubling capacity. `maxSurge` so the canary pods land in different AZs.
 - **AnalysisTemplate with the Datadog provider:** the same two SLIs on the canary only, using a `rollouts-pod-template-hash` tag. Unified Service Tagging gives `version:<tag>`, so query by `version` instead, which is simpler. Datadog metrics arrive with ~1–2 min delay *(unsure on exact latency)*, so set `initialDelay: 2m` and keep the **fail-closed on empty data** design. A Datadog outage then means *Inconclusive → pause*, never a silent pass.
   - Alternative: keep a tiny in-cluster Prometheus (2 h retention) just for analysis. It's faster and has no SaaS dependency, but it's a second metrics system. **Prefer Datadog**, and revisit if the delay makes steps too slow.
-- **Low traffic:** if prod's real traffic is low at night, the 5% step will be Inconclusive. Either keep the trickle in prod (as today), or schedule promotions within working hours (Argo CD sync windows).
-- **If Datadog isn't chosen (§3.8, option C):** the same AnalysisTemplates run against **Amazon Managed Service for Prometheus**. Rollouts' Prometheus provider signs requests with SigV4 through its `authentication.sigv4` block, using a Pod Identity role on the Rollouts controller allowed only `aps:QueryMetrics`. The queries in `charts/orders-gateway/templates/analysistemplate.yaml` move over unchanged. The steps 10 → 25 → 50 → 100, with an analysis after each, are the chart's defaults and fine for prod. The 5% first step above only matters at high traffic.
-- **Keep the `ignoreDifferences` on route weights as it is:** `.spec.rules[].backendRefs[]?.weight`. Without the `?`, the `/admin` rule (no backends) breaks the expression, Argo CD resets every canary step, and the analysis goes Inconclusive.
+- **Low traffic:** if prod's real traffic is low at night, the 5% step will be Inconclusive. Either keep the promoter's trickle running in prod, or schedule promotions within working hours (Argo CD sync windows).
+- **If Datadog isn't chosen (§3.8, option C):** the same AnalysisTemplates run against **Amazon Managed Service for Prometheus**. Rollouts' Prometheus provider signs requests with SigV4 through its `authentication.sigv4` block, using a Pod Identity role on the Rollouts controller allowed only `aps:QueryMetrics`. The PromQL is today's SLI recording rules, filtered to the canary's pods. Steps of 10 → 25 → 50 → 100, with an analysis after each, are fine for prod; the 5% first step above only matters at high traffic.
+- **Tell Argo CD to ignore the route weights** Rollouts sets: `ignoreDifferences` with jqPathExpression `.spec.rules[].backendRefs[]?.weight`. Without the `?`, a rule with no backends (the `/admin` 403) breaks the expression, Argo CD resets every canary step, and the analysis goes Inconclusive.
 - **Rollback paths:** (1) automatic abort by analysis; (2) `kubectl argo rollouts abort` (SSO, restricted to platform on-call); (3) a revert PR of the promotion commit, which is the durable fix, because Git otherwise re-promotes.
 - **Notifications:** Argo CD + Rollouts notifications → Slack and Datadog events, so dashboards show "deploy started/aborted" markers (replacing the version-change annotation in the Grafana dashboard).
 - **Cross-cluster progression** is the promotion chain itself (§3.5). Within prod, one cluster for now. With a second region, promote region by region with the same gates.

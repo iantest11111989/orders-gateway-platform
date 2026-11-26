@@ -1,10 +1,10 @@
-# 5. Kubernetes operations: Argo CD, Rollouts and Kyverno
+# 5. Kubernetes operations: Argo CD, rolling updates and Kyverno
 
 **Time:** about 15 minutes. **You need:** a running stack. Exercises 1 and 2 help.
 
-By the end you will be able to read the three controllers that run this platform, each through its own UI or CLI and through its metrics in Grafana:
+By the end you will be able to read the controllers that run this platform, each through its own UI or CLI and through its metrics in Grafana:
 - **Argo CD** keeps the cluster equal to Git.
-- **Argo Rollouts** runs prod's canary.
+- **The Deployment controller** replaces pods one at a time on a release.
 - **Kyverno** decides what's allowed to run.
 
 Grafana is <http://localhost:3000> (`admin` / `admin12345`); the other logins are printed by `./platform urls`.
@@ -25,27 +25,27 @@ Grafana is <http://localhost:3000> (`admin` / `admin12345`); the other logins ar
 
 That's the rule for this whole platform: **change Git, not the cluster.** A manual change lasts seconds.
 
-## 2. Argo Rollouts: the canary (5 min)
+## 2. A rolling update, step by step (5 min)
 
-prod runs a plain Deployment named `app`. The canary lives in the **demo** copy of prod: a **Rollout** moves traffic to a new version in steps and checks the SLO at each one.
+Every environment runs a plain Deployment named `app`. A new image replaces its pods one at a time: `maxSurge: 1` adds one new pod, and `maxUnavailable: 0` removes an old one only once the new one is Ready.
 
-1. Start the canary demo (`./platform demo canary`, about 6 minutes), then in the shell:
-
-   ```sh
-   kubectl argo rollouts -n demo get rollout app
-   ```
-
-   You see the status (`Healthy`), the steps (`Step: 6/6`, `SetWeight: 100`), which image is `stable`, and the ReplicaSets per revision.
-2. Look at the check that gates each step:
+1. Start the rolling-update demo in one terminal (`./platform demo rolling-update`, about 2 minutes). It makes a 3-pod copy of dev in namespace `demo` and moves it from v1 to v2 under k6 traffic.
+2. In a second terminal, watch the ReplicaSets:
 
    ```sh
-   kubectl -n demo get analysistemplate app-slo -o yaml
+   ./platform shell
+   kubectl -n demo get rs -l app.kubernetes.io/name=app -w
    ```
 
-   Two Prometheus queries, `error-ratio` (at most 0.5%) and `p99-latency` (at most 0.25 s, on `/echo` and `/version`), run only against the **canary's** pods (`rollouts_pod_template_hash`). They're measured 4 times, 30 seconds apart, after a 60-second warm-up. `failureLimit: 1` allows one failed measurement, so a second one fails the analysis: Rollouts aborts the canary and sends all traffic back to the stable version. `inconclusiveLimit: 1` does the same for missing data (no canary traffic): a second inconclusive result pauses the canary instead of guessing. They're the same SLO thresholds as exercise 4, applied to the new version alone.
-3. In Grafana, open the **Argo Rollouts** dashboard (<http://localhost:3000/d/argo-rollouts>). **Rollouts now** shows `app` in `demo` as `Completed`. **Recent analysis runs** and **Analysis metrics** list the runs from the last canary, each `Successful`. The live, step-by-step view is the Rollouts dashboard at <https://rollouts.localtest.me>. It's read-only: promote or abort with `kubectl argo rollouts promote|abort`.
+   The new ReplicaSet goes 1 → 2 → 3 while the old one goes 3 → 2 → 1 → 0, and the total never drops below 3 ready pods. Press Ctrl-C when the old one reaches 0.
+3. See the history Kubernetes keeps:
 
-To see a canary abort, run `./platform demo canary-fail` next (about 5 minutes), with both dashboards open.
+   ```sh
+   kubectl -n demo rollout history deploy/app
+   ```
+
+   Each revision is a ReplicaSet. `kubectl rollout undo` would go back one, but here Argo CD would undo *that* within seconds, which is why `./platform rollback` changes Git instead.
+4. In Grafana's **orders-gateway** dashboard (environment `demo`), **Pods by version** shows v1 handing over to v2, with a marker at the change, and the 5xx panels stay at 0.
 
 ## 3. Kyverno: what's allowed to run (5 min)
 
@@ -82,7 +82,7 @@ Kyverno checks every pod at admission. In the app namespaces (`dev`, `staging`, 
 ## Check yourself
 
 - You `kubectl edit` a ConfigMap in `staging` to change a setting. What happens, and what should you have done?
-- A prod canary aborts. Where do you look first to see which check failed?
+- A release makes 5% of requests fail. What tells you it was the release, and how do you undo it?
 - Why do the `:latest` pods behave differently in `default` and in `dev`?
 
 That's the end of the track. Go back to the [index](README.md), or break something with `./platform demo <name>` and find out why using what you've learned.

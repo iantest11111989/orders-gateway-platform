@@ -158,7 +158,7 @@
     {
       "type": "stat",
       "title": "Not healthy",
-      "description": "Applications whose resources aren't all healthy (Degraded, Missing, Progressing...). Briefly non-zero during a deploy or canary is normal; stuck above 0 isn't.",
+      "description": "Applications whose resources aren't all healthy (Degraded, Missing, Progressing...). Briefly non-zero during a deploy is normal; stuck above 0 isn't.",
       "id": 4,
       "datasource": {
         "type": "prometheus",

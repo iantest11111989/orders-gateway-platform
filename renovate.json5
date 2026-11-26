@@ -115,8 +115,7 @@
     {
       // Images pinned in Helm values files. Renovate's helm-values manager only
       // reads files named values.yaml; ours are gitops/values/<chart>.yaml, so
-      // an explicit image there (the argo-rollouts plugin fetcher's alpine) was
-      // never updated.
+      // an explicit image there would never be updated.
       customType: 'regex',
       description: 'Images pinned in gitops/values',
       managerFilePatterns: ['/^gitops/values/.+\\.yaml$/'],
@@ -185,11 +184,6 @@
       matchPackageNames: ['argo-cd', 'argoproj/argo-cd'],
       automerge: false,
       labels: ['dependencies', 'needs-owner-approval'],
-    },
-    // Argo Rollouts: chart and kubectl plugin together.
-    {
-      groupName: 'argo-rollouts',
-      matchPackageNames: ['argo-rollouts', 'argoproj/argo-rollouts'],
     },
     {
       groupName: 'grafana charts',

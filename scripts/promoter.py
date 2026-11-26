@@ -12,7 +12,7 @@ laptop. Two modes:
                          on the PR, which is the record.
   promoter.py trickle    a light, steady stream of requests to dev, staging and prod
                          through the gateway, so "the SLO held for an hour" means
-                         something (and prod's canary has traffic to analyse).
+                         something.
   promoter.py configmap  print the ConfigMap that ships this file
                          (gitops/manifests/promoter/script.yaml; CI checks it).
 
@@ -415,7 +415,7 @@ def trickle():
                 resp = conn.getresponse()
                 resp.read()
                 code = resp.status
-                conns[host] = conn  # keep-alive: Envoy still balances (and splits a canary) per request
+                conns[host] = conn  # keep-alive: Envoy still balances per request
             except (OSError, http.client.HTTPException):
                 conns.pop(host, None)
             counts[(host, code)] = counts.get((host, code), 0) + 1
