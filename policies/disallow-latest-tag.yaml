@@ -1,6 +1,5 @@
-# Every image needs an explicit tag or digest, and never ":latest", so what
-# runs is what was reviewed. Enforced in the app namespaces, dev|staging|prod|demo;
-# disallow-latest-tag-platform audits the rest of the cluster.
+# Every image needs an explicit tag or digest, never ":latest". Enforced in
+# the app namespaces (dev, staging, prod, demo).
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -12,8 +11,7 @@ metadata:
       "latest". Untagged and ":latest" images change under you.
 spec:
   validationActions: [Deny]
-  # One Kyverno replica: Fail would block every orders pod whenever it
-  # restarts. Ignore lets pods through while Kyverno is down.
+  # One Kyverno replica: Fail would block every orders pod while it restarts.
   failurePolicy: Ignore
   evaluation:
     background:

@@ -1,8 +1,7 @@
 name: CI · infra
 
-# The platform's fast checks: lint, manifest validation and the toolbox image.
-# The cluster test (platform build and verify, then the app's CI and CD on
-# top) is e2e.yml.
+# Fast platform checks: lint, manifest validation, toolbox image. The cluster
+# test is e2e.yml.
 
 on:
   pull_request:
@@ -10,7 +9,6 @@ on:
   push:
     branches: [main]
     paths: ["platform", "pipeline", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "bootstrap/**", "system/**", "helm/**", "cd/**", "alerts/**", "policies/**", ".github/workflows/**", ".shellcheckrc"]
-  # Run by hand (Actions tab, "Run workflow").
   workflow_dispatch:
 
 permissions:
@@ -40,9 +38,7 @@ jobs:
           docker run --rm -v "$PWD":/repo -w /repo \
             rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
 
-  # Everything Argo CD would apply, checked in about a minute without a
-  # cluster: a broken values file or manifest fails here, not 10 minutes into
-  # the E2E job.
+  # Everything Argo CD would apply, checked in a minute without a cluster.
   validate:
     name: "Validate manifests (helm lint, kubeconform, policies)"
     runs-on: ubuntu-24.04
@@ -52,8 +48,7 @@ jobs:
           persist-credentials: false
       - name: "Render (helm lint, helm template, kustomize)"
         run: ./platform shell scripts/validate-manifests.sh
-      # CRD schemas from datreeio/CRDs-catalog, pinned to a commit so an
-      # upstream change can't turn CI red (bump it by hand with the CRDs).
+      # CRD schemas pinned to a commit so upstream changes can't turn CI red.
       - name: "Schemas (kubeconform, strict: Kubernetes and CRDs)"
         run: |
           docker run --rm -v "$PWD/out/rendered:/r:ro" \
@@ -62,11 +57,8 @@ jobs:
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/04af58d740718c4dc719441bf39fb284c784f4a8/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             /r
-      # Our admission policies against the rendered app in every environment.
-      # Two are left to CI · infra · policies (kyverno test) and the E2E (e2e.yml): the
-      # label pair, because the CLI validates without first applying
-      # default-labels' mutation, and the signature policy, which needs real
-      # signatures (and crashes this CLI on rendered input).
+      # Two policies are left to policies.yml and e2e: the label pair (the CLI
+      # skips default-labels' mutation) and signatures (need real signatures).
       - name: "Policies (kyverno apply)"
         run: |
           docker run --rm -v "$PWD:/w:ro" -w /w \
@@ -86,20 +78,15 @@ jobs:
         with:
           persist-credentials: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      # Build only (every download is checksum-verified during the build);
-      # `toolbox-publish` pushes it from main.
+      # Build only; toolbox-publish pushes from main.
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: toolbox
           platforms: linux/amd64,linux/arm64
           push: false
 
-  # Publishes the toolbox from main, so `./platform` pulls it instead of
-  # building it locally (minutes on a fresh machine). The tag is the same hash
-  # of toolbox/ that `./platform` computes (toolbox_image in scripts/lib/host.sh), so a
-  # change to any pinned tool gives a new tag, and an unchanged toolbox isn't
-  # rebuilt. Signed and checked like the app image (scripts/sign-images.sh),
-  # with this workflow on main as the identity.
+  # Publishes the toolbox from main so ./platform can pull it. The tag is the
+  # same toolbox/ hash ./platform computes (scripts/lib/host.sh).
   toolbox-publish:
     name: "Publish toolbox (main only)"
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
@@ -126,9 +113,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
-      # Published AND signed by this workflow on main: nothing to do. Published
-      # but not (verifiably) signed, e.g. a sign step that failed after the
-      # push: sign that digest now instead of leaving it unsigned for good.
+      # Already published but not verifiably signed (sign failed after push):
+      # sign that digest now.
       - id: exists
         name: Already published and signed?
         env:
@@ -158,8 +144,6 @@ jobs:
       - name: Sign, then verify signature and SBOMs
         if: steps.exists.outputs.signed != 'true'
         env:
-          # e.g. https://github.com/<owner>/<repo>/.github/workflows/infra.yml@refs/heads/main
           IDENTITY: ${{ github.server_url }}/${{ github.workflow_ref }}
-          # The new build's digest, or the published-but-unsigned one.
           DIGEST: ${{ steps.build.outputs.digest || steps.exists.outputs.digest }}
         run: scripts/sign-images.sh "$DIGEST" | tee -a "$GITHUB_STEP_SUMMARY"

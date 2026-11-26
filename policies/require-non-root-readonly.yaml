@@ -1,7 +1,5 @@
-# Containers run as a non-root user with a read-only root filesystem, no
-# privilege escalation and no Linux capabilities. Pod Security Admission
-# "restricted" already enforces most of this in the app namespaces; this
-# policy adds the read-only root filesystem and covers every namespace.
+# Non-root, read-only root filesystem, no privilege escalation, no
+# capabilities, in every namespace (PSA "restricted" lacks the read-only FS).
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -14,7 +12,7 @@ metadata:
       and capabilities.drop [ALL].
 spec:
   validationActions: [Audit]
-  # While policies only audit, a Kyverno outage must not block pod creation.
+  # Audit only: a Kyverno outage must not block pod creation.
   failurePolicy: Ignore
   evaluation:
     background:

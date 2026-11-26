@@ -1,33 +1,20 @@
 #!/usr/bin/env bash
-# Healthcheck of Compose's progress services. `docker compose
-# up -d --wait` only shows each container's state, so a single `ready` reads
-# "Waiting" for ten minutes. step-1..step-4 each turn healthy when one stage
-# of the bootstrap is done, so the stages tick off one by one:
-#   cluster    the kind nodes are Ready
-#   argocd     Argo CD is running (and the in-stack Git server, unless
-#              Argo CD follows GitHub)
-#   platform   every platform Application is Synced and Healthy
-#   apps       every <app>-<env> (one per cd/<app>/<env>.yaml) is Synced and
-#              Healthy
-# `ready` (scripts/ready-check.sh) still decides when the platform is ready.
-# Like it, a step stays healthy once passed, and then costs one `docker
-# inspect`, until the cluster is replaced: then it checks again. For the full story: docker compose logs -f ready
+# Healthcheck for Compose's step-1..4 progress services (cluster, argocd,
+# platform, apps), since `up --wait` shows only container states. Once passed
+# a step stays healthy until the cluster is replaced.
 set -euo pipefail
 DONE=/tmp/step-done
-# The marker holds the cluster it was earned on: a rebuilt cluster (new
-# control-plane container) makes every step check again from the start.
+# The marker holds the control-plane container ID, so a rebuilt cluster re-checks.
 cluster_id=$(docker inspect -f '{{.Id}}' "${CLUSTER_NAME:-platform-demo}-control-plane" 2>/dev/null || true)
 if [ -n "$cluster_id" ] && [ -f "$DONE" ] && [ "$(cat "$DONE")" = "$cluster_id" ]; then exit 0; fi
 rm -f "$DONE"
 
-# Every Application's name, sync and health, small enough for --argjson.
 apps() {
   kubectl -n argocd get applications.argoproj.io -o json 2>/dev/null |
     jq -c '[.items[] | {n: .metadata.name, s: .status.sync.status, h: .status.health.status}]'
 }
 
-# Applications the root Application lists (so ones not created yet count as
-# not ready), matching a jq filter on their name, that aren't Synced/Healthy.
+# Apps the root lists (so not-yet-created ones count) matching $1, not Synced/Healthy.
 not_ready() {
   local root
   root=$(kubectl -n argocd get application root -o json 2>/dev/null) ||
@@ -41,10 +28,8 @@ not_ready() {
       | $n end' <<<"$root" 2>/dev/null || echo "Applications not readable yet"
 }
 
-# The apps' Applications, <app>-<env> for each cd/<app>/<env>.yaml (the
-# ApplicationSet apps generates them, so the root doesn't list them), that
-# don't exist yet or aren't Synced/Healthy. One without auto-sync counts as
-# Synced once a sync succeeded: a change may be waiting for its Sync click.
+# <app>-<env> Applications (from the ApplicationSet, not listed by the root)
+# not ready. Manual-sync apps count as Synced once a sync has succeeded.
 apps_not_ready() {
   local want
   want=$(cd "$(dirname "$0")/.." && for f in cd/*/dev.yaml cd/*/staging.yaml cd/*/prod.yaml; do

@@ -1,10 +1,6 @@
-# Images may come only from this repo's GHCR namespace and the upstream
-# registries the platform's pinned charts use. The list comes from every
-# image running on a full cluster.
-# localhost:30500/ is the in-stack registry (system/registry/), where
-# ./pipeline publishes each app's images; the nodes pull them through its
-# NodePort on localhost. verify-image-signatures doesn't match it,
-# deliberately: production would admit only CI's signed images.
+# Images only from this repo's GHCR namespace, the registries the pinned
+# charts use, and the in-stack registry (localhost:30500/, deliberately not
+# signature-checked; production would admit only CI's signed images).
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -18,7 +14,7 @@ metadata:
       docker.io/library/alpine:3 so the registry is explicit.
 spec:
   validationActions: [Audit]
-  # While policies only audit, a Kyverno outage must not block pod creation.
+  # Audit only: a Kyverno outage must not block pod creation.
   failurePolicy: Ignore
   evaluation:
     background:

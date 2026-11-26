@@ -1,6 +1,5 @@
-# The in-stack Git server: soft-serve, which Argo CD syncs from
-# by default, so the cluster runs the checkout it was started from. Applied by
-# scripts/git-sync.sh (from up.sh) before Argo CD exists, with kubectl apply -k.
+# The in-stack Git server (soft-serve) Argo CD syncs from. Applied by
+# scripts/git-sync.sh before Argo CD exists.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: git

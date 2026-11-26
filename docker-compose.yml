@@ -1,35 +1,18 @@
-# docker compose up -d --wait   brings up the whole platform (README, Quick start).
-#
-# Compose is only the outer shell: the one service that does the work, `ready`,
-# runs the toolbox (every pinned tool) and bootstraps a kind cluster in which
-# Argo CD installs everything else from Git. Its healthcheck
-# passes only when every Argo CD Application is Synced and Healthy and prod is
-# serving, so `--wait` returns when the platform is really up.
-#
-# step-1 to step-4 do no work: they show progress. `up -d --wait` prints only
-# each container's state, so on its own `ready` reads "Waiting" for the whole
-# start (about 9 minutes). Each step turns Healthy when one stage is done
-# (scripts/compose-step.sh), so the stages tick off as they finish. For every
-# detail as it happens: docker compose logs -f ready
-#
-# The kind node containers are created by kind, not by Compose: `docker compose
-# stop`/`start` only restarts these containers; `ready` re-runs the (idempotent)
-# bootstrap against the running cluster, so the cluster and its data are
-# untouched. `./platform down` removes these services and deletes the
-# cluster. If the cluster disappears some other way, `ready` notices within
-# a minute and exits; its restart policy brings it back to rebuild it.
+# docker compose up -d --wait: brings up the whole platform. `ready` runs the
+# toolbox, bootstraps kind and Argo CD, and turns healthy only when every
+# Application is Synced and Healthy and prod serves.
+# step-1..4 do no work: their healthchecks just show progress, since `--wait`
+# prints only container states. Details: docker compose logs -f ready
+# kind creates the node containers, so stop/start leaves the cluster intact;
+# `./platform down` deletes it.
 name: platform-demo
 
-# What every service shares: the toolbox image, the checkout, the kubeconfig.
 x-toolbox: &toolbox
-  # The toolbox image ./platform uses: its tag is a hash of toolbox/
-  # (scripts/check-compose-toolbox.sh keeps the two in step, in CI).
-  # If the tag isn't published yet (a branch that changes toolbox/),
-  # Compose builds it from toolbox/.
+  # Tag is a hash of toolbox/ (checked by scripts/check-compose-toolbox.sh);
+  # unpublished tags are built locally.
   image: ghcr.io/iantest11111989/orders-gateway-platform-toolbox:sha-d15bdc4a86cb
   build: ./toolbox
-  # Host network: kind's API server and the platform's ports are on the
-  # host's 127.0.0.1, so ./out/kubeconfig.yaml works from the host as is.
+  # Host network: the API server and platform ports are on the host's 127.0.0.1.
   network_mode: host
   working_dir: /work
   volumes:
@@ -39,8 +22,7 @@ x-toolbox: &toolbox
   init: true  # `sleep infinity` as PID 1 would ignore SIGTERM
   restart: unless-stopped
 
-# A step's healthcheck: cheap (a kubectl call or two, nothing once passed),
-# and as patient as ready's.
+# Cheap (nothing once passed), and as patient as ready's.
 x-step-health: &step-health
   interval: 30s
   timeout: 25s
@@ -87,7 +69,6 @@ services:
       interval: 30s
       timeout: 25s
       retries: 3
-      # A cold start pulls about 60 images; allow 15 minutes.
       start_period: 20m
       start_interval: 10s
 

@@ -1,15 +1,7 @@
-// k6 load for orders-gateway (apps/orders-gateway/server.js).
-//
-//   BASE_URL  target, default http://localhost:8080
-//   RATE      requests per second, default 20
-//   DURATION  test length, default 1m
-//   WORK_MS   max CPU time per /work call in ms, default 50 (each call picks
-//             10..WORK_MS)
-//
-// Mix: 60% GET /work?ms=10..WORK_MS (CPU on the app's single event loop),
-// 30% POST /echo, 10% GET /version. "Good" per the SLOs: not
-// 5xx; and for /echo and /version, also under 250 ms. /work's latency is
-// what the caller asked for, so only its availability counts.
+// k6 load for orders-gateway. Env: BASE_URL (default http://localhost:8080),
+// RATE (req/s, 20), DURATION (1m), WORK_MS (max /work CPU ms, 50).
+// Mix: 60% GET /work, 30% POST /echo, 10% GET /version. "Good" per the SLOs:
+// not 5xx, and /echo and /version under 250 ms (/work's latency is the caller's).
 import http from 'k6/http';
 import { check } from 'k6';
 import { Rate } from 'k6/metrics';

@@ -1,6 +1,5 @@
-# Root Application (app-of-apps). ./platform up applies it. It renders the
-# bootstrap/apps Helm chart, where each template is one child Application,
-# from the in-stack Git server, which git-sync.sh fills with this checkout.
+# Root Application (app-of-apps), applied by ./platform up: renders
+# bootstrap/apps from the in-stack Git server.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

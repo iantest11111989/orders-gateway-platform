@@ -1,6 +1,5 @@
-# disallow-latest-tag for every namespace except the app namespaces (dev, staging, prod, demo), in Audit: the
-# third-party charts are reported, not blocked.
-# Same checks as disallow-latest-tag.yaml; keep the two in step.
+# disallow-latest-tag outside the app namespaces, in Audit (third-party charts
+# are reported, not blocked). Keep in step with disallow-latest-tag.yaml.
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -12,7 +11,7 @@ metadata:
       "latest". Untagged and ":latest" images change under you.
 spec:
   validationActions: [Audit]
-  # While policies only audit, a Kyverno outage must not block pod creation.
+  # Audit only: a Kyverno outage must not block pod creation.
   failurePolicy: Ignore
   evaluation:
     background:

@@ -1,5 +1,4 @@
-# Baseline for trivy-system: deny ingress by default; allow its own pods (scan
-# Jobs reach the built-in Trivy server) and the nodes.
+# Baseline for trivy-system: ingress only from its own pods and the nodes.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -31,8 +30,7 @@ spec:
   policyTypes: [Ingress]
   ingress:
     - from:
-        # Everything outside the pod network (kind's default 10.244.0.0/16):
-        # on kind that's the nodes and the API server on the control plane.
+        # Outside the pod network: the nodes and the API server.
         - ipBlock: {cidr: 0.0.0.0/0, except: [10.244.0.0/16]}
 ---
 # Prometheus scrapes the operator.

@@ -1,7 +1,5 @@
-# Long-running containers need liveness and readiness probes, so Kubernetes
-# restarts a hung process and sends traffic only to ready pods. Checked on
-# Deployments, StatefulSets and DaemonSets (not bare Pods or Jobs, which run
-# to completion); init containers are exempt.
+# Liveness and readiness probes on Deployments, StatefulSets and DaemonSets
+# (not Pods or Jobs; init containers exempt).
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -13,7 +11,7 @@ metadata:
       livenessProbe and readinessProbe.
 spec:
   validationActions: [Audit]
-  # While policies only audit, a Kyverno outage must not block deploys.
+  # Audit only: a Kyverno outage must not block deploys.
   failurePolicy: Ignore
   evaluation:
     background:

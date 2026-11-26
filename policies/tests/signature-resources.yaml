@@ -1,5 +1,4 @@
-# Pods for verify-image-signatures. Only the image matters here, so the
-# other policies aren't checked against these.
+# Pods for verify-image-signatures only.
 apiVersion: v1
 kind: Pod
 metadata: {name: signed-app, namespace: dev}

@@ -1,11 +1,5 @@
-# Kyverno chart values (bootstrap/apps/templates/kyverno.yaml). Admission
-# controller only: it validates and mutates at admission time, which is all
-# the policies in policies/ need.
-
-# Background scans, cleanup policies and policy reports are off to save
-# memory. Audit results still show up as metrics
-# (kyverno_validating_policy_results_total and
-# kyverno_image_validating_policy_results_total) and Kubernetes events.
+# Kyverno: admission controller only. Background scans, cleanup and reports
+# are off to save memory; audit results still appear as metrics and events.
 backgroundController:
   enabled: false
 cleanupController:
@@ -22,9 +16,7 @@ features:
   validatingAdmissionPolicyReports:
     enabled: false
 
-# The chart checks for legacy kyverno.io policies (removed in 1.20) at
-# render time and in a pre-install hook Job. This repo has only CEL policies
-# (policies.kyverno.io), so skip both: the Job is a serial step on every sync.
+# Only CEL policies here: skip the legacy-policy check (a hook Job on every sync).
 upgrade:
   acknowledgeLegacyPoliciesNotEnforced: true
 
@@ -39,8 +31,7 @@ admissionController:
 
 config:
   webhooks:
-    # Kyverno never sees kube-system (the chart's default) or its own
-    # namespace (excludeKyvernoNamespace).
+    # Never kube-system (the chart's default) or Kyverno's own namespace.
     namespaceSelector:
       matchExpressions:
         - key: kubernetes.io/metadata.name

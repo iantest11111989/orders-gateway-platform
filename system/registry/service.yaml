@@ -1,10 +1,6 @@
-# Two ways in, one registry:
-# - registry.registry.svc.cluster.local:5000, for Argo CD's repo-server
-#   (Helm charts, oci://.../charts/<app>);
-# - NodePort 30500 on every node, for the kubelet: pods use images named
-#   localhost:30500/<app>:<version>, and each node's containerd reaches the
-#   registry through its own localhost (plain HTTP, which containerd allows
-#   for localhost). No registry config on the nodes, no host port.
+# Two ways in: the ClusterIP for Argo CD's repo-server (charts), and NodePort
+# 30500 so each node's containerd pulls localhost:30500/<app> over plain HTTP
+# (allowed for localhost): no registry config on the nodes.
 apiVersion: v1
 kind: Service
 metadata:

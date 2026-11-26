@@ -1,8 +1,5 @@
-# Log collection: Grafana Alloy as a DaemonSet in namespace logging. Each pod
-# tails the logs of the pods on its own node through the Kubernetes API (no
-# host paths, so it runs under Pod Security "restricted") and pushes them to
-# Loki with only four labels: namespace, app, env, pod.
-# Values and the Alloy config: system/alloy/values.yaml.
+# Log collection: Grafana Alloy DaemonSet shipping pod logs to Loki
+# (system/alloy/values.yaml).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -33,8 +30,6 @@ spec:
     automated:
       prune: true
       selfHeal: true
-    # Auto-sync does not retry a failed sync of the same revision on its own;
-    # this covers transient failures such as a CRD not yet Established.
     retry:
       limit: 5
       backoff: {duration: 5s, factor: 2, maxDuration: 1m}

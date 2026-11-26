@@ -1,6 +1,5 @@
-# Host-side helpers shared by ./platform and ./pipeline (POSIX sh; sourced,
-# not run). Everything else runs inside the toolbox container, which
-# carries every pinned tool. The caller sets REPO_ROOT and cds there first.
+# Host-side helpers for ./platform and ./pipeline (POSIX sh, sourced). The
+# caller sets REPO_ROOT and cds there.
 # shellcheck shell=sh
 TOOLBOX_REPO=ghcr.io/iantest11111989/orders-gateway-platform-toolbox
 
@@ -13,9 +12,7 @@ check_docker() {
     die "Docker is installed but not running (or you lack permission to use it). Start Docker and re-run. On macOS with Colima: colima start --cpu 6 --memory 12"
 }
 
-# The toolbox tag is a hash of toolbox/, so a change to any pinned version
-# gives a new image. CI publishes that tag; if it isn't published yet (for
-# example on a branch), build it locally.
+# Tag = hash of toolbox/; CI publishes it, otherwise it's built locally.
 toolbox_image() {
   if [ -n "${TOOLBOX_IMAGE:-}" ]; then
     echo "$TOOLBOX_IMAGE"
@@ -40,18 +37,14 @@ ensure_toolbox() {
 run_toolbox() {
   img=$(toolbox_image)
   ensure_toolbox "$img"
-  # Docker can only mount folders it shares with this machine. Colima shares
-  # $HOME by default, so a checkout elsewhere (e.g. /tmp) shows up empty.
+  # Colima shares only $HOME, so a checkout elsewhere shows up empty.
   docker run --rm -v "$REPO_ROOT":/work --entrypoint test "$img" -f /work/platform ||
     die "Docker can't see this checkout ($REPO_ROOT). With Colima, clone the repo inside your home folder (Colima shares \$HOME by default), or add a mount in ~/.colima/default/colima.yaml."
   tty=""
   if [ -t 0 ] && [ -t 1 ]; then tty="-it"; fi
-  # Host network so kind's API server (127.0.0.1) and ports are reachable.
-  # The Docker socket lets kind create its node containers. The kubeconfig
-  # lives in a named volume, not the repo, so no root-owned or locked files
-  # land in your checkout.
-  # Create that volume as Compose would (its labels), so a later `docker
-  # compose up` adopts it instead of warning that Compose didn't create it.
+  # Host network, so kind's API server on 127.0.0.1 is reachable. The
+  # kubeconfig lives in a named volume, created with Compose's labels so
+  # `docker compose up` adopts it.
   docker volume inspect platform-demo-kube >/dev/null 2>&1 ||
     docker volume create --label com.docker.compose.project=platform-demo \
       --label com.docker.compose.volume=kube platform-demo-kube >/dev/null

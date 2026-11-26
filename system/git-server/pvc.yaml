@@ -1,5 +1,4 @@
-# The repositories. On the kind node's local-path storage, so they survive
-# `docker compose stop`/`start` (the cluster isn't stopped).
+# Local-path storage on the node: survives `docker compose stop`/`start`.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

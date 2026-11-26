@@ -1,6 +1,5 @@
-# The trickle (system/trickle): a light, steady stream of requests
-# to dev, staging and prod, so the dashboards and SLOs show live traffic.
-# Wave 45: after the environments (40).
+# Steady light traffic to dev, staging and prod so dashboards show live data.
+# Wave 45: after the environments.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -11,7 +10,6 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "45"
     argocd.argoproj.io/manifest-generate-paths: "/system/trickle"
-  # Pruning or deleting this Application also deletes what it created.
   finalizers: [resources-finalizer.argocd.argoproj.io]
 spec:
   project: default

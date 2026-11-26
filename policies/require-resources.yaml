@@ -1,6 +1,5 @@
-# Every container declares CPU and memory requests and a memory limit, so the
-# scheduler can place it and one leak can't take a node down. CPU limits are
-# not required: they throttle without protecting anything.
+# CPU and memory requests and a memory limit on every container. No CPU limit
+# required: it throttles without protecting anything.
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -12,7 +11,7 @@ metadata:
       and limits.memory.
 spec:
   validationActions: [Audit]
-  # While policies only audit, a Kyverno outage must not block pod creation.
+  # Audit only: a Kyverno outage must not block pod creation.
   failurePolicy: Ignore
   evaluation:
     background:

@@ -1,16 +1,12 @@
-# promtool unit tests for alerts/orders-gateway-slo.yaml.
-# Run: scripts/test-alerts.sh (CI runs it on every pull request).
-#
-# Series use 1-minute samples. "0+600x90" means a counter that grows by 600
-# a minute (10 requests/second) for 90 minutes.
+# promtool tests for alerts/orders-gateway-slo.yaml (scripts/test-alerts.sh).
+# 1-minute samples: "0+600x90" grows by 600/min (10 req/s) for 90 minutes.
 rule_files:
   - ../../.build/alerts/orders-gateway-slo.rules.yaml
 
 evaluation_interval: 30s
 
 tests:
-  # 9% of requests fail: about 18x the budget. Fast burn pages within minutes;
-  # slow burn waits out its 15 m "for".
+  # 9% errors (~18x budget): fast burn pages; slow burn waits out its 15m "for".
   - name: availability fast burn
     interval: 1m
     input_series:
@@ -48,10 +44,8 @@ tests:
         alertname: OrdersGatewayLatencyFastBurn
         exp_alerts: []
 
-  # 4.8% of valid requests fail: a slow burn, not a fast one. As many
-  # requests are the caller's mistake (404 on GET /echo). If 4xx counted as
-  # valid the ratio would drop to 2.4% and no alert would fire, so this
-  # proves they are excluded.
+  # 4.8% of valid requests fail: slow burn only. Equal 4xx traffic would halve
+  # the ratio if counted, so this proves 4xx are excluded.
   - name: availability slow burn, 4xx excluded
     interval: 1m
     input_series:
@@ -80,9 +74,7 @@ tests:
         alertname: OrdersGatewayAvailabilityFastBurn
         exp_alerts: []
 
-  # 1 in 6 /echo requests is slower than 250 ms: latency fast burn. No 5xx,
-  # so availability stays quiet. /work is left out of latency, even though
-  # every /work request here is slow (its latency is the caller's choice).
+  # 1 in 6 /echo slower than 250 ms: latency fast burn. Slow /work doesn't count.
   - name: latency fast burn
     interval: 1m
     input_series:
@@ -117,8 +109,7 @@ tests:
         alertname: OrdersGatewayAvailabilityFastBurn
         exp_alerts: []
 
-  # Healthy traffic in dev, plus a short blip of errors in prod that is over
-  # before either long window notices. Nothing fires.
+  # A short error blip in prod ends before the long windows notice. Nothing fires.
   - name: healthy and short blip
     interval: 1m
     input_series:
@@ -153,8 +144,7 @@ tests:
         alertname: OrdersGatewayAvailabilitySlowBurn
         exp_alerts: []
 
-  # Another app in the same namespace (the hello-world demo) failing and slow
-  # must not count against orders-gateway's SLOs.
+  # Another app's errors in the same namespace don't count.
   - name: another app's errors don't burn orders-gateway's budget
     interval: 1m
     input_series:

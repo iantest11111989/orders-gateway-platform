@@ -1,18 +1,9 @@
 #!/usr/bin/env bash
-# scripts/git-sync.sh: the in-stack Git server. Installs it if
-# needed, then pushes a snapshot of this checkout's working tree to its
-# platform.git main, which Argo CD syncs from by default. The cluster runs the
-# checkout it was started from, not a copy on GitHub.
-#
-# - Snapshot = the working tree as it is (committed or not), minus what
-#   .gitignore excludes. Works without a .git (a tarball).
-# - Each snapshot's parent is the previous in-stack main, so the history is
-#   real and `git revert` works there; nothing is pushed if nothing changed.
-# - Only the bootstrap's key can push (anonymous clones are read-only). The
-#   key lives in the cluster (Secret git/git-admin), next to the repositories
-#   it guards: soft-serve takes its admin key only when it first creates its
-#   database, so key and data must live and die together.
-# Called by up.sh (and `./platform ship`). Runs in the toolbox.
+# scripts/git-sync.sh: installs the in-stack Git server if needed and pushes a
+# snapshot of this working tree (committed or not, minus .gitignore) to its
+# main, which Argo CD syncs from. Each snapshot's parent is the previous main,
+# so `git revert` works there. Only the bootstrap key (Secret git/git-admin)
+# can push. Called by up.sh; runs in the toolbox.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -26,9 +17,8 @@ kubectl create namespace git --dry-run=client -o yaml | kubectl apply -f - >/dev
 if kubectl -n git get secret git-admin >/dev/null 2>&1; then
   kubectl -n git get secret git-admin -o jsonpath='{.data.private_key}' | base64 -d >"$KEY"
 else
-  # A server whose data outlived its key would refuse every push (soft-serve
-  # takes its admin key only when it first creates its database). The data is
-  # only snapshots of this checkout, which the push below recreates: reset it.
+  # soft-serve takes its admin key only when it first creates its database, so
+  # data without its key refuses every push. It only holds snapshots: reset it.
   if kubectl -n git get pvc soft-serve >/dev/null 2>&1; then
     warn "the Git server's data is there but its admin key is gone; resetting the server (it only holds snapshots of this checkout)"
     kubectl -n git delete deploy soft-serve --ignore-not-found --wait=true >/dev/null
@@ -43,10 +33,8 @@ kubectl apply -k "$ROOT/system/git-server" >/dev/null
 kubectl -n git rollout status deploy/soft-serve --timeout=180s >/dev/null
 ok "soft-serve ready ($IN_CLUSTER_URL)"
 
-# Reach its SSH port from here through the API server (no host port needed).
 pf_log="$tmp/pf.log"
-# Create the log first: the backgrounded redirect creates it only once the
-# child runs, and a sed that gets there first fails (and set -e stops us).
+# Create the log first, or a sed that runs before the child does fails (set -e).
 : >"$pf_log"
 kubectl -n git port-forward svc/git :23231 >"$pf_log" 2>&1 &
 pf=$!
@@ -73,7 +61,6 @@ if [ -n "$parent" ] && [ "$tree" = "$(g rev-parse "$parent^{tree}")" ]; then
   ok "unchanged: in-stack main is already this checkout (${parent:0:12})"
   echo "$parent" >"$tmp/rev"
 else
-  # Say where the snapshot came from, if the checkout is a Git repository.
   origin="a checkout without Git history"
   if head=$(git -c safe.directory='*' -C "$ROOT" log -1 --format='%h %s' 2>/dev/null); then
     origin="local HEAD $head"
