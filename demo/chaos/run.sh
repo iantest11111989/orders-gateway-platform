@@ -8,30 +8,6 @@ source "$(dirname "$0")/../lib.sh"
 
 # --- chaos helpers -----------------------------------------------------------
 
-demo_pods() { # name node phase ready, one line per demo pod
-  kubectl -n "$NS" get pods -l app.kubernetes.io/name=orders-gateway -o json |
-    jq -r '.items[] | select(.metadata.deletionTimestamp == null) |
-      "\(.metadata.name) \(.spec.nodeName // "-") \(.status.phase) \(([.status.conditions[]? | select(.type == "Ready") | .status][0]) // "False")"'
-}
-ready_count() { demo_pods | awk '$4 == "True"' | grep -c . || true; }
-show_pods() {
-  show "kubectl -n $NS get pods -l app.kubernetes.io/name=orders-gateway -o wide   # + each node's zone label"
-  demo_pods | while read -r name node phase ready; do
-    zone=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}' 2>/dev/null || echo -)
-    printf '    %-40s %-14s %-7s %s ready=%s\n' "$name" "$node" "$zone" "$phase" "$ready" >&2
-  done
-}
-wait_ready() { # wait_ready <n> <timeout s>
-  local deadline=$(( $(date +%s) + $2 )) last='' n
-  note "every 2 s: kubectl -n $NS get pods (count the Ready ones) until $1 are ready"
-  while :; do
-    n=$(ready_count)
-    [ "$n" != "$last" ] && { printf '  %s  ready pods: %s\n' "$(date +%H:%M:%S)" "$n" >&2; last=$n; }
-    [ "$n" -ge "$1" ] && return 0
-    [ "$(date +%s)" -lt "$deadline" ] || die "only $n of $1 pods ready after ${2}s"
-    sleep 2
-  done
-}
 # What `kubectl drain` does per pod: an Eviction, which the API server refuses
 # (429) while it would break the PodDisruptionBudget. Retries until allowed.
 evict() { # evict <pod>
