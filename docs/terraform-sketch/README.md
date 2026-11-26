@@ -20,7 +20,7 @@ How it maps to the local stack:
 | Local (kind, `docker compose up`) | EKS (this sketch) |
 | --- | --- |
 | kind: 1 control plane + 2 workers, two fake zones | EKS's managed control plane, nodes in 3 real zones |
-| One cluster, three namespaces | prod in its own cluster (`env = "prod"`), dev and staging sharing one |
+| One cluster, three namespaces | One cluster per environment (`env` is dev, staging or prod), each with its own Argo CD |
 | Envoy on NodePorts mapped to `127.0.0.1` | Envoy Gateway behind an NLB from the AWS Load Balancer Controller, 2+ proxy replicas |
 | Demo CA, `*.localtest.me` | Let's Encrypt via DNS-01 (cert-manager with its IAM role), ExternalDNS writing Route 53 |
 | Sealed Secrets with a demo key in Git | External Secrets reading AWS Secrets Manager (`ogp/<env>/*`) |

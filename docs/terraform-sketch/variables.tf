@@ -4,7 +4,7 @@ variable "region" {
 }
 
 variable "env" {
-  description = "prod gets its own cluster; dev and staging share one."
+  description = "dev, staging or prod: one account, cluster and Argo CD per environment."
   type        = string
 }
 

@@ -10,9 +10,9 @@ Conventions: "**Recommend**" is the opinionated pick. "*(unsure)*" marks things 
 
 ## 1. Summary and target shape
 
-Production drops Docker Compose, kind and the in-stack Git server. Terraform builds an **AWS Organization with one account per environment** (dev, staging, prod), plus shared-services (ECR, CI roles, root DNS), a tooling account for the **Argo CD hub**, and the usual security and log-archive accounts. Each environment account has **its own VPC across 3 AZs** (public subnets for the load balancer and NAT, private subnets for nodes) and **its own EKS cluster**, with nodes on Graviton managed by **Karpenter**. One **Argo CD hub** in the tooling account reconciles every spoke cluster from GitHub. **ApplicationSets** generate one per-cluster copy of today's `gitops/apps` app-of-apps, so today's sync waves survive. CI uses **GitHub OIDC to assume short-lived roles** (no AWS keys), pushes signed, immutable images to **ECR**, and promotes by Git change as it does today. Traffic enters through an **ALB with ACM certificates and WAF**, managed by the AWS Load Balancer Controller, and goes to **Envoy Gateway**, which keeps the Gateway API routes, the `/admin` 403 and the canary weights. **Route 53 records come from ExternalDNS**. Secrets come from **Secrets Manager through External Secrets**, encrypted with per-account KMS keys. **Datadog** replaces Prometheus, Loki, Alertmanager and Grafana for metrics, logs, APM, SLOs, monitors, dashboards and synthetics. The app keeps its Prometheus-format `/metrics`, which the Datadog Agent scrapes as OpenMetrics, so `app/server.js` stays unchanged. Prod finally runs the **Argo Rollouts canary**, with analysis driven by Datadog.
+Production drops Docker Compose, kind and the in-stack Git server. Terraform builds an **AWS Organization with one account per environment** (dev, staging, prod), plus shared-services (ECR, CI roles, root DNS) and the usual security and log-archive accounts. Each environment account has **its own VPC across 3 AZs** (public subnets for the load balancer and NAT, private subnets for nodes) and **its own EKS cluster**, with nodes on Graviton managed by **Karpenter**. **Each cluster runs its own Argo CD**, which reconciles only that cluster from GitHub with the same `gitops/apps` app-of-apps and sync waves as today, so nothing in dev or staging can deploy to prod. CI uses **GitHub OIDC to assume short-lived roles** (no AWS keys), pushes signed, immutable images to **ECR**, and promotes by Git change as it does today. Traffic enters through an **ALB with ACM certificates and WAF**, managed by the AWS Load Balancer Controller, and goes to **Envoy Gateway**, which keeps the Gateway API routes, the `/admin` 403 and the canary weights. **Route 53 records come from ExternalDNS**. Secrets come from **Secrets Manager through External Secrets**, encrypted with per-account KMS keys. **Datadog** replaces Prometheus, Loki, Alertmanager and Grafana for metrics, logs, APM, SLOs, monitors, dashboards and synthetics. The app keeps its Prometheus-format `/metrics`, which the Datadog Agent scrapes as OpenMetrics, so `app/server.js` stays unchanged. Prod finally runs the **Argo Rollouts canary**, with analysis driven by Datadog.
 
-The diagram shows the fully split layout, one account and cluster per environment. With the recommended shared non-prod cluster (§3.1), the dev and staging boxes are one account and one EKS cluster holding both namespaces.
+One account, one VPC, one EKS cluster and one Argo CD per environment. Nothing is shared between environments except the images in ECR and the Git repo.
 
 ```mermaid
 flowchart TB
@@ -29,26 +29,23 @@ flowchart TB
       ecr[(ECR: immutable tags,<br/>Inspector scan, lifecycle,<br/>org-wide pull, DR-region replica)]
       r53root[Route 53 apex zone]
     end
-    subgraph tooling [Tooling acct]
-      hub[EKS hub cluster<br/>Argo CD HA + ApplicationSets<br/>patch promoter]
-    end
     subgraph wl [Workloads OU]
       subgraph devacct [dev acct]
-        devvpc[VPC 3 AZ<br/>1 NAT] --- deveks[EKS dev<br/>Karpenter, Spot]
+        devvpc[VPC 3 AZ<br/>1 NAT] --- deveks[EKS dev + its Argo CD<br/>Karpenter, Spot]
       end
       subgraph stgacct [staging acct]
-        stgvpc[VPC 3 AZ<br/>1 NAT] --- stgeks[EKS staging]
+        stgvpc[VPC 3 AZ<br/>1 NAT] --- stgeks[EKS staging + its Argo CD]
       end
       subgraph prodacct [prod acct]
-        prodvpc[VPC 3 AZ<br/>NAT per AZ, endpoints] --- prodeks[EKS prod<br/>Rollouts canary]
+        prodvpc[VPC 3 AZ<br/>NAT per AZ, endpoints] --- prodeks[EKS prod + its Argo CD<br/>Rollouts canary]
         alb[ALB + ACM + WAF] --> envoy[Envoy Gateway x2+] --> app[orders-gateway pods]
         sm[(Secrets Manager + KMS)]
       end
     end
   end
 
-  gh -->|desired state| hub
-  hub -->|private API via TGW<br/>IAM role per spoke| deveks & stgeks & prodeks
+  gh -->|each Argo CD pulls<br/>its own environment| deveks & stgeks & prodeks
+  ci -.->|scheduled: patch promoter,<br/>gates read Datadog| dd
   users([Users]) -->|Route 53 via ExternalDNS| alb
   deveks & stgeks & prodeks -->|Datadog Agent: metrics,<br/>logs, traces| dd[(Datadog<br/>SLOs, monitors, dashboards,<br/>synthetics)]
   dd -->|pages| pd[PagerDuty or Datadog On-Call]
@@ -63,11 +60,11 @@ flowchart TB
 
 | Local (repo reference) | Production | Why |
 | --- | --- | --- |
-| `docker-compose.yml`, the `ready` service and toolbox (`toolbox/`, `scripts/up.sh`) | Terraform roots run from CI, plus a one-off Argo CD install in the hub | Compose exists locally to give one command and a health signal. In production the cluster's lifecycle belongs to IaC with reviewed plans. **Keep Compose and kind as the local dev loop and as the PR integration test** (`platform.yml`'s cluster job). |
+| `docker-compose.yml`, the `ready` service and toolbox (`toolbox/`, `scripts/up.sh`) | Terraform roots run from CI, plus a one-off Argo CD install in each cluster | Compose exists locally to give one command and a health signal. In production the cluster's lifecycle belongs to IaC with reviewed plans. **Keep Compose and kind as the local dev loop and as the PR integration test** (`platform.yml`'s cluster job). |
 | kind, 1 control plane + 2 workers, fake zones (`cluster/kind.yaml`) | EKS per environment, 3 real AZs, Karpenter on Graviton | Managed control plane, real failure domains |
-| dev/staging/prod as namespaces in one cluster (`gitops/apps/templates/{dev,staging,prod}.yaml`) | One cluster per environment, each in its own account | Blast radius, IAM separation, separate upgrade cadence. The sketch shared one cluster between dev and staging; see §5 |
+| dev/staging/prod as namespaces in one cluster (`gitops/apps/templates/{dev,staging,prod}.yaml`) | One cluster per environment, each in its own account | Blast radius, IAM separation, separate upgrade cadence. Not a shared non-prod cluster: dev and staging get the same isolation as prod |
 | In-stack Git server, soft-serve (`gitops/manifests/git-server/`) | GitHub only (today's "GitHub mode") | Its only purpose was offline use |
-| Root Application applied by `./platform up` (`gitops/root.yaml`) | An ApplicationSet in the hub that generates a `root-<cluster>` Application per spoke | Keeps the app-of-apps and sync waves for each cluster |
+| Root Application applied by `./platform up` (`gitops/root.yaml`) | The same root Application, created by Terraform in each cluster with that cluster's values | Keeps the app-of-apps and sync waves unchanged |
 | `./platform ship` / `rollback` with `kind load` | Promotion PRs and revert PRs. `localhost/` images are not admitted | Only CI-built, signed images run |
 | GHCR (`cd-app.yml` `IMAGE: ghcr.io/...`) | ECR in shared-services. Optionally dual-push to GHCR during migration | IAM-native pulls, no external dependency in the data path, Inspector scanning |
 | cosign keyless + BuildKit SBOM | Keep. Change the registry glob and the identity in `policies/verify-image-signatures.yaml` | Already the right design |
@@ -87,7 +84,7 @@ flowchart TB
 | NetworkPolicies on kindnet | VPC CNI network-policy enforcement (an EKS add-on option). Same policies, plus default-deny egress | FQDN egress needs Cilium or Network Firewall (§3.13) |
 | `local-path` volumes | gp3 EBS through the CSI driver. Almost nothing stateful is left once Prometheus and Loki go | |
 | Rolling updates only (no canary) | Argo Rollouts canary in prod, analysis through Rollouts' Datadog provider | Every prod release should be a canary |
-| Patch promoter CronJob with a fine-grained token | Keep it, in the hub. Gates read the Datadog SLO/monitor APIs and the hub's Argo CD API. Token from a GitHub App | |
+| Patch promoter CronJob with a fine-grained token | A scheduled GitHub Actions workflow. Gates read the Datadog SLO and monitor APIs, including each cluster's Argo CD health. Token from a GitHub App | It holds no cluster credentials, so it can't become a cross-cluster admin |
 | Trickle Deployment (`gitops/manifests/promoter/trickle.yaml`) | Keep it in dev/staging. In prod use Datadog Synthetics plus real traffic | |
 | `admin` / `admin12345` | SSO everywhere (IAM Identity Center + IdP) | |
 | `promotion/PAUSED` | Keep. Add Argo CD sync windows for prod freezes | |
@@ -100,27 +97,27 @@ flowchart TB
 ### 3.1 Accounts and networking
 
 **Recommend:**
-- **AWS Organizations with OUs `Security` (log-archive, security-tooling), `Infrastructure` (shared-services, tooling), `Workloads` (dev, staging, prod) and `Sandbox`.** Use Control Tower if the owner wants guardrails and Account Factory ready-made. Otherwise plain Organizations plus Terraform (lighter, and nothing hidden). For a one-service platform I'd use plain Organizations and a dozen SCPs. *(Either is fine. Control Tower adds Config rules and cost.)*
+- **AWS Organizations with OUs `Security` (log-archive, security-tooling), `Infrastructure` (shared-services), `Workloads` (dev, staging, prod) and `Sandbox`.** Use Control Tower if the owner wants guardrails and Account Factory ready-made. Otherwise plain Organizations plus Terraform (lighter, and nothing hidden). For a one-service platform I'd use plain Organizations and a dozen SCPs. *(Either is fine. Control Tower adds Config rules and cost.)*
 - **SCPs:** deny regions other than the chosen one (plus us-east-1 for global services); deny leaving the org; deny disabling CloudTrail, GuardDuty, Config or Security Hub; deny `iam:CreateUser`/`CreateAccessKey` outside a break-glass path; deny the root user; require IMDSv2 on `ec2:RunInstances`.
-- **One VPC per environment account.** Allocate non-overlapping CIDRs from VPC IPAM (e.g. dev 10.40/16, staging 10.41/16, prod 10.42/16, tooling 10.50/16) so peering or a TGW stays possible.
+- **One VPC per environment account.** Allocate non-overlapping CIDRs from VPC IPAM (e.g. dev 10.40/16, staging 10.41/16, prod 10.42/16) so peering or a TGW stays possible.
   - 3 AZs. **Public** /24s hold only the ALB and the NAT gateways. **Private** /19s hold the nodes and pods. Add an **intra** /24 set (no route to the internet) for the EKS control-plane ENIs.
   - **VPC CNI with prefix delegation** for pod density. If IPs get tight, add a secondary 100.64.0.0/16 CIDR for pods (custom networking). It isn't needed at this scale.
   - **NAT:** one per AZ in prod (a single NAT is a single-AZ dependency for egress, including Datadog and image pulls), one shared in dev and staging. The sketch already does this (`one_nat_gateway_per_az = var.env == "prod"`).
-  - **VPC endpoints:** the S3 gateway endpoint everywhere (free; ECR layers come from S3). Interface endpoints for `ecr.api`, `ecr.dkr`, `sts`, `secretsmanager`, `kms`, `logs` and `ec2` **in prod only**. Each costs roughly $7–8 per AZ per month *(unsure: check the price)*, so ~7 endpoints × 3 AZs in prod is about $150/month (it would be ~$600 with them in all four VPCs). In dev and staging, NAT is cheaper. Consider **Datadog PrivateLink** in prod if it's available for the chosen Datadog site and region *(unsure: PrivateLink isn't offered for every site, and the EU1 site lives in GCP)*.
+  - **VPC endpoints:** the S3 gateway endpoint everywhere (free; ECR layers come from S3). Interface endpoints for `ecr.api`, `ecr.dkr`, `sts`, `secretsmanager`, `kms`, `logs` and `ec2` **in prod only**. Each costs roughly $7–8 per AZ per month *(unsure: check the price)*, so ~7 endpoints × 3 AZs in prod is about $150/month (it would be ~$450 with them in all three VPCs). In dev and staging, NAT is cheaper. Consider **Datadog PrivateLink** in prod if it's available for the chosen Datadog site and region *(unsure: PrivateLink isn't offered for every site, and the EU1 site lives in GCP)*.
   - **VPC Flow Logs** to the log-archive account's S3 (cheaper than CloudWatch). Only send samples to Datadog.
-- **Connectivity hub ↔ spokes:** a **Transit Gateway** in shared-services (or tooling), shared through RAM, attaching tooling and the three env VPCs. Route tables let tooling reach each spoke's **private** EKS endpoint, and spokes can't reach each other. This lets every cluster keep `endpoint_public_access = false`, as the sketch has it. Cheaper alternative: three VPC peerings, fine for four VPCs. TGW is ~$36/attachment/month plus data *(unsure)*. **Recommend peering now, TGW when a second region or more accounts arrive.**
+- **No cross-VPC connectivity for deploys.** Each Argo CD talks only to its own cluster's API, so every cluster keeps `endpoint_public_access = false`, as the sketch has it, with no Transit Gateway or peering. Engineers reach the private endpoints and internal UIs through **AWS Client VPN** (one endpoint per account, SSO-authenticated) or SSM Session Manager. Add a Transit Gateway only when a second region or shared VPC services arrive.
 
-**Options considered:** a single account with env-tagged resources (rejected: no IAM blast-radius boundary, and cost attribution by tags only). A shared non-prod account holding dev+staging (a reasonable saving; see open questions).
+**Options considered:** a single account with env-tagged resources (rejected: no IAM blast-radius boundary, and cost attribution by tags only). A shared non-prod account and cluster holding dev and staging (rejected: it would save ~$300–400/month, but dev and staging should get the same isolation as prod).
 
-**Alternative: two clusters, not three.** One EKS cluster for prod in its own account, and **one shared non-prod cluster** (dev and staging as namespaces, as they are locally) in a non-prod account. It saves a control plane, the system nodes, a NAT gateway and a load balancer (~$300–400/month), and keeps today's namespace model for dev and staging. The cost is weaker isolation between dev and staging, which matters far less than prod's. The subnets add an **isolated tier per AZ** (no route to the internet) for future data stores. VPC endpoints for ECR (api and dkr), S3, STS, CloudWatch Logs and Secrets Manager mean image pulls and AWS calls skip NAT. **Recommend:** start with two clusters, and split staging out only if it must mirror prod's IAM and network exactly (open question 1).
+**Decided: one account and one cluster per environment.** The subnets also get an **isolated tier per AZ** (no route to the internet) for future data stores.
 
 **Repo changes:** new `infra/` tree (§4). README's "Local vs a real cloud" table gets a link to this doc.
 
 ### 3.2 EKS and compute
 
 **Recommend:**
-- **Clusters: prod alone, one shared non-prod cluster for dev and staging (§3.1's joint recommendation), plus one hub cluster in tooling.** If staging is split out (open question 1), it's one cluster per environment account. Everything below applies to each cluster either way. Private API endpoint. Access entries, not the `aws-auth` ConfigMap (the sketch already does this). Control-plane logs (`api`, `audit`, `authenticator`) to CloudWatch with 30-day retention, forwarded to Datadog only if Cloud SIEM is bought.
-- **Compute: a small managed node group `system`** (2× `m7g.large`, Bottlerocket or AL2023 ARM, tainted `CriticalAddonsOnly`) for CoreDNS, Karpenter, LBC, ExternalDNS, ESO, Kyverno and the Datadog Cluster Agent. **Karpenter** NodePools provide the rest:
+- **Clusters: one per environment account (dev, staging, prod), each with its own Argo CD.** Everything below applies to each cluster. Private API endpoint. Access entries, not the `aws-auth` ConfigMap (the sketch already does this). Control-plane logs (`api`, `audit`, `authenticator`) to CloudWatch with 30-day retention, forwarded to Datadog only if Cloud SIEM is bought.
+- **Compute: a small managed node group `system`** (2× `m7g.large`, Bottlerocket or AL2023 ARM, tainted `CriticalAddonsOnly`) for CoreDNS, Karpenter, LBC, ExternalDNS, ESO, Kyverno, Argo CD and the Datadog Cluster Agent. **Karpenter** NodePools provide the rest:
   - `apps`: on-demand in prod, Spot plus on-demand fallback in dev/staging, Graviton families `m7g`/`c7g`/`m8g`, consolidation `WhenEmptyOrUnderutilized`, disruption budgets restricted in prod business hours.
   - This replaces the sketch's fixed `platform` and `apps` node groups. Karpenter bin-packs better, and **Datadog bills per host**, so fewer, larger nodes save money twice (§3.12).
 - **EKS Auto Mode** is a serious alternative. AWS then runs Karpenter, the VPC CNI, EBS CSI and the LB controller for you, at a per-instance management fee (roughly +12% on EC2 *(unsure)*). **Recommend standard EKS + Karpenter**: the team already runs every one of those controllers through GitOps, and Auto Mode's LB controller is less configurable. Re-evaluate if nobody wants to own the add-on upgrades.
@@ -133,7 +130,7 @@ flowchart TB
 ### 3.3 Identity: IAM, Pod Identity, Kubernetes RBAC, SSO
 
 **Humans:**
-- **IAM Identity Center**, federated to the company IdP (Okta, Entra or Google; open question). Permission sets: `PlatformAdmin` (admin in tooling/dev, break-glass-only in prod), `Developer` (read-only in prod, power-user in dev), `ReadOnly`, `Billing`. No IAM users anywhere. A sealed break-glass role in each account, with alarms on use.
+- **IAM Identity Center**, federated to the company IdP (Okta, Entra or Google; open question). Permission sets: `PlatformAdmin` (admin in dev and staging, break-glass-only in prod), `Developer` (read-only in prod, power-user in dev), `ReadOnly`, `Billing`. No IAM users anywhere. A sealed break-glass role in each account, with alarms on use.
 - **EKS access entries** map Identity Center roles to clusters. `PlatformAdmin` gets `AmazonEKSClusterAdminPolicy`. `Developer` gets `AmazonEKSViewPolicy` in prod and `AmazonEKSEditPolicy` scoped to the app namespace in dev. In prod, writes go through Git only: Argo CD self-heal already undoes `kubectl edit` (README "When it's broken").
 - **Argo CD SSO:** OIDC against the IdP (Dex or direct OIDC). Argo CD RBAC maps IdP groups to AppProject roles: devs may sync and roll back the `dev` app in dev, and nobody but the platform group may touch platform apps in prod. Disable the local `admin` account.
 - **Datadog SSO** through SAML with the same IdP, roles mapped from groups.
@@ -154,14 +151,14 @@ Roles, one per controller per cluster, least privilege:
 - **EBS CSI:** the managed policy.
 - **cert-manager:** none if ACM handles public certs (the sketch's DNS-01 role then goes away).
 - **The app:** **no AWS role at all**, and `automountServiceAccountToken: false` as today.
-- **Argo CD (hub):** a Pod Identity role allowed only `sts:AssumeRole` into `ogp-argocd-deployer` in each spoke account. That role has no IAM permissions of its own and is only an EKS access entry with cluster admin on the spoke. The Argo CD cluster secret uses `awsAuthConfig.roleARN`. This is the standard cross-account pattern. *(unsure: Pod Identity cross-account role chaining may need IRSA on the hub instead; IRSA is the safe fallback.)*
+- **Argo CD:** no AWS role. It manages only its own cluster through its in-cluster service account, so no cross-account role exists that could deploy to prod from elsewhere. Its repo credential is a read-only GitHub App installation (or deploy key) per cluster.
 
 **CI (GitHub Actions to AWS):**
 - An IAM OIDC provider for `token.actions.githubusercontent.com` in shared-services and in each env account (only where CI needs it).
 - `gha-ecr-push` (shared-services): trust `sub = repo:iantest11111989/orders-gateway-platform:ref:refs/heads/main` and `aud = sts.amazonaws.com`. Permissions: `ecr:PutImage`, `InitiateLayerUpload` and friends on `orders-gateway` only. **No delete or tag-mutation rights.** PRs get no role; they build without pushing, as `ci-app.yml` already does.
 - `gha-tf-plan-<acct>`: read-only plus the state bucket, trusted for `pull_request` events. `gha-tf-apply-<acct>`: trusted for `environment:<env>` only, so prod applies need the GitHub Environment's required reviewers.
 - **CI never talks to a cluster.** Argo CD pulls, so no kube credentials exist in GitHub at all. That's the strongest property the repo already has; keep it.
-- Replace the promoter's fine-grained PAT and the `GITHUB_TOKEN` PR-opening trick with a **GitHub App** whose private key lives in Secrets Manager (tooling account). Production needs individual human and bot identities, or approvals mean nothing.
+- Replace the promoter's fine-grained PAT and the `GITHUB_TOKEN` PR-opening trick with a **GitHub App** whose private key lives in Secrets Manager (shared-services account). Production needs individual human and bot identities, or approvals mean nothing.
 
 **Repo changes:** `charts/orders-gateway/templates/serviceaccount.yaml` is unchanged. New Terraform modules `pod-identity`, `github-oidc`. `gitops/values/argocd.yaml` gains OIDC, RBAC and HA.
 
@@ -183,39 +180,35 @@ Roles, one per controller per cluster, least privilege:
 
 ### 3.5 GitOps and promotion across clusters
 
-**Options:**
-| | A. Argo CD in every cluster | B. Hub and spoke (recommended) | C. Argo CD Agent (hub UI, agents pull) |
-| --- | --- | --- | --- |
-| Blast radius | Smallest: a compromised dev Argo can't touch prod | The hub holds admin on every cluster, so it must be locked down | Agents hold only local credentials, and the hub can't push |
-| Network | No cross-VPC access | The hub needs private access to every spoke API | Outbound from spokes only |
-| Operations | 4 Argo CDs to upgrade, 4 UIs, 4 SSO configs | One of each | Newer, fewer people run it in production *(unsure about maturity in late 2026)* |
-| Promotion view | Scattered | One UI shows dev/staging/prod side by side | One UI |
-| Hub outage | n/a | No deploys anywhere; running workloads unaffected | Same |
+**Decided: one Argo CD per cluster, so one per environment.** Each Argo CD manages only the cluster it runs in.
 
-**Recommend B now, with C as the planned evolution once Argo CD Agent is GA and boring.** Mitigate B's blast radius:
-- The hub runs in its own account, on a private-only endpoint, with no workloads, SSO-only, and a short list of admins.
-- Cross-account deploy roles (§3.3), one per spoke, auditable in CloudTrail.
-- Per-environment **AppProjects** restrict each Application's destinations to one cluster and its own namespaces, and restrict source repos.
-- Prod sync windows (deny syncs outside working hours except for the `hotfix` label).
+| | Chosen: Argo CD in every cluster | Not chosen: one hub managing every cluster |
+| --- | --- | --- |
+| Blast radius | Smallest: a compromised dev or staging Argo CD can't touch prod | The hub holds admin on every cluster |
+| Network | Nothing across VPCs: each Argo CD uses its own cluster's API | The hub needs private access to every cluster's API |
+| Operations | Three Argo CDs to upgrade, three UIs, three SSO configs, all from the same Git and Terraform | One of each |
+| Cross-environment view | GitHub Deployments and a Datadog dashboard (below) | One UI |
+| Argo CD outage | Only that environment's deploys stop | Deploys stop everywhere |
 
-If the owner judges the hub-holds-prod risk too high, a sensible middle is **one Argo CD for non-prod (the hub) and a separate one inside prod**.
+Argo CD Agent (one UI, agents pulling in each cluster) was also considered. Revisit it if three UIs become a burden.
 
-**Structure (minimal change from today):**
-- Terraform registers each spoke as an Argo CD **cluster Secret** in the hub, labelled `env=dev|staging|prod`, `region=eu-west-1`, `account=<id>`. Annotations carry Terraform outputs: role ARNs, the ACM cert ARN, the WAF ACL ARN, the hosted zone, VPC id and cluster name. This is the "GitOps Bridge" pattern.
-- **One ApplicationSet `platform-roots`** in the hub, with a **cluster generator**. It creates `root-<cluster>`, which renders the existing `gitops/apps` chart with values `{repo, cluster: {name, server, env}, aws: {…annotations}}`. Every template in `gitops/apps/templates/` changes `destination.server: https://kubernetes.default.svc` to `{{ .Values.cluster.server }}`, and Application names get a cluster suffix (they all live in the hub's `argocd` namespace). **Sync waves keep working inside each root**, which wouldn't be true with one flat ApplicationSet per component. That's the reason to prefer this over a matrix generator of clusters × components.
-- `gitops/apps/templates/{dev,staging,prod}.yaml` collapse into one `orders-gateway.yaml` template that picks `environments/{{ .Values.cluster.env }}/values.yaml`. Each cluster runs only its own environment.
-- The `argocd.yaml` self-management Application moves to the hub only. Spokes run no Argo CD.
+**How each cluster's Argo CD is set up:**
+- Terraform installs it once per cluster (HA, SSO through the IdP) together with the root Application. After that Argo CD manages its own release, as it does locally.
+- The root renders the existing `gitops/apps` chart with this cluster's values: `{env, aws: {...}}`, carrying Terraform's outputs (role ARNs, the ACM cert ARN, the WAF ACL ARN, the hosted zone, the cluster name). Templates keep `destination.server: https://kubernetes.default.svc`, so **the app-of-apps and its sync waves work unchanged**.
+- Only that environment's Application is on: the dev cluster runs `orders-gateway-dev`, prod runs `orders-gateway-prod`. Locally the three run side by side in one cluster, under the same names.
+- RBAC per Argo CD: developers can sync dev; the release group syncs staging and prod. Prod also gets sync windows (no syncs outside working hours unless labelled `hotfix`).
+- One AppProject per Argo CD restricts sources to this repo and destinations to the cluster's own namespaces.
 - `gitops/values/` splits into `base/` (today's files minus kind-isms), `eks/`, and per-env overrides where needed (e.g. `gitops/values/prod/karpenter.yaml`).
 
-**Reporting deploys to GitHub.** Locally, the patch promoter writes GitHub Deployments from Argo CD's sync and health. On AWS, **argocd-notifications** should do it from the hub (its GitHub service has a `deployment` template), triggered on sync succeeded, failed and degraded. That removes a job from the promoter, and the panel updates the moment Argo CD acts instead of on the promoter's 10-minute schedule.
+**One view across environments.** With no hub, two things show dev, staging and prod side by side. **argocd-notifications** in each Argo CD reports its syncs to GitHub as **Deployments** for its environment (its GitHub service has a `deployment` template, triggered on sync succeeded, failed and degraded), so the repo's **Environments** panel shows what each environment runs and since when. And the Datadog Agent's Argo CD integration puts every Application's sync and health on one Datadog dashboard.
 
-**Promotion across clusters: keep it a Git change, exactly as today.**
-- `main` merge → CI builds, signs and pushes to ECR → the `promote-dev` commit edits `environments/dev/values.yaml` → the hub syncs the dev cluster.
-- The `promote/staging` and `promote/prod` PRs as today. The patch promoter merges patch PRs after soak, and features need an owner approval.
-- What changes: the promoter runs in the hub and reads **Datadog** (SLO status API for the 1 h window, the monitor search API for "no alerts fired", metric queries for request count and version soak) instead of Prometheus, plus the hub's Argo CD API for Synced/Healthy. Its GitHub credential becomes a GitHub App.
+**Promotion across clusters: a Git change.**
+- `main` merge → CI builds, signs and pushes to ECR → the `promote-dev` commit edits `environments/dev/values.yaml` → dev's Argo CD syncs it.
+- Staging and prod move by **promotion PR** (`promote/staging`, `promote/prod`). Each changes only that environment's image line, pinned to **digest + tag**, so the same image moves through every environment without a rebuild.
+- **The patch promoter** merges a patch PR once the previous environment has soaked: an hour on that exact digest, its SLO met, no alerts, its Application Synced and Healthy. Features wait for an owner approval. It runs as a **scheduled GitHub Actions workflow** and reads only Datadog (the SLO status API, the monitor search API, metric queries for request count and version, and each cluster's Argo CD health as the Agent reports it) and GitHub, so it holds no cluster credentials. Its GitHub credential is a GitHub App. A `promotion/PAUSED` file stops it.
+- **Patch or feature** is worked out by CI when it opens the promotion PR, from the commits in the range: a `Promotion-Kind: patch|feature` commit trailer, or conventional commits (`fix:` vs `feat:`). Only patches are auto-merged.
 - The prod PR also gets a required status check from a post-deploy staging smoke and load job (§3.9).
-- **Kargo** (Akuity) was considered: it models "freight" moving through stages, with verification. It's nice, but it duplicates what the promoter and promotion PRs already do and adds a controller. Revisit with many services.
-- Pin promotion PRs to **digest + tag**, as today. Keep `promotion/PAUSED`.
+- **Kargo** (Akuity) was considered: it models "freight" moving through stages, with verification. It's nice, but it duplicates what the promoter and promotion PRs do and adds a controller. Revisit with many services.
 
 ### 3.6 Ingress, DNS and TLS
 
@@ -257,7 +250,7 @@ Envoy's `EnvoyProxy` (`gitops/manifests/gateway/envoyproxy.yaml`) becomes `Clust
 **TLS:**
 - **Public:** ACM certificates (DNS validation in the env zone, from Terraform), attached to the ALB. Free and auto-renewed. The sketch's cert-manager + Let's Encrypt DNS-01 isn't needed at the edge.
 - **ALB → Envoy:** HTTPS with a cert from cert-manager's in-cluster CA (ALB doesn't validate backend certs, so this protects the bytes in the VPC without a PKI). Keep cert-manager. Drop `gitops/manifests/gateway/ca.yaml`'s demo naming. AWS Private CA (~$400/month per CA *(unsure)*) isn't worth it here.
-- **Internal UIs** (Argo CD on the hub, the Rollouts dashboard): an internal ALB, reached over the company VPN or Client VPN, with SSO. Grafana, Prometheus and Alertmanager disappear with Datadog.
+- **Internal UIs** (each cluster's Argo CD, the Rollouts dashboard): an internal ALB per cluster, reached over Client VPN, with SSO. Grafana, Prometheus and Alertmanager disappear with Datadog.
 
 ### 3.7 Secrets
 
@@ -329,7 +322,7 @@ If cost or lock-in dominates, C is the defensible answer. Either way, **keep the
 | Latency SLI: `/echo`+`/version` within 250 ms (`le="0.25"` bucket) | Metric SLO from the bucket counter: good = `http_request_duration_seconds.bucket{route IN (/echo,/version), upper_bound:0.25}`, total = `…count{route IN …}`. Exact, as locally *(unsure about the exact bucket tag name the OpenMetrics check emits; verify on the dev cluster)*. Or a time-slice SLO on p99 from the distribution, which is simpler but a different semantic. Prefer the ratio |
 | Fast burn 14.4× over 1 h & 5 m, `severity: page` | **SLO burn-rate alert**, long window 1 h. Datadog uses a short window of 1/12 of the long, so 5 m, which matches. Threshold 14.4 → `@pagerduty-orders` |
 | Slow burn 6× over 6 h & 30 m, `severity: ticket` | Burn-rate alert, long window 6 h (short 30 m), threshold 6 → `@slack-orders-alerts` + `@jira` |
-| Platform/security alerts (`alerts/platform-delivery.yaml`, `platform-security.yaml`) | Monitors: Argo CD app health/sync (Argo CD metrics via the Agent's Argo CD integration, scraped from the hub), Kyverno admission errors and denials, cert expiry (ACM's `DaysToExpiry` via the AWS integration, and cert-manager's for the internal cert), ExternalSecret sync failures, Inspector critical findings, Rollouts aborted, Karpenter provisioning failures |
+| Platform/security alerts (`alerts/platform-delivery.yaml`, `platform-security.yaml`) | Monitors: Argo CD app health/sync (Argo CD metrics via the Agent's Argo CD integration in each cluster), Kyverno admission errors and denials, cert expiry (ACM's `DaysToExpiry` via the AWS integration, and cert-manager's for the internal cert), ExternalSecret sync failures, Inspector critical findings, Rollouts aborted, Karpenter provisioning failures |
 | Watchdog / dead-man's switch | Datadog is the receiver now, so turn it around: **no-data monitors** on `http_requests_total` per env (the trickle and synthetics guarantee data), and an Agent-up monitor per cluster. Also a PagerDuty heartbeat fed by a Datadog synthetic, so that "Datadog can't page" is noticed *(optional)* |
 | `runbook_url` annotation + a CI check that it exists (`scripts/test-alerts.sh`) | Every monitor message carries `Runbook: https://github.com/.../runbooks/<Name>.md`, and a CI check over the Terraform monitor definitions asserts the file exists. Keep the runbook names |
 | promtool unit tests (`alerts/tests/`) | No equivalent offline test. Replace them with: (1) `terraform validate` plus Datadog's monitor validate endpoint in CI; (2) a **weekly fire drill in staging** that sets `FAULT_ERROR_RATE` (an in-cluster `POST /admin/fault`, which the edge blocks) and asserts that the fast-burn monitor goes to Alert within N minutes and recovers after reset. That tests the whole delivery path, which promtool never did |
@@ -420,9 +413,9 @@ What's stateful? **Almost nothing.** The app is stateless. Argo CD state is Git 
   - **No Velero** while there are no PVs. Revisit if stateful components arrive. *(AWS Backup has added EKS support. Unsure of its scope and maturity, and probably unnecessary here.)*
 - **DR posture, recommend pilot light:**
   - The Terraform for a second region exists and is `plan`ned in CI monthly. ECR and secrets are replicated.
-  - Recovery: apply the region's roots, register the cluster in the hub (the ApplicationSet does the rest), flip the Route 53 failover record.
+  - Recovery: apply the region's roots, Terraform installs that cluster's Argo CD and root Application (they install the rest), flip the Route 53 failover record.
   - Estimated RTO 60–90 min, RPO ≈ 0 (no data). Active-active multi-region only if the business RTO is minutes (open question).
-- **Hub loss:** workloads keep serving, and only deploys stop. Rebuild from Terraform (the hub is cattle). Runbook plus a quarterly drill.
+- **Argo CD loss in one cluster:** workloads keep serving, and only that environment's deploys stop. Reinstall it from Terraform and Git; it adopts what is already running. Runbook plus a quarterly drill.
 - **"Rebuild from scratch" drill:** quarterly in staging. Destroy and recreate the cluster from Terraform + GitOps, time it, and keep the number in the README (as the repo did with its 9 min 43 s).
 
 ### 3.12 Cost
@@ -430,20 +423,19 @@ What's stateful? **Almost nothing.** The app is stateless. Argo CD state is Git 
 Rough monthly baseline, eu-west-1, on-demand list prices, **all approximate and unsure**:
 | Item | Estimate |
 | --- | --- |
-| EKS control planes: 4 × ~$73 (dev, staging, prod, hub) | ~$290 |
-| Nodes: prod 2 system + ~2–3 apps (m7g.large ~$60 each), staging 2+2, dev 2+1 (Spot), hub 2 | ~$700–900 |
+| EKS control planes: 3 × ~$73 (dev, staging, prod) | ~$220 |
+| Nodes: prod 2 system + ~2–3 apps (m7g.large ~$60 each), staging 2+2, dev 2+1 (Spot); each cluster's Argo CD runs on its system nodes | ~$600–800 |
 | NAT: prod 3, others 1 each (~$35 each + $0.048/GB processed) | ~$210 + data |
-| ALB: dev/staging/prod public + hub internal (~$20 + LCU) | ~$100 |
+| ALB: a public and an internal one per environment (~$20 + LCU each) | ~$130 |
 | Interface endpoints, prod only (~7 × 3 AZ) | ~$150 |
 | WAF: ACL + rules + requests | ~$20–50 |
 | Secrets Manager, KMS, Route 53, ECR storage, CloudTrail/Config/GuardDuty/Inspector/Security Hub | ~$100–200 |
-| **AWS subtotal** | **~$1.6–2k** |
+| **AWS subtotal** | **~$1.5–1.9k** |
 | Datadog (§3.8) | ~$350–600+ |
 
-The table prices the fully split layout (one cluster per environment, as in the diagram in §1). With the recommended shared non-prod cluster (§3.1), drop one control plane, one set of system nodes, one NAT gateway and one ALB: about **$300–400 less**, so roughly **$1.3–1.6k** for AWS.
+The table prices the chosen layout: one account, cluster and Argo CD per environment. A shared non-prod cluster would save about $300–400 a month, at the cost of dev and staging isolation; it was considered and not chosen.
 
 **Levers, in order of payoff:**
-- **Shared non-prod cluster** (dev+staging in one cluster and account, as the sketch had it): saves a control plane, the system nodes, a NAT and an ALB, roughly $300–400/month. It weakens dev/staging isolation, which matters less than prod's. **This is the single biggest decision; see open questions.**
 - Graviton everywhere (already in the sketch). Spot for dev/staging. Karpenter consolidation. **Scale dev to zero nights and weekends** (a Karpenter NodePool limit or kube-downscaler).
 - **Datadog:** fewer, bigger nodes; APM only in prod/staging; drop `pod_name` from custom-metric tags; exclusion filters plus Flex/archives for logs; an annual commit once usage is known.
 - Compute Savings Plans after 2–3 months of steady usage (prod baseline only).
@@ -499,20 +491,19 @@ The local stack has runbooks and alerts but no people. Production needs the proc
 
 ## 4. Terraform / IaC structure
 
-Build on `docs/terraform-sketch/`. Its key line holds: **Terraform owns accounts, network, clusters, IAM and anything AWS. Argo CD owns everything inside the clusters.** What changes: the sketch's single root becomes modules + per-account roots, and its `helm_release` for Argo CD + root survives **only in the hub**. Spokes get no Helm provider at all. Terraform registers them with the hub instead.
+Build on `docs/terraform-sketch/`. Its key line holds: **Terraform owns accounts, network, clusters, IAM and anything AWS. Argo CD owns everything inside the clusters.** What changes: the sketch's single root becomes modules + per-account roots, and its `helm_release` for Argo CD + root survives **in every cluster**: Terraform installs Argo CD and the root Application once per cluster, and Argo CD then manages itself and everything else.
 
 ```
 infra/
   modules/
     org/                 # OUs, SCPs, tag policies, Identity Center permission sets + assignments
     account-baseline/    # per-account: KMS keys, budgets, GitHub OIDC provider, state bucket, default EBS encryption, IMDSv2 default
-    network/             # wraps terraform-aws-modules/vpc (as in the sketch) + endpoints + flow logs + peering/TGW attachment
+    network/             # wraps terraform-aws-modules/vpc (as in the sketch) + endpoints + flow logs
     eks-cluster/         # wraps terraform-aws-modules/eks (as in the sketch): system node group, add-ons, access entries,
                          #   Karpenter IAM + SQS interruption queue, Pod Identity associations for LBC/ExternalDNS/ESO/EBS CSI/Datadog,
                          #   ACM cert, WAF ACL, Route 53 zone; outputs a "gitops bridge" map (ARNs, IDs)
-    argocd-spoke/        # in the SPOKE account: ogp-argocd-deployer role (trusts the hub role) + access entry;
-                         #   in the HUB: the cluster Secret with labels/annotations from eks-cluster's outputs
-    argocd-hub/          # Argo CD HA via helm_release + the ApplicationSet (the sketch's helm_release "argocd"/"root", moved here)
+    argocd-bootstrap/    # Argo CD HA + SSO via helm_release, and the root Application with this cluster's values
+                         #   from eks-cluster's outputs (the sketch's helm_release "argocd"/"root")
     ecr/                 # repos, immutability, scanning config, lifecycle, repo policy (org pull), replication, pull-through rules
     github-ci-roles/     # gha-ecr-push, gha-tf-plan, gha-tf-apply with sub/aud conditions
     dns/                 # apex zone + delegations
@@ -521,9 +512,8 @@ infra/
     bootstrap/           # applied once with local state: state buckets + KMS + the tf roles; then migrated to S3
     management/          # org/, Identity Center
     security/            # GuardDuty/Security Hub/Inspector delegated admin, org trail (log-archive)
-    shared-services/     # ecr/, github-ci-roles/, dns/ apex, TGW (later)
-    tooling/             # network/, eks-cluster/ (hub), argocd-hub/
-    dev/ staging/ prod/  # each: network/, eks-cluster/, argocd-spoke/ (two providers: spoke account + hub account)
+    shared-services/     # ecr/, github-ci-roles/, dns/ apex
+    dev/ staging/ prod/  # each: network/, eks-cluster/, argocd-bootstrap/
     observability/       # datadog provider: SLOs, monitors, dashboards, synthetics, log pipelines/indexes
 ```
 
@@ -535,9 +525,9 @@ infra/
 - **CI:** `.github/workflows/infra.yml`. On PR: fmt, validate, tflint, checkov/trivy config, and `plan` for changed roots, posted as a PR comment. On main: `apply` per root in dependency order. Prod roots wait on a GitHub Environment approval. **Nightly drift detection** (`plan -detailed-exitcode`) opens an issue on drift (the same pattern as `rescan.yml`'s tracking issue).
 - **Handover to Argo CD (the GitOps bridge):**
   1. `eks-cluster` creates the cluster, the system node group and the Pod Identity associations, plus the AWS resources the in-cluster controllers will need (roles, ACM cert, WAF ACL, zone).
-  2. `argocd-spoke` writes the hub's cluster Secret: `labels: {env: prod, region: eu-west-1}` and `annotations: {aws.ogp/lbc-role: ..., aws.ogp/cert-arn: ..., aws.ogp/waf-arn: ..., aws.ogp/zone: ..., aws.ogp/cluster-name: ...}`.
-  3. The hub's ApplicationSet (`gitops/hub/platform-roots.yaml`, new) sees the Secret, creates `root-<cluster>` with those values, and the existing waves install Karpenter, LBC, ExternalDNS, ESO, Kyverno, Envoy Gateway, the Datadog Operator and finally the app.
-  4. Terraform never applies Kubernetes objects to spokes, so there's one owner per object, the property the sketch's README insists on.
+  2. `argocd-bootstrap` installs Argo CD with `helm_release` and creates the root Application, passing those outputs as Helm values: `{env: prod, aws: {lbcRole: ..., certArn: ..., wafArn: ..., zone: ..., clusterName: ...}}`.
+  3. The root renders `gitops/apps` with those values, and the existing waves install Karpenter, LBC, ExternalDNS, ESO, Kyverno, Envoy Gateway, the Datadog Operator and finally the app. Argo CD then manages its own release through its `argocd` Application, so Terraform's `helm_release` is only the first install (`lifecycle { ignore_changes = all }`).
+  4. Terraform applies nothing else to Kubernetes, so there's one owner per object, the property the sketch's README insists on.
 - **Not in Terraform:** anything with a Kubernetes API, Helm values of platform components, the app's environments. **In Terraform even though it's "observability":** Datadog monitors, SLOs and dashboards (§3.8).
 
 ---
@@ -545,7 +535,7 @@ infra/
 ## 5. Phased migration plan
 
 **Phase 0: choices and foundations (1–2 weeks)**
-- Answer the open questions below, especially non-prod layout, region, domain, IdP and budget.
+- Answer the open questions below, especially region, domain, IdP and budget.
 - `live/bootstrap`, the Organization, SCPs, Identity Center, the security/log-archive baseline (CloudTrail, GuardDuty, Security Hub, Config), budgets.
 - GitHub: branch protection on main, a GitHub App for automation, individual identities.
 
@@ -554,10 +544,10 @@ infra/
 - `cd-app.yml` dual-pushes GHCR and ECR, signing both. The demo tags move to a separate repo.
 - Kyverno policies accept both registries (in the local stack too, so CI keeps testing the policies).
 
-**Phase 2: hub + the non-prod cluster, dev first (2–3 weeks)**
-- Tooling and non-prod networks, the hub cluster with Argo CD HA + SSO, the non-prod cluster with the `dev` namespace.
-- **Repo refactor:** `destination.server` and cluster values in `gitops/apps/templates/*`, the EKS values layer, the ApplicationSet, ESO/LBC/ExternalDNS/Karpenter Applications.
-- **Keep the kind path working.** The local root passes `cluster.server = https://kubernetes.default.svc`, so the compose stack and CI's cluster job still test the same templates.
+**Phase 2: the dev account and cluster (2–3 weeks)**
+- The dev network and cluster, with its own Argo CD (HA + SSO).
+- **Repo refactor:** cluster values in `gitops/apps` (`env`, `aws`), so each cluster's root turns on only its own environment's Application; the EKS values layer; ESO, LBC, ExternalDNS and Karpenter Applications.
+- **Keep the kind path working.** The local root keeps all three environments in one cluster, as `orders-gateway-dev`, `-staging` and `-prod`, so the Compose stack and CI's cluster job still test the same templates.
 - The Datadog Operator in dev. Run it **in parallel with** kube-prometheus-stack in dev for a couple of weeks to check that the Datadog SLO numbers match the PromQL recording rules.
 
 **Phase 3: observability as code (1–2 weeks, overlaps phase 2)**
@@ -566,7 +556,7 @@ infra/
 - Promoter gates switched to the Datadog APIs.
 
 **Phase 4: staging + test series (2 weeks)**
-- Staging: the `staging` namespace in the non-prod cluster, or its own account and cluster if open question 1 splits it out. The canary on in staging.
+- Staging: its own account, cluster and Argo CD, from the same modules. The canary on in staging.
 - PostSync smoke hooks, the k6 Operator nightly load, the weekly soak, the API tests in PR CI, the alert fire drill, the first FIS game day.
 
 **Phase 5: prod (2 weeks + soak)**
@@ -574,7 +564,7 @@ infra/
 - A prod game day before traffic. DNS cut-over (if there's existing traffic, weighted Route 53 records to ramp up).
 
 **Phase 6: can wait**
-- DR-region pilot light and its drill, Savings Plans, the Argo CD Agent migration, FQDN egress control (Cilium/Network Firewall).
+- DR-region pilot light and its drill, Savings Plans, Argo CD Agent if one UI across the three Argo CDs is wanted, FQDN egress control (Cilium/Network Firewall).
 - Kargo, a multi-region active-active setup, AWS Private CA, Shield Advanced, Velero/AWS Backup (only if state appears).
 
 **Remove after prod is live:** kube-prometheus-stack, Loki, Alloy, Grafana, `alert-receiver` and Sealed Secrets from the EKS layer. **Keep them in the local kind stack**: the "cluster in a box" remains the offline teaching and CI environment, and the README should say which layer is which.
@@ -583,17 +573,17 @@ infra/
 
 ## 6. Open questions for the owner
 
-1. **Separate dev and staging clusters (and accounts), or one shared non-prod?** You asked for per-env clusters. The sketch had dev+staging shared, which saves ~$300–400/month and some operations. I'd go with **prod alone, non-prod shared** unless staging must mirror prod's IAM/network exactly.
-2. **One Argo CD hub for all, or hub for non-prod plus its own Argo CD in prod?** It's a blast-radius question.
-3. **Region(s) and data residency:** eu-west-1 as in the sketch? Is a DR region required, and what RTO/RPO?
-4. **Real traffic and users?** Expected request rate decides node counts, whether prod needs the trickle for canaries, and whether Datadog's cost is justified.
-5. **Budget ceiling**, and is there an existing Datadog contract and site (US1 vs EU1)? An existing PagerDuty, or Datadog On-Call?
-6. **Datadog all-in vs AWS-managed Prometheus/Grafana:** OK with rewriting `alerts/` and `dashboards/` as Datadog Terraform, and losing the promtool unit tests in favour of fire drills?
-7. **IdP** for Identity Center, Argo CD and Datadog SSO (Okta, Entra, Google)?
-8. **Domain name** for the apex zone, and are the per-env subdomains OK?
-9. **Public Sigstore OK** (keyless signatures in the public Rekor log naming the repo), or switch to cosign with a KMS key?
-10. **Compliance target** (SOC 2, ISO 27001, PCI)? It changes Config packs, log retention and access reviews.
-11. **Who approves prod promotions** once every person and bot has its own GitHub identity? Does the patch promoter keep auto-merging prod patches?
-12. **Kyverno fail-closed in prod:** accept that a full Kyverno outage blocks new app pods (including rollbacks), relying on 3 replicas + PDB? Or keep `Ignore` with background re-scans as the safety net? Recommend **Fail**.
-13. **Terraform or OpenTofu**, and Terragrunt or plain roots?
-14. Should **prod's public edge stay this strict** (only `/work`, `/echo`, `/version`), when the local edge forwards everything the app serves?
+**Decided:** one account, one EKS cluster and one Argo CD per environment (dev, staging, prod). No hub, no shared non-prod cluster.
+
+1. **Region(s) and data residency:** eu-west-1 as in the sketch? Is a DR region required, and what RTO/RPO?
+2. **Real traffic and users?** Expected request rate decides node counts, whether prod needs the trickle for canaries, and whether Datadog's cost is justified.
+3. **Budget ceiling**, and is there an existing Datadog contract and site (US1 vs EU1)? An existing PagerDuty, or Datadog On-Call?
+4. **Datadog all-in vs AWS-managed Prometheus/Grafana:** OK with rewriting `alerts/` and `dashboards/` as Datadog Terraform, and losing the promtool unit tests in favour of fire drills?
+5. **IdP** for Identity Center, Argo CD and Datadog SSO (Okta, Entra, Google)?
+6. **Domain name** for the apex zone, and are the per-env subdomains OK?
+7. **Public Sigstore OK** (keyless signatures in the public Rekor log naming the repo), or switch to cosign with a KMS key?
+8. **Compliance target** (SOC 2, ISO 27001, PCI)? It changes Config packs, log retention and access reviews.
+9. **Who approves prod promotions** once every person and bot has its own GitHub identity? Does the patch promoter keep auto-merging prod patches?
+10. **Kyverno fail-closed in prod:** accept that a full Kyverno outage blocks new app pods (including rollbacks), relying on 3 replicas + PDB? Or keep `Ignore` with background re-scans as the safety net? Recommend **Fail**.
+11. **Terraform or OpenTofu**, and Terragrunt or plain roots?
+12. Should **prod's public edge stay this strict** (only `/work`, `/echo`, `/version`), when the local edge forwards everything the app serves?
