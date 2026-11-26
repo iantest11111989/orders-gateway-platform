@@ -17,6 +17,9 @@ metadata:
     {{- include "orders-gateway.labels" . | nindent 4 }}
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: {{ .Values.ingress.entrypoint }}
+    # After the Deployment is healthy (wave 0): a new or renamed app gets
+    # traffic only once its pods are ready.
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   rules:
@@ -53,6 +56,7 @@ metadata:
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: {{ .Values.ingress.entrypoint }}
     traefik.ingress.kubernetes.io/router.middlewares: {{ .Release.Namespace }}-{{ $name }}-admin-deny@kubernetescrd
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   rules:
