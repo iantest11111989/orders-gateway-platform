@@ -167,6 +167,110 @@ class Gates(unittest.TestCase):
         self.assertIn("image tag in the commit subject", failing(gates))
 
 
+VALUES = """# prod
+env: prod
+
+image:
+  tag: sha-feedfacecafe
+  digest: sha256:abc
+replicas: 3
+"""
+
+
+def fake_deploy_world(sync="Synced", health="Healthy", rev="r2", latest_sha="r1", latest_state="success"):
+    """A fake GitHub + Kubernetes for report_environment; records writes."""
+    import base64
+    writes = []
+
+    def kube_get(path):
+        return {"status": {"sync": {"status": sync, "revision": rev}, "health": {"status": health}}}
+
+    def gh(method, path, body=None):
+        if method == "GET" and path.startswith("/contents/environments/"):
+            assert path.endswith(f"?ref={rev}"), path
+            return {"content": base64.b64encode(VALUES.encode()).decode()}
+        if method == "GET" and path.startswith("/deployments?environment="):
+            return [{"id": 41, "sha": latest_sha}] if latest_sha else []
+        if method == "GET" and path == "/deployments/41/statuses?per_page=1":
+            return [{"state": latest_state}] if latest_state else []
+        if method == "POST" and path == "/deployments":
+            writes.append(("deployment", body))
+            return {"id": 42}
+        if method == "POST" and path.endswith("/statuses"):
+            writes.append((path, body))
+            return {}
+        raise AssertionError((method, path))
+    return gh, kube_get, writes
+
+
+class Deployments(unittest.TestCase):
+    def setUp(self):
+        self.token = promoter.TOKEN
+        promoter.TOKEN = "t"
+
+    def tearDown(self):
+        promoter.TOKEN = self.token
+
+    def test_state_mapping(self):
+        self.assertEqual(promoter.deploy_state("Synced", "Healthy"), "success")
+        self.assertEqual(promoter.deploy_state("Synced", "Degraded"), "failure")
+        self.assertEqual(promoter.deploy_state("OutOfSync", "Healthy"), "in_progress")
+        self.assertEqual(promoter.deploy_state("Synced", "Progressing"), "in_progress")
+        self.assertIsNone(promoter.deploy_state("Unknown", "Missing"))
+
+    def test_values_tag(self):
+        self.assertEqual(promoter.values_tag(VALUES), "sha-feedfacecafe")
+        self.assertEqual(promoter.values_tag('image:\n  repository: x\n  tag: "local-1"\n'), "local-1")
+        self.assertIsNone(promoter.values_tag("replicas: 1\n"))
+
+    def test_new_revision_creates_a_deployment(self):
+        gh, kube_get, writes = fake_deploy_world(rev="r2", latest_sha="r1")
+        out = promoter.report_environment("prod", gh, kube_get)
+        self.assertEqual(writes[0][0], "deployment")
+        dep = writes[0][1]
+        self.assertEqual((dep["ref"], dep["environment"], dep["description"]), ("r2", "prod", "sha-feedfacecafe"))
+        self.assertTrue(dep["production_environment"])
+        self.assertEqual(writes[1], ("/deployments/42/statuses", {
+            "state": "success", "description": "Argo CD Synced/Healthy: sha-feedfacecafe",
+            "environment": "prod", "auto_inactive": True}))
+        self.assertIn("deployment: success", out)
+
+    def test_same_revision_new_state_adds_only_a_status(self):
+        gh, kube_get, writes = fake_deploy_world(health="Degraded", rev="r1", latest_sha="r1", latest_state="success")
+        promoter.report_environment("staging", gh, kube_get)
+        self.assertEqual([w[0] for w in writes], ["/deployments/41/statuses"])
+        self.assertEqual(writes[0][1]["state"], "failure")
+
+    def test_nothing_changed_writes_nothing(self):
+        gh, kube_get, writes = fake_deploy_world(rev="r1", latest_sha="r1", latest_state="success")
+        self.assertIn("unchanged", promoter.report_environment("dev", gh, kube_get))
+        self.assertEqual(writes, [])
+
+    def test_unknown_state_is_skipped(self):
+        gh, kube_get, writes = fake_deploy_world(sync="Unknown", health="Missing")
+        self.assertIn("skipped", promoter.report_environment("dev", gh, kube_get))
+        self.assertEqual(writes, [])
+
+    def test_dry_run_writes_nothing(self):
+        promoter.TOKEN = ""
+        gh, kube_get, writes = fake_deploy_world(rev="r2", latest_sha="r1")
+        self.assertIn("dry run", promoter.report_environment("prod", gh, kube_get))
+        self.assertEqual(writes, [])
+
+    def test_a_token_without_the_permission_does_not_stop_the_pass(self):
+        def gh(method, path, body=None):
+            raise RuntimeError(f"GitHub {method} {path}: HTTP 403: Resource not accessible")
+        lines = []
+        log, promoter.log = promoter.log, lines.append
+        try:
+            promoter.report_deployments(gh, lambda p: {"status": {"sync": {"status": "Synced", "revision": "r"},
+                                                                   "health": {"status": "Healthy"}}})
+        finally:
+            promoter.log = log
+        self.assertEqual(len(lines), 3)
+        self.assertTrue(all("Deployments: read and write" in line for line in lines))
+
+
 class Parsing(unittest.TestCase):
     def test_trailer(self):
         msg = "x\n\nPromotion-Range: a..b\nPromotion-Kind: patch\n"

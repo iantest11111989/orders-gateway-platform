@@ -34,6 +34,7 @@ reads the public repo, logs the gate table and changes nothing. Standard
 library only, so it runs on a plain python image.
 """
 
+import base64
 import http.client
 import json
 import os
@@ -266,11 +267,79 @@ def evaluate(env, pr, paused, gh=github_ok, prom=prometheus, kube_get=kube):
     return tag, gates
 
 
+# Argo CD's half of the pipeline, shown on GitHub: each environment becomes a
+# GitHub Deployment at the revision Argo CD synced, with the image version,
+# so the repo's Environments panel and the promotion PRs say what's live
+# (decision 0033). Reported on every pass; a new Deployment only when the
+# revision changes, a new status only when the state does.
+ENVIRONMENTS = ("dev", "staging", "prod")
+
+
+def deploy_state(sync, health):
+    """Argo CD's sync/health as a GitHub deployment state (None: don't report)."""
+    if health == "Degraded":
+        return "failure"
+    if sync == "Synced" and health == "Healthy":
+        return "success"
+    if sync == "OutOfSync" or health == "Progressing":
+        return "in_progress"
+    return None  # Unknown, Missing, Suspended: nothing useful to say
+
+
+def values_tag(text):
+    """The image tag in an environment's values file."""
+    m = re.search(r"^image:\s*\n(?:[ \t]+.*\n)*?[ \t]+tag:[ \t]*\"?([^\"\s#]+)", text, re.M)
+    return m.group(1) if m else None
+
+
+def report_environment(env, gh=github_ok, kube_get=kube):
+    """Report one environment; returns what was done, for the log."""
+    st = kube_get(f"/apis/argoproj.io/v1alpha1/namespaces/argocd/applications/{env}").get("status", {})
+    sync, health = st.get("sync", {}).get("status"), st.get("health", {}).get("status")
+    rev = st.get("sync", {}).get("revision")
+    state = deploy_state(sync, health)
+    if not rev or not state:
+        return f"skipped ({sync}/{health})"
+    raw = gh("GET", f"/contents/environments/{env}/values.yaml?ref={rev}")
+    tag = values_tag(base64.b64decode(raw.get("content", "")).decode()) or "?"
+    desc = f"Argo CD {sync}/{health}: {tag}"
+    latest = gh("GET", f"/deployments?environment={env}&per_page=1")
+    if latest and latest[0]["sha"] == rev:
+        dep = latest[0]
+        statuses = gh("GET", f"/deployments/{dep['id']}/statuses?per_page=1")
+        if statuses and statuses[0]["state"] == state:
+            return f"unchanged ({state}, {tag})"
+        action = "status"
+    else:
+        if not TOKEN:
+            return f"would create a deployment: {state}, {tag} at {rev[:7]} (dry run)"
+        dep = gh("POST", "/deployments", {
+            "ref": rev, "environment": env, "description": tag, "auto_merge": False,
+            "required_contexts": [],  # CI gated the merge already; this records what Argo CD did
+            "production_environment": env == "prod", "payload": {"version": tag, "source": "argo-cd"}})
+        action = "deployment"
+    if not TOKEN:
+        return f"would set {state} ({tag}) (dry run)"
+    gh("POST", f"/deployments/{dep['id']}/statuses", {
+        "state": state, "description": desc[:140], "environment": env, "auto_inactive": True})
+    return f"{action}: {state}, {tag} at {rev[:7]}"
+
+
+def report_deployments(gh=github_ok, kube_get=kube):
+    for env in ENVIRONMENTS:
+        try:
+            log(f"{env}: GitHub deployment {report_environment(env, gh, kube_get)}")
+        except RuntimeError as e:
+            hint = " (the token needs Deployments: read and write)" if "HTTP 403" in str(e) or "HTTP 404" in str(e) else ""
+            log(f"{env}: GitHub deployment not reported: {e}{hint}")
+
+
 def run():
     owner = REPO.split("/")[0]
     paused = is_paused(github)
     log(f"repo {REPO}, {'live' if TOKEN else 'dry run (no token)'}, soak {SOAK_MINUTES} min"
         + (", PAUSED" if paused else ""))
+    report_deployments()
     for env in ("staging", "prod"):
         prs = github_ok("GET", f"/pulls?state=open&base=main&head={owner}:promote/{env}")
         if not prs:

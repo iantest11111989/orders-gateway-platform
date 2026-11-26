@@ -45,3 +45,4 @@ Records are not edited after they are accepted. If a decision changes, add a new
 | [0030](0030-ship-and-rollback.md) | Ship and roll back by Git change, with a local image | Accepted |
 | [0031](0031-application-finalizers.md) | Which Applications delete their resources when they go | Accepted |
 | [0032](0032-every-ui-on-a-plain-port.md) | Every UI on a plain port, so nothing needs 80/443 | Accepted |
+| [0033](0033-argo-syncs-as-github-deployments.md) | Argo CD's syncs shown on GitHub as Deployments | Accepted |

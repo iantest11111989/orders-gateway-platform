@@ -49,7 +49,7 @@ The trickle is always on, so **dev's rates read higher than k6 alone**, and the 
 
 ## Setup: a GitHub token, which only the owner can create
 
-Without a token the promoter is a **dry run**: it reads the public repo and logs the gate table, which you can see in Loki with `{namespace="promoter"}`. It changes nothing. To go live, create a fine-grained token for this repository only, with **Contents: read and write** and **Pull requests: read and write**, and store it in the cluster:
+Without a token the promoter is a **dry run**: it reads the public repo and logs the gate table, which you can see in Loki with `{namespace="promoter"}`. It changes nothing. To go live, create a fine-grained token for this repository only, with **Contents: read and write**, **Pull requests: read and write** and **Deployments: read and write** (the last one so it can show Argo CD's syncs on GitHub, decision 0033), and store it in the cluster:
 
 ```sh
 ./platform shell
