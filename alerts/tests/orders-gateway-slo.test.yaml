@@ -14,21 +14,21 @@ tests:
   - name: availability fast burn
     interval: 1m
     input_series:
-      - series: 'http_requests_total{namespace="prod", route="/work", method="GET", status="200"}'
+      - series: 'http_requests_total{service="orders-gateway", namespace="prod", route="/work", method="GET", status="200"}'
         values: '0+600x90'
-      - series: 'http_requests_total{namespace="prod", route="/work", method="GET", status="500"}'
+      - series: 'http_requests_total{service="orders-gateway", namespace="prod", route="/work", method="GET", status="500"}'
         values: '0+60x90'
     promql_expr_test:
       - expr: round(slo:orders_availability_errors:ratio_rate5m, 0.0001)
         eval_time: 10m
         exp_samples:
-          - labels: '{namespace="prod"}'
+          - labels: '{service="orders-gateway", namespace="prod"}'
             value: 0.0909
     alert_rule_test:
       - eval_time: 10m
         alertname: OrdersGatewayAvailabilityFastBurn
         exp_alerts:
-          - exp_labels: {namespace: prod, severity: page, slo: orders-availability}
+          - exp_labels: {service: orders-gateway, namespace: prod, severity: page, slo: orders-availability}
             exp_annotations:
               summary: "orders-gateway in prod is burning its availability error budget fast"
               description: "9.091% of /work and /echo requests failed with 5xx over the last hour (the SLO allows 0.5%). At this rate the whole 30-day error budget is gone in about 2 days."
@@ -39,7 +39,7 @@ tests:
       - eval_time: 30m
         alertname: OrdersGatewayAvailabilitySlowBurn
         exp_alerts:
-          - exp_labels: {namespace: prod, severity: ticket, slo: orders-availability}
+          - exp_labels: {service: orders-gateway, namespace: prod, severity: ticket, slo: orders-availability}
             exp_annotations:
               summary: "orders-gateway in prod is steadily burning its availability error budget"
               description: "9.091% of /work and /echo requests failed with 5xx over the last 6 hours (the SLO allows 0.5%). At this rate the 30-day error budget is gone in about 5 days."
@@ -55,23 +55,23 @@ tests:
   - name: availability slow burn, 4xx excluded
     interval: 1m
     input_series:
-      - series: 'http_requests_total{namespace="staging", route="/work", method="GET", status="200"}'
+      - series: 'http_requests_total{service="orders-gateway", namespace="staging", route="/work", method="GET", status="200"}'
         values: '0+600x90'
-      - series: 'http_requests_total{namespace="staging", route="/echo", method="GET", status="404"}'
+      - series: 'http_requests_total{service="orders-gateway", namespace="staging", route="/echo", method="GET", status="404"}'
         values: '0+600x90'
-      - series: 'http_requests_total{namespace="staging", route="/work", method="GET", status="500"}'
+      - series: 'http_requests_total{service="orders-gateway", namespace="staging", route="/work", method="GET", status="500"}'
         values: '0+30x90'
     promql_expr_test:
       - expr: round(slo:orders_availability_errors:ratio_rate30m, 0.0001)
         eval_time: 40m
         exp_samples:
-          - labels: '{namespace="staging"}'
+          - labels: '{service="orders-gateway", namespace="staging"}'
             value: 0.0476
     alert_rule_test:
       - eval_time: 40m
         alertname: OrdersGatewayAvailabilitySlowBurn
         exp_alerts:
-          - exp_labels: {namespace: staging, severity: ticket, slo: orders-availability}
+          - exp_labels: {service: orders-gateway, namespace: staging, severity: ticket, slo: orders-availability}
             exp_annotations:
               summary: "orders-gateway in staging is steadily burning its availability error budget"
               description: "4.762% of /work and /echo requests failed with 5xx over the last 6 hours (the SLO allows 0.5%). At this rate the 30-day error budget is gone in about 5 days."
@@ -86,29 +86,29 @@ tests:
   - name: latency fast burn
     interval: 1m
     input_series:
-      - series: 'http_requests_total{namespace="prod", route="/work", method="GET", status="200"}'
+      - series: 'http_requests_total{service="orders-gateway", namespace="prod", route="/work", method="GET", status="200"}'
         values: '0+600x90'
-      - series: 'http_request_duration_seconds_bucket{namespace="prod", route="/echo", le="0.25"}'
+      - series: 'http_request_duration_seconds_bucket{service="orders-gateway", namespace="prod", route="/echo", le="0.25"}'
         values: '0+500x90'
-      - series: 'http_request_duration_seconds_bucket{namespace="prod", route="/echo", le="+Inf"}'
+      - series: 'http_request_duration_seconds_bucket{service="orders-gateway", namespace="prod", route="/echo", le="+Inf"}'
         values: '0+600x90'
-      - series: 'http_request_duration_seconds_count{namespace="prod", route="/echo"}'
+      - series: 'http_request_duration_seconds_count{service="orders-gateway", namespace="prod", route="/echo"}'
         values: '0+600x90'
-      - series: 'http_request_duration_seconds_bucket{namespace="prod", route="/work", le="0.25"}'
+      - series: 'http_request_duration_seconds_bucket{service="orders-gateway", namespace="prod", route="/work", le="0.25"}'
         values: '0+0x90'
-      - series: 'http_request_duration_seconds_count{namespace="prod", route="/work"}'
+      - series: 'http_request_duration_seconds_count{service="orders-gateway", namespace="prod", route="/work"}'
         values: '0+600x90'
     promql_expr_test:
       - expr: round(slo:orders_latency_errors:ratio_rate5m, 0.0001)
         eval_time: 10m
         exp_samples:
-          - labels: '{namespace="prod"}'
+          - labels: '{service="orders-gateway", namespace="prod"}'
             value: 0.1667
     alert_rule_test:
       - eval_time: 10m
         alertname: OrdersGatewayLatencyFastBurn
         exp_alerts:
-          - exp_labels: {namespace: prod, severity: page, slo: orders-latency}
+          - exp_labels: {service: orders-gateway, namespace: prod, severity: page, slo: orders-latency}
             exp_annotations:
               summary: "orders-gateway in prod is burning its latency error budget fast"
               description: "16.67% of /echo and /version requests took longer than 250 ms over the last hour (the SLO allows 0.5%). At this rate the whole 30-day error budget is gone in about 2 days."
@@ -122,22 +122,22 @@ tests:
   - name: healthy and short blip
     interval: 1m
     input_series:
-      - series: 'http_requests_total{namespace="dev", route="/work", method="GET", status="200"}'
+      - series: 'http_requests_total{service="orders-gateway", namespace="dev", route="/work", method="GET", status="200"}'
         values: '0+600x90'
-      - series: 'http_request_duration_seconds_bucket{namespace="dev", route="/echo", le="0.25"}'
+      - series: 'http_request_duration_seconds_bucket{service="orders-gateway", namespace="dev", route="/echo", le="0.25"}'
         values: '0+600x90'
-      - series: 'http_request_duration_seconds_count{namespace="dev", route="/echo"}'
+      - series: 'http_request_duration_seconds_count{service="orders-gateway", namespace="dev", route="/echo"}'
         values: '0+600x90'
-      - series: 'http_requests_total{namespace="prod", route="/work", method="GET", status="200"}'
+      - series: 'http_requests_total{service="orders-gateway", namespace="prod", route="/work", method="GET", status="200"}'
         values: '0+600x90'
       # 2 minutes of 50% errors at minute 60-62, then none.
-      - series: 'http_requests_total{namespace="prod", route="/work", method="GET", status="500"}'
+      - series: 'http_requests_total{service="orders-gateway", namespace="prod", route="/work", method="GET", status="500"}'
         values: '0x60 600 1200 1200x28'
     promql_expr_test:
       - expr: slo:orders_availability_errors:ratio_rate5m{namespace="dev"}
         eval_time: 30m
         exp_samples:
-          - labels: 'slo:orders_availability_errors:ratio_rate5m{namespace="dev"}'
+          - labels: 'slo:orders_availability_errors:ratio_rate5m{service="orders-gateway", namespace="dev"}'
             value: 0
     alert_rule_test:
       - eval_time: 30m
@@ -152,3 +152,24 @@ tests:
       - eval_time: 80m
         alertname: OrdersGatewayAvailabilitySlowBurn
         exp_alerts: []
+
+  # Another app in the same namespace (the hello-world demo) failing and slow
+  # must not count against orders-gateway's SLOs.
+  - name: another app's errors don't burn orders-gateway's budget
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{service="orders-gateway", namespace="prod", route="/work", method="GET", status="200"}'
+        values: '0+600x90'
+      - series: 'http_requests_total{service="hello-world", namespace="prod", route="/work", method="GET", status="500"}'
+        values: '0+600x90'
+      - series: 'http_request_duration_seconds_bucket{service="orders-gateway", namespace="prod", route="/version", le="0.25"}'
+        values: '0+600x90'
+      - series: 'http_request_duration_seconds_count{service="orders-gateway", namespace="prod", route="/version"}'
+        values: '0+600x90'
+      - series: 'http_request_duration_seconds_bucket{service="hello-world", namespace="prod", route="/version", le="0.25"}'
+        values: '0+0x90'
+      - series: 'http_request_duration_seconds_count{service="hello-world", namespace="prod", route="/version"}'
+        values: '0+600x90'
+    alert_rule_test:
+      - {eval_time: 60m, alertname: OrdersGatewayAvailabilityFastBurn, exp_alerts: []}
+      - {eval_time: 60m, alertname: OrdersGatewayLatencyFastBurn, exp_alerts: []}

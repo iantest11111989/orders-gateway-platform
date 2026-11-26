@@ -162,8 +162,8 @@ Work from the symptom inwards:
 2. **What's alerting?** Alertmanager at <http://localhost:9093>. Every alert links to a runbook in [`runbooks/`](runbooks/README.md): what it means, how to confirm it, what to do.
 3. **What do the logs say?** Grafana → Explore → Loki. The app's JSON logs parse with no setup:
    ```logql
-   {namespace="prod", app="app"} | json | status >= 500
-   {namespace="prod", app="app"} | json | route="/echo" | duration_ms > 250
+   {namespace="prod", app="orders-gateway"} | json | status >= 500
+   {namespace="prod", app="orders-gateway"} | json | route="/echo" | duration_ms > 250
    ```
 4. **Is Kubernetes happy?** `./platform shell`, then `kubectl -n prod get pods,events` and `argocd app list` (or <http://localhost:8081>). `./platform verify` names anything unhealthy.
 5. **Was it a release?** If **Pods by version** changed when the errors began, `./platform rollback` first, investigate after.

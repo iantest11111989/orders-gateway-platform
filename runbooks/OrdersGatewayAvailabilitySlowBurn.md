@@ -35,17 +35,17 @@ The alert's `namespace` label tells you which environment it is. Use it for `<na
    ```
 2. **What do the failing requests say?** In Grafana Explore, choose Loki:
    ```logql
-   {namespace="<namespace>", app="app"} | json | level="error"
+   {namespace="<namespace>", app="orders-gateway"} | json | level="error"
 
    # Errors per minute by pod and version
-   sum by (pod, version) (count_over_time({namespace="<namespace>", app="app"} | json | status >= 500 [1m]))
+   sum by (pod, version) (count_over_time({namespace="<namespace>", app="orders-gateway"} | json | status >= 500 [1m]))
    ```
    A request sent with a `traceparent` header logs its `trace_id`: search for it to follow that request.
 3. **Did something just change?**
    ```sh
    ./platform kubectl -n <namespace> get deploy,pods -o wide
    ./platform kubectl -n <namespace> get configmap app -o yaml | grep FAULT   # the app's settings (envFrom)
-   ./platform kubectl -n <namespace> rollout history deploy/app              # recent revisions
+   ./platform kubectl -n <namespace> rollout history deploy/orders-gateway              # recent revisions
    ```
    Check the Argo CD UI for a recent sync of this environment.
 
