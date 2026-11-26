@@ -1,6 +1,6 @@
 # CI/CD in production
 
-This repo runs all of its CI/CD on your machine. `./pipeline ci` tests, builds, scans and (with `--chart`) releases the chart. `./pipeline cd` deploys by changing `cd/<app>/<env>.yaml`, and Argo CD syncs that change from the Git server inside the cluster. GitHub only runs checks on pull requests. This page describes how a production team would run the same pipeline in CI, and why this repo doesn't. Nothing here is built locally: the repo produces no versioned packages, and this page only describes them.
+This repo is a practice tool: whoever clones it runs the whole CI/CD loop on their own machine, for two apps (`orders-gateway` and `hello-world`). `./pipeline ci <app> --version X` tests, builds and scans the app, then publishes image and chart as version X to a registry inside the stack. `./pipeline cd <app> <env> --version X` promotes a published version by changing `cd/<app>/<env>.yaml`, in order (dev, then staging, then prod) and through health gates. Argo CD syncs that change from the Git server inside the cluster. `./pipeline rollback` goes back the same way. GitHub only runs checks on pull requests. This page describes how a production team would run the same pipeline in CI, and why this repo runs it locally.
 
 The AWS side (accounts, ECR, IAM, one Argo CD per cluster) is in [`production-on-aws.md`](production-on-aws.md), §3.4 and §3.5. This page covers the pipeline itself.
 
@@ -18,17 +18,17 @@ The AWS side (accounts, ECR, IAM, one Argo CD per cluster) is in [`production-on
 
 ## 2. The pipeline stages
 
-The stages are the ones `./pipeline ci` and [`ci-app.yml`](../.github/workflows/ci-app.yml) run today. Production adds pushing to a registry and signing for real.
+The stages are the ones `./pipeline ci` and [`ci-app.yml`](../.github/workflows/ci-app.yml) run today. Production moves them into CI, publishes to a real registry and signs for real.
 
 | Stage | Locally (`./pipeline ci`) | On a pull request (`ci-app.yml`, today) | On main (production) |
 | --- | --- | --- | --- |
 | **Lint** | `npm run lint` | `npm run lint`, hadolint (Dockerfile), plus shellcheck and actionlint in `infra.yml` | same as the pull request |
 | **Test** | `npm test` in the Dockerfile's Node image | the same, then a smoke test of the built image (non-root, read-only, endpoints, SIGTERM drain) and a 60 s k6 gate held to the SLOs | same as the pull request |
-| **Build** | `docker build`, loaded into kind as `localhost/<app>:<tag>` | both architectures (amd64 and arm64), pushed nowhere | both architectures, pushed by digest |
+| **Build** | `docker build` | both architectures (amd64 and arm64), pushed nowhere | both architectures, pushed by digest |
 | **Scan** | Trivy, the version CI pins; fails on a HIGH or CRITICAL with a fix | same | same, on the pushed digest. The registry rescans continuously (ECR + Inspector) for CVEs published later |
-| **Sign** | not signed: Kyverno admits `localhost/` images only locally | a rehearsal against a throwaway local registry | cosign keyless (OIDC identity = this workflow on `refs/heads/main`), an SBOM attached, then `cosign verify` |
-| **Publish** | nothing | nothing | the image to the registry, and the chart as an OCI package when its version went up (§3) |
-| **Deploy** | `./pipeline cd <app> <env>` commits to the in-stack Git server | nothing | dev: a commit to `cd/<app>/dev.yaml`. staging and prod: a promotion PR (§4) |
+| **Sign** | not signed: the stack's registry is admitted only locally | a rehearsal against a throwaway local registry | cosign keyless (OIDC identity = this workflow on `refs/heads/main`), an SBOM attached, then `cosign verify` |
+| **Publish** | with `--version X`: image `<app>:X` and chart `<app>` X to the stack's registry; a published version can't be overwritten. Without `--version`: a dev-only build | nothing | the image to the registry, and the chart as an OCI package when its version went up (§3) |
+| **Deploy** | `./pipeline cd <app> <env> --version X` changes the env file (through the gates, §4) and pushes it to the in-stack Git server | nothing | dev: a commit to `cd/<app>/dev.yaml`. staging and prod: a promotion PR (§4) |
 
 Rules that stay the same everywhere:
 - **Pull requests get no secrets and a read-only token.** Only main publishes or signs. Every job declares least-privilege permissions.
@@ -38,21 +38,17 @@ Rules that stay the same everywhere:
 
 ## 3. How the image and the chart ship together
 
-Each environment's file pins both things that run there:
+One version number per app covers both. Each environment's file pins it:
 
 ```yaml
 # cd/orders-gateway/prod.yaml
-chartVersion: 0.3.0          # which chart
-image:
-  tag: sha-9ab553b08d9f      # which image (tag for people, digest for the cluster)
-  digest: sha256:4a3e...
+version: 1.2.0     # image orders-gateway:1.2.0 and chart orders-gateway 1.2.0
 ```
 
-- **The image** is built and pushed on every merge to main that changes `apps/<app>/`. Its tag is the commit (`sha-<12 hex>`) and its digest is immutable.
-- **The chart** is published only when `helm/<app>/Chart.yaml`'s `version` goes up: `helm package`, `helm push` to an OCI registry (`oci://<registry>/charts/<app>`), signed with cosign. A version can't be overwritten (immutable tags in the registry, and CI refuses an existing version). Locally, a copy in `releases/<app>/<version>/` plays this role, and `CI · chart versions` enforces the same rules: bump on change, never edit a release.
-- **The Argo CD Application** for staging or prod takes the chart from the registry at `chartVersion` and the values from Git (`cd/<app>/values.yaml` + `<env>.yaml`).
-- **They move independently or together.** An app change bumps only `image`. A chart change (a new probe, a PDB setting) bumps only `chartVersion`. A change that needs both (say, a new port in the app and in the Service) bumps both in the same promotion PR, so they can't arrive out of order. dev runs the chart from `helm/<app>/` as it is, so a chart change is tested in dev before it's released.
-- **Compatibility:** the chart should keep working with the image before it (and the other way round) for one version, so either can be rolled back alone.
+- **Locally:** `./pipeline ci orders-gateway --version 1.2.0` publishes image `orders-gateway:1.2.0` and chart `orders-gateway` 1.2.0 to the stack's registry, together. The Argo CD Application for that environment takes the chart from the registry at that version, and the values from Git (`cd/<app>/values.yaml` + `<env>.yaml`). dev can also run a dev-only build (no version): the chart from `helm/<app>/` as it is and an unpublished image, so a change is tried in dev before it's released.
+- **In production:** a release is a Git tag per app, `orders-gateway-v1.2.0`. CI on that tag builds and pushes the image by digest, packages the chart (`helm package`, `helm push` to `oci://<registry>/charts/<app>`), and signs both with cosign. The registry has immutable tags, and CI refuses a version that exists. Every merge to main also publishes a `sha-<commit>` build that only dev runs.
+- **Why one number:** "deploy orders-gateway 1.2.0 to staging" says everything, and the image and chart can't arrive out of order. The cost is that a chart-only change (a probe, a PDB setting) is also a new app version. Teams that need them apart pin `image` and `chartVersion` separately, at the price of a compatibility matrix.
+- **Rollback** is the previous version in the env file: image and chart go back together.
 
 ## 4. Promotion: a pull request per environment file
 
@@ -67,18 +63,17 @@ flowchart LR
 ```
 
 - **dev** follows main: CI commits the new image to `cd/<app>/dev.yaml` right after publishing. That's the only direct push to main, made by a GitHub App with a narrow branch-protection bypass.
-- **staging and prod** move by pull request. CI opens or updates `promote/staging` with the new image (and `chartVersion`, if the chart was released). The PR changes only that environment's file, so its diff is the release. Merging it is the deploy.
+- **staging and prod** move by pull request. CI opens or updates `promote/staging` with the new version. The PR changes only that environment's file, so its diff is the release. Merging it is the deploy.
 - **Gates** run as checks on the promotion PR: dev healthy and within its SLO for a soak period, no firing alerts, an E2E run against the change, then human approval for prod (a GitHub environment with required reviewers). `production-on-aws.md` §3.5 adds a patch promoter that auto-merges patch-only changes once they've soaked.
-- **Rollback** is a revert PR of the promotion commit, back to the previous digest and chart version. Argo CD syncs it like any other change. The same thing locally is `./pipeline rollback <app> <env>`.
+- **The same gates locally:** `./pipeline cd` refuses a version the previous environment hasn't run (from the env files' Git history), and `scripts/promotion-gate.sh` refuses while the previous environment's Argo CD Application isn't Synced and Healthy or an alert fires there for the app. `--force` skips both, for emergencies. Human approval has no local equivalent: you are the approver.
+- **Rollback** is a revert PR of the promotion commit, back to the previous version. Argo CD syncs it like any other change. The same thing locally is `./pipeline rollback <app> <env>`.
 - **Many apps:** each app has its own `cd/<app>/` files and its own promotion PRs, so apps release on their own schedules. A pipeline triggered by `apps/<app>/**` (a matrix over changed apps) keeps one workflow for all of them.
 
-## 5. Why this repo keeps CI/CD local
+## 5. Why this repo runs CI/CD locally
 
-The repo has to do two things: start the whole Kubernetes stack from one checkout on any machine, and show a real delivery pipeline. In GitHub, the two pull against each other:
+- **It's a practice tool.** Someone who clones the repo has no CI of their own on GitHub and no write access to anyone's registry. If the pipeline only ran on GitHub, they could watch it but not practice it. Locally they run every step: change the app, publish a version, promote it, fail a gate, roll back.
+- **Nobody's cluster follows someone else's main.** Each cluster follows the checkout it was started from, through its own Git server. A GitHub-driven pipeline would need the cluster to follow GitHub, so everyone would run whatever was merged last.
+- **One mode, not two.** The repo used to have a "GitHub mode" where CI pushed to GHCR, committed to dev and opened promotion PRs. Every change had to work both ways. Now there is one path, and the E2E tests it.
+- **What stays on GitHub is what keeps the repo working:** lint, manifest validation, policy and alert tests, each app's pull request checks, security scans, and the E2E (a fresh cluster on a runner: platform build, platform verify, then both apps through `./pipeline ci` and `cd` under traffic). None of them publish or deploy, apart from the toolbox image the scripts run in.
 
-- **A GitHub pipeline needs the cluster to follow GitHub.** Then a fresh clone can't deploy its own changes without pushing to GitHub, and a fork or an offline machine can't run the stack at all. The local stack follows its own Git server, which holds exactly the checkout it was started from.
-- **Two modes means two things to test.** The repo used to have a "GitHub mode", where CI pushed images to GHCR, committed to dev and opened promotion PRs. Every change had to work in both modes, and the promotion PRs depended on GitHub tokens, branch protection and a published registry.
-- **Packages need a registry.** Publishing images and charts per app means credentials, retention and signing identities, none of which a local demo can reproduce faithfully. Pretending to would be worse than describing it.
-- **What stays on GitHub is what any clone can reproduce:** lint, manifest validation, policy tests, the app's pull request checks, security scans and the fresh-install E2E. None of them deploy or publish, apart from the toolbox image the scripts run in.
-
-So the local pipeline keeps the shape of production (stages, Git-driven deploys, immutable releases, rollback by Git change), and this page and `ci-app.yml` show what moves to CI in a real setup.
+So the local pipeline has the shape of production (stages, versioned and immutable releases, Git-driven deploys, ordered promotion through gates, rollback by Git change), and this page and `ci-app.yml` show what moves to CI in a real setup.

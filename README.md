@@ -232,9 +232,10 @@ The app is a single Node event loop with a 3-second warm-up, a `/readyz` that tu
 
 ```mermaid
 flowchart LR
-  ci["./pipeline ci<br/>test, lint · build<br/>scan (Trivy) · load into kind"] --> cd["./pipeline cd &lt;env&gt;<br/>image (and chartVersion) into<br/>cd/orders-gateway/&lt;env&gt;.yaml"]
-  cd -->|"push to the cluster's Git server"| argo(["Argo CD syncs dev, staging or prod"])
-  rb["./pipeline rollback &lt;env&gt;"] -->|"the previous image, also a commit"| argo
+  ci["./pipeline ci &lt;app&gt; --version X<br/>test, lint · build · scan (Trivy)<br/>publish image + chart X"] --> reg[("registry in the stack")]
+  reg --> cd["./pipeline cd &lt;app&gt; &lt;env&gt; --version X<br/>in order dev → staging → prod,<br/>through the health gates"]
+  cd -->|"env file change, pushed to the cluster's Git server"| argo(["Argo CD syncs the env"])
+  rb["./pipeline rollback &lt;app&gt; &lt;env&gt;"] -->|"the previous version, also a commit"| argo
 ```
 
 GitHub Actions only checks pull requests and `main`; nothing there builds a package or deploys:
