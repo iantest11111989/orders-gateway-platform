@@ -10,9 +10,10 @@ metadata:
     app.kubernetes.io/part-of: orders-gateway-platform
   annotations:
     argocd.argoproj.io/sync-wave: "40"
-  # Pruning or deleting this Application also deletes what it created;
-  # without it, a rename orphaned the old resources.
-  finalizers: [resources-finalizer.argocd.argoproj.io]
+  # No resources finalizer, for now: the next change renames this Application
+  # to orders-gateway-<env>. Without the finalizer, pruning the old name
+  # leaves the running objects in place, and the new Application takes them
+  # over (same names) with no downtime. The rename puts the finalizer back.
 spec:
   project: default
   source:
