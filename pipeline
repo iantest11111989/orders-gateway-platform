@@ -1,0 +1,148 @@
+#!/bin/sh
+# ./pipeline: build an app and move it through the environments by Git
+# change, locally. Each <app> has its code in apps/<app>/, its chart in
+# helm/<app>/ and what each environment runs in cd/<app>/.
+#
+#   ./pipeline ci <app> [--tag T]
+#         test, build localhost/<app>:T (default local-YYYYMMDD-HHMMSS), scan it
+#         (Trivy: HIGH/CRITICAL with a fix fails) and load it into the kind
+#         nodes. Refuses a tag that's already built. Remembers T for `cd`.
+#   ./pipeline cd <app> <env> [--tag T]
+#         point cd/<app>/<env>.yaml at localhost/<app>:T (default: the last
+#         `ci` build), push the checkout to the in-stack Git server and wait
+#         for Argo CD to roll <env> out
+#   ./pipeline rollback <app> <env>
+#         back to the image <env> ran before its last image change
+#
+# <env> is dev, staging or prod; there's no default. The cluster must be up
+# (./platform up) in its default in-stack Git mode. In GitHub mode, CI
+# (.github/workflows) builds, signs and promotes instead.
+set -eu
+
+cd "$(dirname "$0")"
+REPO_ROOT=$(pwd)
+# shellcheck source=scripts/lib/host.sh
+. scripts/lib/host.sh
+
+usage() {
+  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-0}"
+}
+
+step() { printf '==> %s\n' "$*"; }
+ok() { printf '  ✓ %s\n' "$*"; }
+
+# An app is a name with all three folders; anything else is refused.
+check_app() {
+  case "$1" in ''|*[!a-z0-9-]*) die "not an app name: '$1'" ;; esac
+  [ -d "apps/$1" ] && [ -d "helm/$1" ] && [ -d "cd/$1" ] ||
+    die "unknown app '$1': expected apps/$1/, helm/$1/ and cd/$1/ (apps: $(cd apps && echo *))"
+}
+
+check_env() {
+  case "$1" in dev|staging|prod) ;; *) die "<env> must be dev, staging or prod, not '$1'" ;; esac
+  [ -f "cd/$app/$1.yaml" ] || die "no cd/$app/$1.yaml"
+}
+
+check_tag() {
+  case "$1" in
+    latest) die "pick a real tag: :latest is refused in the app namespaces" ;;
+    ''|[!A-Za-z0-9_]*|*[!A-Za-z0-9_.-]*) die "not an image tag: '$1'" ;;
+  esac
+}
+
+# --tag T, the only option; sets $tag.
+parse_tag() {
+  tag=''
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --tag) [ $# -ge 2 ] || die "--tag needs a value"; tag=$2; shift 2 ;;
+      *) die "unexpected argument: $1" ;;
+    esac
+  done
+}
+
+last_tag_file() { echo ".build/$app.last-tag"; }
+
+ci() {
+  parse_tag "$@"
+  tag=${tag:-local-$(date -u +%Y%m%d-%H%M%S)}
+  check_tag "$tag"
+  app_img="localhost/$app:$tag"
+  check_docker
+  docker image inspect "$app_img" >/dev/null 2>&1 &&
+    die "$app_img is already built: tags are never reused (pick another --tag)"
+
+  step "Test (npm test, npm run lint) in the Dockerfile's Node image"
+  node_image=$(sed -n 's/^FROM \(node:[^ ]*\) AS app$/\1/p' "apps/$app/Dockerfile")
+  [ -n "$node_image" ] || die "no 'FROM node:… AS app' line in apps/$app/Dockerfile"
+  docker run --rm -v "$REPO_ROOT/apps/$app":/app -w /app "$node_image" sh -c 'npm test && npm run lint' ||
+    die "tests failed"
+  ok "tests pass"
+
+  step "Build $app_img"
+  docker build -q -t "$app_img" --build-arg "VERSION=$tag" "apps/$app" >/dev/null || die "build failed"
+  ok "built"
+
+  step "Scan $app_img (Trivy, the version CI pins)"
+  trivy=$(sed -n 's/^ *TRIVY_IMAGE: *\([^ ]*\).*/\1/p' .github/workflows/ci-app.yml | head -1)
+  [ -n "$trivy" ] || die "no TRIVY_IMAGE in .github/workflows/ci-app.yml"
+  rc=0
+  docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache/trivy \
+    "$trivy" image --quiet --scanners vuln \
+    --db-repository ghcr.io/aquasecurity/trivy-db:2,public.ecr.aws/aquasecurity/trivy-db:2 \
+    --skip-java-db-update --severity HIGH,CRITICAL --ignore-unfixed --exit-code 3 \
+    --format table "$app_img" || rc=$?
+  case $rc in
+    0) ok "no HIGH or CRITICAL vulnerability with a fix" ;;
+    3) docker image rm -f "$app_img" >/dev/null; die "vulnerabilities to fix (above); the image was removed" ;;
+    *) docker image rm -f "$app_img" >/dev/null; die "the scanner failed (exit $rc), so nothing is known about the image; it was removed" ;;
+  esac
+
+  TOOLBOX_EXEC="" run_toolbox env APP="$app" bash scripts/ship.sh load "$tag"
+  mkdir -p .build
+  echo "$tag" >"$(last_tag_file)"
+  echo
+  echo "  $app_img is ready. Deploy it: ./pipeline cd $app <dev|staging|prod>"
+}
+
+cd_env() {
+  [ $# -ge 1 ] || die "usage: ./pipeline cd <app> <env> [--tag T]"
+  env=$1; shift
+  check_env "$env"
+  parse_tag "$@"
+  if [ -z "$tag" ]; then
+    [ -f "$(last_tag_file)" ] || die "no --tag and no earlier build: run ./pipeline ci $app first"
+    tag=$(cat "$(last_tag_file)")
+  fi
+  check_tag "$tag"
+  check_docker
+  if [ "$env" = prod ]; then
+    echo "  Note: localhost/$app is allowed here only so local builds can run"
+    echo "  (policies/restrict-image-registries.yaml). A real prod admits only images CI"
+    echo "  built and signed on main."
+  fi
+  TOOLBOX_EXEC="" run_toolbox env APP="$app" bash scripts/ship.sh deploy --env "$env" "$tag"
+  echo
+  echo "  Roll back: ./pipeline rollback $app $env"
+}
+
+rollback() {
+  [ $# -eq 1 ] || die "usage: ./pipeline rollback <app> <env>"
+  check_env "$1"
+  check_docker
+  run_toolbox env APP="$app" bash scripts/ship.sh rollback --env "$1"
+}
+
+[ $# -ge 1 ] || usage 1
+cmd=$1; shift
+case "$cmd" in -h|--help|help) usage 0 ;; esac
+[ $# -ge 1 ] || usage 1
+app=$1; shift
+check_app "$app"
+case "$cmd" in
+  ci) ci "$@" ;;
+  cd) cd_env "$@" ;;
+  rollback) rollback "$@" ;;
+  *) printf 'unknown command: %s\n\n' "$cmd" >&2; usage 1 ;;
+esac

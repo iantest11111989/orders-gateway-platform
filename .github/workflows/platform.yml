@@ -4,10 +4,10 @@ on:
   pull_request:
     # labeled: adding the run-e2e label starts the fresh-install test.
     types: [opened, synchronize, reopened, labeled]
-    paths: ["platform", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "bootstrap/**", "system/**", "helm/**", "cd/**", "alerts/**", "policies/**", ".github/workflows/**", ".shellcheckrc"]
+    paths: ["platform", "pipeline", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "bootstrap/**", "system/**", "helm/**", "cd/**", "alerts/**", "policies/**", ".github/workflows/**", ".shellcheckrc"]
   push:
     branches: [main]
-    paths: ["platform", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "bootstrap/**", "system/**", "helm/**", "cd/**", "alerts/**", "policies/**", ".github/workflows/**", ".shellcheckrc"]
+    paths: ["platform", "pipeline", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "bootstrap/**", "system/**", "helm/**", "cd/**", "alerts/**", "policies/**", ".github/workflows/**", ".shellcheckrc"]
   # The promotion PRs (cd-app.yml, job promote-prs) are opened with GITHUB_TOKEN,
   # which starts no pull_request workflows; that job dispatches this one on
   # the PR's branch instead, and the results show on the PR's head commit.
@@ -32,7 +32,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD":/mnt -w /mnt \
             koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d \
-            -x platform scripts/*.sh toolbox/install-tools.sh
+            -x platform pipeline scripts/*.sh scripts/lib/host.sh toolbox/install-tools.sh
       - name: docker-compose.yml uses the current toolbox image
         run: sh scripts/check-compose-toolbox.sh
       - name: actionlint
@@ -96,7 +96,7 @@ jobs:
 
   # Publishes the toolbox from main, so `./platform` pulls it instead of
   # building it locally (minutes on a fresh machine). The tag is the same hash
-  # of toolbox/ that `./platform` computes (toolbox_image in ./platform), so a
+  # of toolbox/ that `./platform` computes (toolbox_image in scripts/lib/host.sh), so a
   # change to any pinned tool gives a new tag, and an unchanged toolbox isn't
   # rebuilt. Signed and checked like the app image (scripts/sign-images.sh),
   # with this workflow on main as the identity.

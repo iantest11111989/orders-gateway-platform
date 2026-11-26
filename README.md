@@ -137,6 +137,17 @@ while true; do curl -s -o /dev/null -w '%{http_code} ' 'http://localhost:8080/wo
 
 `ship` builds `apps/orders-gateway/` as `localhost/orders-gateway:local-<timestamp>` (or `./platform ship <tag>`), loads it into the kind nodes, sets it in `cd/orders-gateway/prod.yaml` and pushes the checkout to the cluster's Git server. Argo CD then replaces prod's pods one at a time, never dropping below full capacity. `rollback` puts back the image prod ran before (a second `rollback` goes further back) and leaves the values file as Git has it. Both wait for the rollout, then print the pods by version and the 5-minute error rate. `--env dev|staging` targets another environment.
 
+**Step by step, like CI: `./pipeline`.** The same thing split into stages, for any app with `apps/<app>/`, `helm/<app>/` and `cd/<app>/`:
+
+```sh
+./pipeline ci orders-gateway                # test, build, scan (Trivy), load into kind
+./pipeline cd orders-gateway dev            # deploy that build to dev ...
+./pipeline cd orders-gateway staging        # ... then staging, then prod
+./pipeline rollback orders-gateway staging  # back to staging's previous image
+```
+
+`ci` refuses a tag it has already built (`--tag T` picks one), and `cd` deploys the last `ci` build unless given `--tag`. The environment is always named: there's no default.
+
 These are Git changes on purpose: `kubectl set image` or `kubectl rollout undo` would be reverted by Argo CD within seconds.
 
 **Tested with traffic flowing.** CI ships and rolls back while three clients hit `:8080` the whole time, and fails on any non-200: 2,641 requests, 0 errors ([run](https://github.com/iantest11111989/orders-gateway-platform/actions/runs/45710719231/job/139544268716)).
@@ -325,7 +336,8 @@ policies/               Kyverno policies and tests
 dashboards/             Grafana dashboards (JSON)
 alerts/                 Prometheus alert rules and tests
 runbooks/               one per alert
-platform                the CLI
+platform                the CLI: the cluster (up, down, verify, demos, ...)
+pipeline                ci, cd and rollback for an app, locally
 scripts/                what ./platform runs inside the toolbox
 cluster/                kind cluster config
 toolbox/                toolbox image
