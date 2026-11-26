@@ -5,10 +5,10 @@ name: CI · infra
 
 on:
   pull_request:
-    paths: ["platform", "pipeline", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "bootstrap/**", "system/**", "helm/**", "cd/**", "alerts/**", "policies/**", ".github/workflows/**", ".shellcheckrc"]
+    paths: ["platform", "pipeline", "docker-compose.yml", "scripts/**", "demo/**", "toolbox/**", "cluster/**", "bootstrap/**", "system/**", "helm/**", "cd/**", "alerts/**", "policies/**", ".github/workflows/**", ".shellcheckrc"]
   push:
     branches: [main]
-    paths: ["platform", "pipeline", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "bootstrap/**", "system/**", "helm/**", "cd/**", "alerts/**", "policies/**", ".github/workflows/**", ".shellcheckrc"]
+    paths: ["platform", "pipeline", "docker-compose.yml", "scripts/**", "demo/**", "toolbox/**", "cluster/**", "bootstrap/**", "system/**", "helm/**", "cd/**", "alerts/**", "policies/**", ".github/workflows/**", ".shellcheckrc"]
   workflow_dispatch:
 
 permissions:

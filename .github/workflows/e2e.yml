@@ -6,10 +6,10 @@ name: E2E
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
-    paths: ["platform", "pipeline", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "bootstrap/**", "system/**", "apps/**", "helm/**", "cd/**", "alerts/**", "policies/**", ".github/workflows/e2e.yml"]
+    paths: ["platform", "pipeline", "docker-compose.yml", "scripts/**", "demo/**", "toolbox/**", "cluster/**", "bootstrap/**", "system/**", "apps/**", "helm/**", "cd/**", "alerts/**", "policies/**", ".github/workflows/e2e.yml"]
   push:
     branches: [main]
-    paths: ["platform", "pipeline", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "bootstrap/**", "system/**", "apps/**", "helm/**", "cd/**", "alerts/**", "policies/**", ".github/workflows/e2e.yml"]
+    paths: ["platform", "pipeline", "docker-compose.yml", "scripts/**", "demo/**", "toolbox/**", "cluster/**", "bootstrap/**", "system/**", "apps/**", "helm/**", "cd/**", "alerts/**", "policies/**", ".github/workflows/e2e.yml"]
   workflow_dispatch:
 
 permissions:
