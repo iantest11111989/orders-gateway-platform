@@ -99,11 +99,11 @@ flowchart LR
   end
 
   user([Browser, curl, k6]) -->|":8080 prod · :8082 dev · :8083 staging<br/>:3000 Grafana · :8081 Argo CD<br/>:9090 Prometheus · :9093 Alertmanager"| gw
-  gh[(GitHub: CI builds, scans,<br/>signs; promotion PRs)] -.->|GitHub mode| argocd
+  dev([./pipeline ci / cd / rollback]) -->|"push this checkout"| git
 ```
 
 - **Compose is only the outer shell.** Its `ready` service runs the toolbox, creates the kind cluster, installs Argo CD and hands it the root Application, then stays up as the health signal. The four `step-*` services do no work: their healthchecks show progress.
-- **Git is the only way in.** Argo CD follows a Git server inside the cluster, which `ready` (and `./platform up`, `ship`, `rollback`) pushes this checkout to, with self-heal and prune on. Set `REPO_URL=https://github.com/...` to follow GitHub instead, where CI and promotion pull requests take over.
+- **Git is the only way in.** Argo CD follows a Git server inside the cluster, which `ready` (and `./platform up`, `./pipeline`, `ship`, `rollback`) pushes this checkout to, with self-heal and prune on. CI/CD is local; GitHub only runs checks on pull requests.
 - **Argo CD installs everything with Helm,** itself included, in sync waves: CRDs, then controllers, then monitoring, policies and the UI Ingresses, then the apps.
 - **One edge.** Traefik (2 replicas, a disruption budget) serves every port as a standard Kubernetes Ingress, and refuses `/admin/*` from outside with a 403.
 - **Alerts you can see.** Alertmanager delivers to a small `alert-receiver` that logs each alert as JSON into Loki. The always-firing Watchdog proves the path works.
@@ -140,19 +140,21 @@ while true; do curl -s -o /dev/null -w '%{http_code} ' 'http://localhost:8080/wo
 **Step by step, like CI: `./pipeline`.** The same thing split into stages, for any app with `apps/<app>/`, `helm/<app>/` and `cd/<app>/`:
 
 ```sh
-./pipeline ci orders-gateway                # test, build, scan (Trivy), load into kind
-./pipeline cd orders-gateway dev            # deploy that build to dev ...
-./pipeline cd orders-gateway staging        # ... then staging, then prod
-./pipeline rollback orders-gateway staging  # back to staging's previous image
+./pipeline ci orders-gateway --version 1.2.0          # test, build, scan (Trivy), publish image + chart 1.2.0
+./pipeline cd orders-gateway dev --version 1.2.0      # deploy it to dev ...
+./pipeline cd orders-gateway staging --version 1.2.0  # ... then staging, then prod
+./pipeline rollback orders-gateway staging            # back to staging's previous version
 ```
 
-`ci` refuses a tag it has already built (`--tag T` picks one), and `cd` deploys the last `ci` build unless given `--tag`. The environment is always named: there's no default.
+A published version is never overwritten. Without `--version`, `ci` makes a dev-only build that only dev can run. Promotion goes in order: staging takes only a version dev has run, prod only one staging has run, and only while the previous environment is healthy (Argo CD Synced and Healthy, no firing alerts for the app). `--force` skips those checks for emergencies; rollback is always allowed. The environment is always named: there's no default.
+
+**dev syncs by itself; staging and prod wait for you.** Each env file says `autoSync: true` or `false` (dev true, staging and prod false). Where it's off, `cd` and `rollback` push the change and stop: open Argo CD (http://localhost:8081), look at the diff, and click **Sync**, or rerun with `--sync` to sync from the command line and wait for the rollout. Flip `autoSync` in `cd/<app>/<env>.yaml` to change it for one app and environment.
 
 These are Git changes on purpose: `kubectl set image` or `kubectl rollout undo` would be reverted by Argo CD within seconds.
 
 **Tested with traffic flowing.** CI ships and rolls back while three clients hit `:8080` the whole time, and fails on any non-200: 2,641 requests, 0 errors ([run](https://github.com/iantest11111989/orders-gateway-platform/actions/runs/45710719231/job/139544268716)).
 
-**From GitHub instead.** In GitHub mode every merge to `main` builds, scans, signs and pushes an image and commits it to dev; staging and prod move by pull request. Roll back there with a revert PR.
+**Why local, and how production differs.** All CI/CD here runs on your machine, so the whole stack stays reproducible from one checkout; GitHub only checks pull requests. [`docs/ci-cd-in-production.md`](docs/ci-cd-in-production.md) describes the pipeline a real team would run in CI: signed images and chart packages, and promotion by pull request.
 
 ## When it's broken
 
@@ -184,7 +186,8 @@ Start with `./platform doctor` (Docker, CPU, memory, disk, ports) and `./platfor
 | `up` fails: "nodes advertise more than their cap" | An old cluster | `./platform down && ./platform up` |
 | `budget` reports `OOMKilled` | A container hit its memory limit | `./platform kubectl -n <ns> describe pod <pod>`; limits are in `system/<component>/values.yaml` |
 | A pod in `dev`, `staging`, `prod` or `demo` is refused by `disallow-latest-tag` or `verify-image-signatures` | Working as intended | Use a tagged, signed image |
-| An app is `OutOfSync` after a manual change | Self-heal puts it back from Git | Change Git, not the cluster |
+| An app is `OutOfSync` after a manual change | Where `autoSync` is on (dev, the platform), self-heal puts it back from Git | Change Git, not the cluster |
+| staging or prod is `OutOfSync` after `./pipeline cd` | `autoSync` is off there: the change is waiting for its Sync | Click **Sync** in Argo CD, or rerun with `--sync`. `ArgoCDManualSyncPending` fires after an hour |
 | `docker compose up -d --wait` waits forever, `ready` unhealthy | The cluster was deleted while an old `ready` kept running | `docker compose down && docker compose up -d --wait` |
 | A demo was interrupted | Its copy is left in `demo` | `./platform demo clean` |
 | Under Colima, a path in `/tmp` isn't found | Colima only shares your home folder | Keep the checkout under `~` |
@@ -226,35 +229,31 @@ The app is a single Node event loop with a 3-second warm-up, a `/readyz` that tu
 
 **Secrets.** No plain secrets in the repo: they're SealedSecrets, encrypted for the cluster's Sealed Secrets controller. Its key is a **demo key committed to Git** so every clone can decrypt; a real setup keeps the key out of Git or uses External Secrets. CI fails on any plain `Secret` or private key apart from that demo key. `admin12345` is a published demo login, not a secret.
 
-**GitOps.** By default Argo CD reconciles the cluster from the Git server inside it, with self-heal and prune, and every change (`ship` and `rollback` included) is a commit. In GitHub mode, staging and prod move by pull request: CI opens one per environment for each new image, and the owner merges it.
+**GitOps.** Argo CD reconciles the cluster from the Git server inside it, with self-heal and prune, and every change (`./pipeline cd`, `rollback`, `ship` included) is a commit. In production, staging and prod would move by pull request instead ([`docs/ci-cd-in-production.md`](docs/ci-cd-in-production.md)).
 
-**The pipeline.** GitHub Actions does CI; Argo CD, inside the cluster, does CD. Every arrow into an environment is a Git commit.
+**The pipeline.** `./pipeline` does CI and CD on your machine; Argo CD, inside the cluster, deploys. Every arrow into an environment is a Git commit.
 
 ```mermaid
 flowchart LR
-  pr["Pull request<br/>1 · test, lint<br/>2 · build both arches<br/>rehearse signing"] -->|review, merge| main["main"]
-  main --> build["2 · build and push to GHCR<br/>3 · sign (cosign) · scan (Trivy)"]
-  build --> devc["4 · commit image to<br/>cd/orders-gateway/dev.yaml"]
-  devc --> devs(["Argo CD syncs dev"])
-  build --> prs["5 · promotion PRs<br/>for staging and prod"]
-  prs -->|"owner merges"| stc["cd/orders-gateway/staging.yaml"]
-  stc --> sts(["Argo CD syncs staging"])
-  prs -->|"owner merges, after staging"| prc["cd/orders-gateway/prod.yaml"]
-  prc --> prs2(["Argo CD syncs prod"])
-  localship["Locally: ./platform ship / rollback"] -->|"commit to the cluster's Git server"| prs2
+  ci["./pipeline ci &lt;app&gt; --version X<br/>test, lint · build · scan (Trivy)<br/>publish image + chart X"] --> reg[("registry in the stack")]
+  reg --> cd["./pipeline cd &lt;app&gt; &lt;env&gt; --version X<br/>in order dev → staging → prod,<br/>through the health gates"]
+  cd -->|"env file change, pushed to the cluster's Git server"| argo(["Argo CD syncs the env"])
+  rb["./pipeline rollback &lt;app&gt; &lt;env&gt;"] -->|"the previous version, also a commit"| argo
 ```
+
+GitHub Actions only checks pull requests and `main`; nothing there builds a package or deploys:
 
 | Workflow | When | What it does |
 | --- | --- | --- |
-| **CI · app** (`ci-app.yml`) | pull requests touching the app | 1 · test, lint → 2 · build (amd64 + arm64), scan, rehearse signing → 3 · smoke-test the image as Kubernetes runs it (non-root, read-only: warm-up, endpoints, metrics, a clean SIGTERM drain) → 4 · a 60 s k6 performance gate held to the SLOs |
-| **CD · app** (`cd-app.yml`) | merges to `main` touching the app | 1 · test, lint → 2 · build and push to GHCR → 3 · sign (cosign keyless, SBOM), scan → 4 · deploy dev → 5 · open staging and prod promotion PRs |
-| **CI · platform** | pull requests and `main` | shellcheck and actionlint · manifest validation (the chart for every environment, every manifest, checked against Kubernetes and CRD schemas and our policies) · toolbox build · **E2E · Fresh install**: `docker compose up -d --wait` on a fresh runner, restart, re-run, verify, ship and roll back under traffic, budget. It takes about 20 minutes, so on a pull request it runs only with the `run-e2e` label; it always runs on `main`, on promotion PRs and nightly |
-| **CI · alerts / policies** | pull requests and `main` | alert unit tests, runbook links and dashboard checks; `kyverno test` |
+| **CI · app** (`ci-app.yml`) | pull requests touching the app | nothing is pushed; also the reference for production's CI stages · 1 · test, lint → 2 · build (amd64 + arm64), scan, rehearse signing → 3 · smoke-test the image as Kubernetes runs it (non-root, read-only: warm-up, endpoints, metrics, a clean SIGTERM drain) → 4 · a 60 s k6 performance gate held to the SLOs |
+| **CI · infra** (`infra.yml`) | pull requests and `main` touching the platform | shellcheck and actionlint · manifest validation (the chart for every environment, every manifest, checked against Kubernetes and CRD schemas and our policies) · toolbox build |
+| **E2E** (`e2e.yml`) | `main`, by hand, and pull requests with the `run-e2e` label (about 20 minutes) | one fresh cluster, four stages reported in the job summary: **1 · Platform build** (`docker compose up -d --wait` from a clean checkout) → **2 · Platform verify** (kubeconfig, restart, re-run, `./platform verify`, budget) → **3 · App CI** (`./pipeline ci`) → **4 · App CD** (`./pipeline cd` dev → staging → prod, then rollback, with traffic on prod and zero failed requests allowed) |
+| **CI · infra · alerts / policies** | pull requests and `main` | alert unit tests, runbook links and dashboard checks; `kyverno test` |
 | **CI · security** | pull requests, `main`, weekly | CodeQL; gitleaks over the whole history |
 | **CI · secrets / renovate config** | pull requests and `main` | no plain secrets; Renovate's config is valid |
-| **Scheduled** | daily | full start-up, verify, the autoscale and gitops-revert demos on fresh x86-64 and arm64 runners; a re-scan of the running images |
+| **Scheduled** | daily | full start-up, verify, the autoscale and gitops-revert demos on fresh x86-64 and arm64 runners |
 
-Pull requests run checks only (read-only token, no secrets); pushes to `main` build, sign and promote. Every job declares least-privilege permissions and actions are pinned by commit SHA.
+Pull requests run checks only (read-only token, no secrets). On `main` the only write is publishing the toolbox image. Every job declares least-privilege permissions and actions are pinned by commit SHA.
 
 ## Resource budget (measured)
 
@@ -279,7 +278,7 @@ The largest users at idle: `kube-system` (API server, etcd) 2.3 GiB, `monitoring
 | --- | --- | --- |
 | `rolling-update` | v1 → v2 in a 3-pod copy of dev: pods replace one at a time; fails if fewer than 99.5% of requests meet the SLO | ~2 min |
 | `chaos` | delete a pod, then drain a worker; the disruption budget lets only one pod go at a time; fails if fewer than 99.5% of requests meet the SLO | ~3 min |
-| `gitops-revert` | a bad config commit (30% of requests fail) on a temporary branch that a copy of dev follows; Argo CD syncs it, then `git revert` heals it. Pushes to the cluster's Git server (in GitHub mode, needs `GITHUB_TOKEN`) | ~5 min |
+| `gitops-revert` | a bad config commit (30% of requests fail) on a temporary branch that a copy of dev follows; Argo CD syncs it, then `git revert` heals it. Pushes to the cluster's Git server | ~5 min |
 | `autoscale` | k6 sends a fixed 20 requests/s (`AUTOSCALE_RATE`), mostly CPU-heavy `/work`; the HPA scales 3 → 6 pods, then back to 3 about 5 minutes after the load stops | ~8 min |
 | `policy` | Kyverno refuses an unsigned image and a `:latest` image, printing which policy refused each and why; a signed image is admitted | <1 min |
 | `clean` | delete the demo copy (after an interrupted demo, or `--keep`) | |
@@ -289,6 +288,8 @@ Add `--keep` to leave the copy running. Watch in Argo CD or Grafana (environment
 ## Local vs a real cloud
 
 The full plan for running this on AWS (accounts, EKS, IAM, ECR, Argo CD across clusters, Datadog, tests, canaries in prod, DR, cost, on-call) is in [docs/production-on-aws.md](docs/production-on-aws.md). [`docs/terraform-sketch/`](docs/terraform-sketch/README.md) sketches the EKS part in Terraform (never applied). The short version:
+
+How CI/CD would run in production (CI providers, the pipeline stages, how image and chart ship together, promotion by pull request, and why this repo keeps CI/CD local) is in [docs/ci-cd-in-production.md](docs/ci-cd-in-production.md).
 
 | Here (local) | In the cloud | Why it's this way locally |
 | --- | --- | --- |

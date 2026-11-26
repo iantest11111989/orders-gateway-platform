@@ -21,8 +21,8 @@
 # Each edits cd/$APP/ENV.yaml in this checkout: the change is a normal file
 # change you can see, commit or revert. Not `kubectl rollout undo` or
 # `kubectl set image`: Argo CD's self-heal would put Git's version back
-# within seconds. Needs the cluster's in-stack Git server (./platform up).
-# Runs in the toolbox.
+# within seconds.
+# Argo CD follows the in-stack Git server (./platform up). Runs in the toolbox.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -154,6 +154,16 @@ roll_out() { # roll_out <image>: push the checkout, then wait for the Deployment
     sleep 3
   done
   kubectl -n "$env" rollout status "deploy/$DEPLOYMENT" --timeout=300s
+  # The sync isn't over when the new pods are: Argo CD then removes what Git
+  # no longer has (PruneLast). Wait for that, so the next promotion's gate
+  # sees this environment Synced.
+  local st deadline2=$(( $(date +%s) + 300 ))
+  while :; do
+    st=$(kubectl -n argocd get applications.argoproj.io "$APP-$env" -o jsonpath='{.status.sync.status} {.status.operationState.phase}' 2>/dev/null || true)
+    [ "$st" = "Synced Succeeded" ] && break
+    [ "$(date +%s)" -lt "$deadline2" ] || { app_status; die "$APP-$env isn't Synced after its sync (it shows: ${st:-nothing}); see ./platform verify"; }
+    sleep 3
+  done
   ok "$env runs $want"
   show
 }

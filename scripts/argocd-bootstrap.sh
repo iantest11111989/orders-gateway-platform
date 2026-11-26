@@ -7,12 +7,25 @@
 source "$(dirname "$0")/lib.sh"
 
 ARGOCD_CHART_VERSION=$(yq '.spec.sources[0].targetRevision' bootstrap/apps/templates/argocd.yaml)
-REPO_URL=${REPO_URL:-https://github.com/iantest11111989/orders-gateway-platform.git}
-REVISION=${REVISION:-main}
+# The in-stack Git server, which git-sync.sh fills with this checkout.
+REPO_URL=http://git.git.svc.cluster.local:23232/platform.git
+REVISION=main
 APPS_TIMEOUT=${APPS_TIMEOUT:-600}
 
 if kubectl -n argocd get deploy argocd-server >/dev/null 2>&1; then
   step "Argo CD already installed; it manages itself from Git"
+  # A repository added to its values since (configs.repositories, e.g. the
+  # in-stack registry) would arrive only when Argo CD syncs itself, after the
+  # apps may need it; a failed chart pull is then cached for a while. Apply
+  # them now, as the chart would (Secret argocd-repo-<key>).
+  yq -o json '.configs.repositories // {}' system/argocd/values.yaml | jq -c 'to_entries[]' |
+    while read -r repo; do
+      jq '{apiVersion: "v1", kind: "Secret",
+           metadata: {name: ("argocd-repo-" + .key), namespace: "argocd",
+                      labels: {"argocd.argoproj.io/secret-type": "repository"}},
+           stringData: .value}' <<<"$repo" | kubectl apply -f - >/dev/null
+      ok "repository $(jq -r .value.url <<<"$repo")"
+    done
 else
   step "Installing Argo CD (chart $ARGOCD_CHART_VERSION) with Helm, once"
   helm repo add argo https://argoproj.github.io/argo-helm --force-update >/dev/null

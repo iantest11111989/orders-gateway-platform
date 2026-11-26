@@ -1,15 +1,17 @@
 # CI for the app: every pull request that touches it. Tests, lints, builds
 # both architectures, scans and rehearses signing. Nothing is pushed or
-# deployed; CD (cd-app.yml) does that after the merge.
+# deployed: CI/CD for this repo is local (./pipeline). This workflow is also
+# the reference for the pipeline stages production would run in CI
+# (docs/ci-cd-in-production.md).
 name: CI · app
 
 on:
   pull_request:
-    paths: ["apps/orders-gateway/**", "!apps/orders-gateway/k6/**", "!apps/orders-gateway/**/*.md", "apps/orders-gateway/k6/load.js", "apps/orders-gateway/k6/perf-gate.js", "scripts/smoke-test-image.sh", ".github/workflows/ci-app.yml", ".github/workflows/cd-app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh"]
+    paths: ["apps/orders-gateway/**", "!apps/orders-gateway/k6/**", "!apps/orders-gateway/**/*.md", "apps/orders-gateway/k6/load.js", "apps/orders-gateway/k6/perf-gate.js", "scripts/smoke-test-image.sh", ".github/workflows/ci-app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh"]
 
 # Least privilege: jobs read the repo, and only the `image` job (the signing
 # rehearsal) may request an OIDC token. Nothing here writes packages or the
-# repo: that's CD (cd-app.yml).
+# repo.
 permissions:
   contents: read
 

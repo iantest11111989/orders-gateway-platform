@@ -73,9 +73,8 @@ case "${1:-}" in
     running argocd/argocd-repo-server
     url=$(kubectl -n argocd get application root -o jsonpath='{.spec.source.repoURL}' 2>/dev/null) ||
       { echo "root Application not created yet"; exit 1; }
-    # The in-stack Git server only exists when Argo CD follows it, not in
-    # GitHub mode (REPO_URL set).
-    case "$url" in *.git.svc*) running git/soft-serve ;; esac ;;
+    [ -n "$url" ] || { echo "root Application not created yet"; exit 1; }
+    running git/soft-serve ;;
   platform)
     left=$(not_ready '.')
     [ -z "$left" ] || { echo "not Synced/Healthy yet: $(tr "\n" " " <<<"$left")"; exit 1; } ;;
