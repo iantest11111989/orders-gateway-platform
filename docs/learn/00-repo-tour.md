@@ -177,7 +177,7 @@ Then check:
 
 ## 7. Under load and failure
 
-**Where:** the README's *Under load and failure* and *Demos*, [`scripts/demo.sh`](../../scripts/demo.sh). Each demo runs in `demo`, a copy of prod, never in prod itself.
+**Where:** the README's *Under load and failure* and *Demos*, [`demo/`](../../demo/README.md). Each demo runs in `demo`, a copy of prod, never in prod itself.
 
 With Grafana's **orders-gateway** dashboard open (environment `demo`):
 
