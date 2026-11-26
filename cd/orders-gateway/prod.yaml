@@ -3,6 +3,10 @@
 # once the new one is ready.
 env: prod
 
+# The chart this environment runs: tag orders-gateway-chart-<chartVersion>.
+# dev runs helm/orders-gateway as it is.
+chartVersion: 0.1.0
+
 image:
   tag: sha-9ab553b08d9f
   digest: sha256:4a3e5f1af2371bd526a8eed0b4fcf23f86d7475cf26350d93e0e41af684f9735

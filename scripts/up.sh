@@ -99,6 +99,8 @@ else
   ok "kube-system/sealed-secrets-demo-key"
 fi
 
+hand_over_released_apps
+
 # Argo CD syncs from the in-stack Git server by default: the cluster runs this
 # checkout. REPO_URL (e.g. this repo on GitHub) switches to
 # GitHub mode, where CI's promotion PRs apply.

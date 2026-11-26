@@ -5,9 +5,13 @@
 #   ship [--env ENV] [TAG]    build apps/$APP/ as localhost/$APP:TAG (default
 #                             local-YYYYMMDD-HHMMSS), then load + deploy
 #   load TAG                  load localhost/$APP:TAG into every kind node
-#   deploy [--env ENV] TAG    point cd/$APP/ENV.yaml at localhost/$APP:TAG,
+#   deploy [--env ENV] TAG    point cd/$APP/ENV.yaml at localhost/$APP:TAG
+#                             (and at chart $CHART too, if CHART is set),
 #                             push the checkout to the in-stack Git server and
 #                             wait for Argo CD to roll it out
+#   chart [--env ENV] VERSION  pin staging or prod to chart VERSION (tag
+#                             $APP-chart-VERSION) in cd/$APP/ENV.yaml, push
+#                             the same way and wait for it
 #   rollback [--env ENV]      put back the image ENV ran before its last image
 #                             change (read from the in-stack Git history), then
 #                             push the same way
@@ -64,6 +68,32 @@ set_image() { # set_image <repository> <tag> <digest>
   cat "$values.tmp" >"$values" && rm -f "$values.tmp"
 }
 
+# chartVersion: VERSION in the env file, every other line as it was.
+set_chart() { # set_chart <version>
+  [ "$env" != dev ] || die "dev runs helm/$APP as it is: only staging and prod pin a chart version"
+  [[ $1 =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || die "not a chart version (semver): '$1'"
+  [ "$(grep -c '^chartVersion:' "$values")" = 1 ] || die "expected one chartVersion: line in $values"
+  V="$1" awk '/^chartVersion:/ { print "chartVersion: " ENVIRON["V"]; next } { print }' "$values" >"$values.tmp" ||
+    { rm -f "$values.tmp"; die "couldn't update chartVersion in $values"; }
+  cat "$values.tmp" >"$values" && rm -f "$values.tmp"
+  ok "chart $1 (tag $APP-chart-$1)"
+}
+
+# Waits until Argo CD has applied chart VERSION to ENV (the Deployment's
+# helm.sh/chart label), after git-sync.sh pushed the checkout.
+wait_chart() { # wait_chart <version>
+  local want="$APP-$1" got deadline=$(( $(date +%s) + 300 ))
+  step "Waiting for Argo CD to apply chart $1 to $env"
+  while :; do
+    got=$(kubectl -n "$env" get deploy app -o jsonpath='{.metadata.labels.helm\.sh/chart}' 2>/dev/null || true)
+    [ "$got" = "$want" ] && break
+    [ "$(date +%s)" -lt "$deadline" ] || die "Argo CD hasn't applied chart $1 to $env after 5 minutes (the Deployment shows ${got:-nothing}); see ./platform verify"
+    sleep 3
+  done
+  kubectl -n "$env" rollout status deploy/app --timeout=300s
+  ok "$env runs chart $1"
+}
+
 show() { # what prod serves now, and its 5-minute availability SLO
   # Running pods only (from the API server): counting app_info series in
   # Prometheus would include pods that just terminated, until they go stale.
@@ -82,6 +112,7 @@ show() { # what prod serves now, and its 5-minute availability SLO
 
 roll_out() { # push the checkout, then wait for the Deployment
   bash "$(dirname "$0")/git-sync.sh"
+  [ -z "${CHART:-}" ] || wait_chart "$CHART"
   step "Waiting for Argo CD to roll $env out (Deployment app)"
   local want=$1 deadline=$(( $(date +%s) + 300 ))
   while :; do
@@ -105,6 +136,7 @@ load() { # load <tag>: the local image into every kind node
 
 deploy() { # deploy <tag>: point the env file at the local image and roll it out
   step "Pointing $env at it: $values"
+  [ -z "${CHART:-}" ] || set_chart "$CHART"
   set_image "$LOCAL_REPO" "$1" ""
   ok "image $LOCAL_REPO:$1 (digest empty: a local build has no registry digest)"
   roll_out "$LOCAL_REPO:$1"
@@ -130,6 +162,15 @@ case "$cmd" in
   deploy)
     in_stack_only
     deploy "${1:?usage: ship.sh deploy [--env ENV] TAG}"
+    ;;
+  chart)
+    in_stack_only
+    CHART=${1:?usage: ship.sh chart [--env ENV] VERSION}
+    step "Pinning $env to chart $CHART: $values"
+    set_chart "$CHART"
+    bash "$(dirname "$0")/git-sync.sh"
+    wait_chart "$CHART"
+    show
     ;;
   rollback)
     in_stack_only
@@ -170,5 +211,5 @@ case "$cmd" in
     want="$r:$t"; [ -z "$d" ] || want="$r@$d"
     roll_out "$want"
     ;;
-  *) die "usage: ship.sh ship|deploy [--env dev|staging|prod] [TAG] | load TAG | rollback [--env dev|staging|prod]" ;;
+  *) die "usage: ship.sh ship|deploy [--env dev|staging|prod] [TAG] | chart [--env staging|prod] VERSION | load TAG | rollback [--env dev|staging|prod]" ;;
 esac

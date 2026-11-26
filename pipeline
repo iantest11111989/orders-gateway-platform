@@ -3,14 +3,18 @@
 # change, locally. Each <app> has its code in apps/<app>/, its chart in
 # helm/<app>/ and what each environment runs in cd/<app>/.
 #
-#   ./pipeline ci <app> [--tag T]
+#   ./pipeline ci <app> [--tag T] [--chart V]
 #         test, build localhost/<app>:T (default local-YYYYMMDD-HHMMSS), scan it
 #         (Trivy: HIGH/CRITICAL with a fix fails) and load it into the kind
 #         nodes. Refuses a tag that's already built. Remembers T for `cd`.
-#   ./pipeline cd <app> <env> [--tag T]
+#         --chart V releases helm/<app> as chart version V: sets it in
+#         Chart.yaml (refused if tag <app>-chart-V exists); the in-stack Git
+#         server tags it on the next `cd`, CI on GitHub once it's merged.
+#   ./pipeline cd <app> <env> [--tag T] [--chart V]
 #         point cd/<app>/<env>.yaml at localhost/<app>:T (default: the last
-#         `ci` build), push the checkout to the in-stack Git server and wait
-#         for Argo CD to roll <env> out
+#         `ci` build) and, with --chart, staging or prod at chart V; push the
+#         checkout to the in-stack Git server and wait for Argo CD to roll
+#         <env> out. --chart alone changes only the chart.
 #   ./pipeline rollback <app> <env>
 #         back to the image <env> ran before its last image change
 #
@@ -25,7 +29,7 @@ REPO_ROOT=$(pwd)
 . scripts/lib/host.sh
 
 usage() {
-  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -51,21 +55,53 @@ check_tag() {
   esac
 }
 
-# --tag T, the only option; sets $tag.
-parse_tag() {
-  tag=''
+# --tag T and --chart V; set $tag and $chart.
+parse_opts() {
+  tag='' chart=''
   while [ $# -gt 0 ]; do
     case "$1" in
       --tag) [ $# -ge 2 ] || die "--tag needs a value"; tag=$2; shift 2 ;;
+      --chart) [ $# -ge 2 ] || die "--chart needs a version"; chart=$2; shift 2 ;;
       *) die "unexpected argument: $1" ;;
     esac
   done
+  [ -z "$chart" ] || check_chart_version "$chart"
+}
+
+check_chart_version() {
+  printf '%s\n' "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$' ||
+    die "not a chart version (semver, e.g. 0.2.0): '$1'"
+}
+
+# Chart versions are Git tags <app>-chart-<version>.
+chart_tag() { echo "$app-chart-$1"; }
+has_git() { git rev-parse --git-dir >/dev/null 2>&1; }
+tag_exists() { has_git && git rev-parse -q --verify "refs/tags/$1" >/dev/null; }
+chart_version() { sed -n 's/^version: *"\{0,1\}\([^" ]*\)"\{0,1\} *$/\1/p' "helm/$app/Chart.yaml"; }
+
+# --chart V: write V into Chart.yaml. Without it, say if helm/<app> changed
+# since its version was tagged (staging and prod won't get that change).
+release_chart() {
+  cur=$(chart_version)
+  if [ -n "$chart" ]; then
+    if [ "$chart" != "$cur" ]; then
+      sed "s/^version: .*/version: $chart/" "helm/$app/Chart.yaml" >"helm/$app/Chart.yaml.tmp"
+      cat "helm/$app/Chart.yaml.tmp" >"helm/$app/Chart.yaml"; rm -f "helm/$app/Chart.yaml.tmp"
+    fi
+    ok "helm/$app/Chart.yaml: version $chart (was $cur). Pin it: ./pipeline cd $app <staging|prod> --chart $chart"
+  elif tag_exists "$(chart_tag "$cur")" &&
+       ! git diff --quiet "$(chart_tag "$cur")" -- "helm/$app" 2>/dev/null; then
+    echo "  Note: helm/$app changed since $(chart_tag "$cur"). dev runs it as it is; to"
+    echo "  release it to staging and prod: ./pipeline ci $app --chart <new version>"
+  fi
 }
 
 last_tag_file() { echo ".build/$app.last-tag"; }
 
 ci() {
-  parse_tag "$@"
+  parse_opts "$@"
+  [ -z "$chart" ] || ! tag_exists "$(chart_tag "$chart")" ||
+    die "chart $chart is already released (tag $(chart_tag "$chart")): versions are never reused (pick another --chart)"
   tag=${tag:-local-$(date -u +%Y%m%d-%H%M%S)}
   check_tag "$tag"
   app_img="localhost/$app:$tag"
@@ -102,15 +138,28 @@ ci() {
   TOOLBOX_EXEC="" run_toolbox env APP="$app" bash scripts/ship.sh load "$tag"
   mkdir -p .build
   echo "$tag" >"$(last_tag_file)"
+  release_chart
   echo
   echo "  $app_img is ready. Deploy it: ./pipeline cd $app <dev|staging|prod>"
 }
 
 cd_env() {
-  [ $# -ge 1 ] || die "usage: ./pipeline cd <app> <env> [--tag T]"
+  [ $# -ge 1 ] || die "usage: ./pipeline cd <app> <env> [--tag T] [--chart V]"
   env=$1; shift
   check_env "$env"
-  parse_tag "$@"
+  parse_opts "$@"
+  if [ -n "$chart" ]; then
+    [ "$env" != dev ] || die "dev runs helm/$app as it is: --chart is for staging and prod"
+    tag_exists "$(chart_tag "$chart")" || [ "$chart" = "$(chart_version)" ] ||
+      die "no chart $chart: no tag $(chart_tag "$chart") (git fetch --tags?) and helm/$app/Chart.yaml is $(chart_version)"
+  fi
+  if [ -n "$chart" ] && [ -z "$tag" ]; then
+    check_docker
+    TOOLBOX_EXEC="" run_toolbox env APP="$app" bash scripts/ship.sh chart --env "$env" "$chart"
+    echo
+    echo "  Back to the previous chart: ./pipeline cd $app $env --chart <version>"
+    return
+  fi
   if [ -z "$tag" ]; then
     [ -f "$(last_tag_file)" ] || die "no --tag and no earlier build: run ./pipeline ci $app first"
     tag=$(cat "$(last_tag_file)")
@@ -122,7 +171,7 @@ cd_env() {
     echo "  (policies/restrict-image-registries.yaml). A real prod admits only images CI"
     echo "  built and signed on main."
   fi
-  TOOLBOX_EXEC="" run_toolbox env APP="$app" bash scripts/ship.sh deploy --env "$env" "$tag"
+  TOOLBOX_EXEC="" run_toolbox env APP="$app" CHART="$chart" bash scripts/ship.sh deploy --env "$env" "$tag"
   echo
   echo "  Roll back: ./pipeline rollback $app $env"
 }

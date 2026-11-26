@@ -18,14 +18,40 @@ OUT=out/rendered
 rm -rf "$OUT"; mkdir -p "$OUT"
 
 step "Helm: lint and render the app chart per environment"
+# dev runs helm/orders-gateway as it is; staging and prod the chart at the tag
+# their env file pins (orders-gateway-chart-<chartVersion>), with this
+# checkout's values, as Argo CD does.
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+git() { command git -c safe.directory='*' "$@"; }
+pinned_chart() { # pinned_chart <app> <env>: prints the chart folder to render
+  local app=$1 v t
+  v=$(yq '.chartVersion // ""' "cd/$app/$2.yaml")
+  [ -n "$v" ] || die "cd/$app/$2.yaml has no chartVersion"
+  t="$app-chart-$v"
+  if [ ! -d "$tmp/$t" ]; then
+    if ! git rev-parse --git-dir >/dev/null 2>&1; then
+      warn "no Git history here to find $t in: rendering $2 with helm/$app as it is" >&2
+      echo "helm/$app"; return
+    fi
+    # A shallow CI checkout has no tags: fetch just this one.
+    git rev-parse -q --verify "refs/tags/$t" >/dev/null ||
+      git fetch -q --depth=1 origin "refs/tags/$t:refs/tags/$t" 2>/dev/null ||
+      die "cd/$app/$2.yaml pins chart $v, but there's no tag $t (git fetch --tags?)"
+    mkdir -p "$tmp/$t"
+    git archive "$t" "helm/$app" | tar -x -C "$tmp/$t"
+  fi
+  echo "$tmp/$t/helm/$app"
+}
 for env in dev staging prod; do
-  helm lint helm/orders-gateway -f cd/orders-gateway/values.yaml -f "cd/orders-gateway/$env.yaml" --namespace "$env" --quiet >/dev/null ||
+  chart=helm/orders-gateway
+  [ "$env" = dev ] || chart=$(pinned_chart orders-gateway "$env")
+  helm lint "$chart" -f cd/orders-gateway/values.yaml -f "cd/orders-gateway/$env.yaml" --namespace "$env" --quiet >/dev/null ||
     die "helm lint failed for $env"
   # helm template leaves metadata.namespace unset; Argo CD applies into the
   # Application's namespace, so set it (the policies match on namespace).
-  helm template app helm/orders-gateway -f cd/orders-gateway/values.yaml -f "cd/orders-gateway/$env.yaml" --namespace "$env" |
+  helm template app "$chart" -f cd/orders-gateway/values.yaml -f "cd/orders-gateway/$env.yaml" --namespace "$env" |
     NS="$env" yq '(select(.metadata.namespace == null) | .metadata.namespace) = strenv(NS)' >"$OUT/app-$env.yaml"
-  ok "$env: $(grep -c '^kind:' "$OUT/app-$env.yaml") objects"
+  ok "$env: $(grep -c '^kind:' "$OUT/app-$env.yaml") objects (chart $(yq '.version' "$chart/Chart.yaml")$([ "$env" = dev ] && echo ', as in helm/'))"
 done
 # One file for kyverno apply (its CLI takes one --resource reliably).
 mkdir -p out/policy-input

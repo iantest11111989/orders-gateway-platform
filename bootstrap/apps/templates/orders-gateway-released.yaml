@@ -1,0 +1,83 @@
+{{- $envs := list }}
+{{- range list "staging" "prod" }}
+{{- if or (not $.Values.env) (eq $.Values.env .) }}{{ $envs = append $envs . }}{{ end }}
+{{- end }}
+{{- if $envs }}
+{{- /* One cluster per environment (the AWS design) sets env; locally it's
+     unset, so staging and prod both render here (dev has its own template). */}}
+# The app in namespaces staging and prod: one Application per environment,
+# orders-gateway-staging and orders-gateway-prod, generated from their env
+# files. Each runs the chart RELEASED as the version its file pins
+# (chartVersion: X means Git tag orders-gateway-chart-X), with the values from
+# main: cd/orders-gateway/values.yaml + <env>.yaml. So a chart change reaches
+# staging and prod only when a promotion bumps chartVersion, like an image.
+# dev follows helm/orders-gateway as it is (orders-gateway-dev.yaml).
+# Wave 40 (apps), after the edge and monitoring.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: orders-gateway-released
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: orders-gateway-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "40"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    # One set of parameters per file: its keys (.env, .chartVersion, ...)
+    # plus .path.filename.
+    - git:
+        repoURL: {{ .Values.repo.url }}
+        revision: {{ .Values.repo.revision }}
+        files:
+          {{- range $envs }}
+          - path: cd/orders-gateway/{{ . }}.yaml
+          {{- end }}
+  template:
+    metadata:
+      name: {{ `'orders-gateway-{{ .env }}'` }}
+      namespace: argocd
+      labels:
+        app.kubernetes.io/part-of: orders-gateway-platform
+      annotations:
+        argocd.argoproj.io/manifest-generate-paths: {{ `'/cd/orders-gateway/values.yaml;/cd/orders-gateway/{{ .path.filename }}'` }}
+      # Pruning or deleting this Application also deletes what it created.
+      finalizers: [resources-finalizer.argocd.argoproj.io]
+    spec:
+      project: default
+      sources:
+        # The chart, as released under the tag the env file pins.
+        - repoURL: {{ .Values.repo.url }}
+          targetRevision: {{ `'orders-gateway-chart-{{ .chartVersion }}'` }}
+          path: helm/orders-gateway
+          helm:
+            releaseName: app
+            valueFiles:
+              - $values/cd/orders-gateway/values.yaml
+              - {{ `'$values/cd/orders-gateway/{{ .path.filename }}'` }}
+        # The values, from main (or the branch up was given).
+        - repoURL: {{ .Values.repo.url }}
+          targetRevision: {{ .Values.repo.revision }}
+          ref: values
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: {{ `'{{ .env }}'` }}
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        # Auto-sync does not retry a failed sync of the same revision on its own;
+        # this covers transient failures such as a CRD not yet Established.
+        retry:
+          limit: 5
+          backoff: {duration: 5s, factor: 2, maxDuration: 1m}
+        managedNamespaceMetadata:
+          labels:
+            pod-security.kubernetes.io/enforce: restricted
+            pod-security.kubernetes.io/warn: restricted
+            pod-security.kubernetes.io/audit: restricted
+        syncOptions:
+          - CreateNamespace=true
+{{- end }}

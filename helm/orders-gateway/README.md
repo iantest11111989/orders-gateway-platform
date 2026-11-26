@@ -1,6 +1,6 @@
 # helm/orders-gateway
 
-Helm chart for `orders-gateway` (the app in `apps/orders-gateway/`). Each environment installs it with `cd/orders-gateway/values.yaml` plus its own file from `cd/orders-gateway/`, through an Argo CD Application (`bootstrap/apps/templates/orders-gateway-<env>.yaml`).
+Helm chart for `orders-gateway` (the app in `apps/orders-gateway/`). Each environment installs it with `cd/orders-gateway/values.yaml` plus its own file from `cd/orders-gateway/`, through an Argo CD Application (`bootstrap/apps/templates/`). dev runs this folder as it is; staging and prod run a released version of it: Git tag `orders-gateway-chart-<version>`, pinned by `chartVersion` in their env file (see `cd/orders-gateway/README.md`). Bump `version` in `Chart.yaml` to release a change.
 
 | Template | Always | What |
 | --- | --- | --- |
