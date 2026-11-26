@@ -56,6 +56,9 @@ case "${1:-}" in
     t=$(( $(date +%s) - 60 ))
     n=$(up_series_at "$t"); [ "$n" != 0 ] || die "Prometheus has no samples yet"
     { echo "main_rev=$rev"; echo "prom_time=$t"; echo "prom_up=$n"; } >"$STATE"
+    # The toolbox runs as root: give .build back to the checkout's owner, or
+    # ./pipeline on the host can't write there afterwards (Linux).
+    chown "$(stat -c %u:%g "$ROOT")" "$(dirname "$STATE")" "$STATE" 2>/dev/null || true
     ok "in-stack main: ${rev:0:12}"
     ok "Prometheus: $n up series at $(date -u -d "@$t" +%H:%M:%S 2>/dev/null || echo "$t")"
     for p in $(pinned); do
