@@ -7,7 +7,7 @@ name: CD · app
 on:
   push:
     branches: [main]
-    paths: ["app/**", "!app/k6/**", "!app/**/*.md", ".github/workflows/cd-app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh", "scripts/promotion-kind.sh"]
+    paths: ["app/**", "!app/k6/**", "!app/**/*.md", ".github/workflows/cd-app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh"]
   # Re-publish the images from main by hand (Actions tab, "Run workflow").
   workflow_dispatch:
 
@@ -266,7 +266,6 @@ jobs:
         with:
           ref: main
           persist-credentials: true # this job pushes its branch
-          fetch-depth: 0 # promotion-kind.sh walks main's history
       - name: Rebuild promote/${{ matrix.env }} and open or update its PR
         working-directory: .
         env:
@@ -277,10 +276,6 @@ jobs:
         run: |
           tag="sha-${GITHUB_SHA::12}"
           branch="promote/$ENV"
-          # What this promotion ships, from the image $ENV runs now (read
-          # before set-image.sh changes it): Promotion-Range/-Kind trailers.
-          trailers=$(scripts/promotion-kind.sh "$ENV" "$GITHUB_SHA")
-          kind=$(sed -n 's/^Promotion-Kind: //p' <<<"$trailers")
           scripts/set-image.sh "$ENV" "$tag" "$DIGEST"
           if git diff --quiet; then
             echo "$ENV already runs $tag" | tee -a "$GITHUB_STEP_SUMMARY"
@@ -290,8 +285,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -q -b "$branch"
           git commit -q -am "$ENV: orders-gateway $tag" \
-            -m "Image $IMAGE@$DIGEST, published and signed by $RUN_URL (commit $GITHUB_SHA)." \
-            -m "$trailers"
+            -m "Image $IMAGE@$DIGEST, published and signed by $RUN_URL (commit $GITHUB_SHA)."
           # The branch belongs to this job: each run rebuilds it from main, so
           # the PR always shows exactly one change against the newest image.
           # Refuse if someone else committed to it, so a hand-made commit is
@@ -305,20 +299,9 @@ jobs:
           fi
           git push -q --force origin "HEAD:refs/heads/$branch"
           title="Promote $ENV to $tag"
-          if [ "$kind" = patch ]; then
-            prev=dev; [ "$ENV" = prod ] && prev=staging
-            approval="**Patches only:** the patch promoter merges it once $prev has run this image for an hour with its SLO met. To stop it, commit promotion/PAUSED."
-          else
-            approval="**Needs the owner's approval**."
-          fi
           body="Moves **$ENV** to \`$tag\` (\`$DIGEST\`), the image dev runs now.
           It was published and signed by $RUN_URL.
-          $approval
-
-          Promotion kind: **$kind** (\`scripts/promotion-kind.sh\`, trailers in the commit):
-          \`\`\`
-          $trailers
-          \`\`\`"
+          **Needs the owner's approval.** (In production a patch promoter would merge patches on its own: docs/production-on-aws.md.)"
           [ "$ENV" = prod ] && body="$body
           Merging starts a rolling update of prod's Deployment (maxUnavailable 0)."
           body="$body

@@ -1026,7 +1026,7 @@ data:
         {
           "type": "timeseries",
           "title": "Requests per second",
-          "description": "/work and /echo requests per second in each environment, all statuses. Each gets the patch promoter's trickle; prod also any load you send to http://localhost:8080.",
+          "description": "/work and /echo requests per second in each environment, all statuses. Each gets the trickle; prod also any load you send to http://localhost:8080.",
           "id": 12,
           "datasource": {
             "type": "prometheus",
@@ -1268,7 +1268,7 @@ data:
         {
           "type": "stat",
           "title": "Requests per second, all environments",
-          "description": "/work and /echo per second across dev, staging and prod. Without load this is the patch promoter's trickle, about four requests a second per environment; 0 means the trickle or the gateway is down.",
+          "description": "/work and /echo per second across dev, staging and prod. Without load this is the trickle, about four requests a second per environment; 0 means the trickle or the gateway is down.",
           "id": 17,
           "datasource": {
             "type": "prometheus",

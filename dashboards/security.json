@@ -1218,7 +1218,7 @@
     {
       "type": "timeseries",
       "title": "Findings in dev, staging and prod over time",
-      "description": "Critical and high findings in the app's images per environment. A step up without a new image means a newly published CVE; a step down follows a new image (Renovate, then the patch promoter).",
+      "description": "Critical and high findings in the app's images per environment. A step up without a new image means a newly published CVE; a step down follows a new image (Renovate, then its promotion PRs).",
       "id": 14,
       "datasource": {
         "type": "prometheus",

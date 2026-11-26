@@ -84,10 +84,10 @@ flowchart TB
 | NetworkPolicies on kindnet | VPC CNI network-policy enforcement (an EKS add-on option). Same policies, plus default-deny egress | FQDN egress needs Cilium or Network Firewall (§3.13) |
 | `local-path` volumes | gp3 EBS through the CSI driver. Almost nothing stateful is left once Prometheus and Loki go | |
 | Rolling updates only (no canary) | Argo Rollouts canary in prod, analysis through Rollouts' Datadog provider | Every prod release should be a canary |
-| Patch promoter CronJob with a fine-grained token | A scheduled GitHub Actions workflow. Gates read the Datadog SLO and monitor APIs, including each cluster's Argo CD health. Token from a GitHub App | It holds no cluster credentials, so it can't become a cross-cluster admin |
-| Trickle Deployment (`gitops/manifests/promoter/trickle.yaml`) | Keep it in dev/staging. In prod use Datadog Synthetics plus real traffic | |
+| Promotion PRs that the owner merges | Add a **patch promoter**: a scheduled GitHub Actions workflow that merges patch PRs once they've soaked (§3.5). Gates read the Datadog SLO and monitor APIs, including each cluster's Argo CD health. Token from a GitHub App | It holds no cluster credentials, so it can't become a cross-cluster admin |
+| Trickle Deployment (`gitops/manifests/trickle/deployment.yaml`) | Keep it in dev/staging. In prod use Datadog Synthetics plus real traffic | |
 | `admin` / `admin12345` | SSO everywhere (IAM Identity Center + IdP) | |
-| `promotion/PAUSED` | Keep. Add Argo CD sync windows for prod freezes | |
+| No pause switch (nothing merges on its own) | A `promotion/PAUSED` file the patch promoter honours, plus Argo CD sync windows for prod freezes | |
 | Renovate | Keep. Add Terraform providers and modules | |
 
 ---
@@ -158,7 +158,7 @@ Roles, one per controller per cluster, least privilege:
 - `gha-ecr-push` (shared-services): trust `sub = repo:iantest11111989/orders-gateway-platform:ref:refs/heads/main` and `aud = sts.amazonaws.com`. Permissions: `ecr:PutImage`, `InitiateLayerUpload` and friends on `orders-gateway` only. **No delete or tag-mutation rights.** PRs get no role; they build without pushing, as `ci-app.yml` already does.
 - `gha-tf-plan-<acct>`: read-only plus the state bucket, trusted for `pull_request` events. `gha-tf-apply-<acct>`: trusted for `environment:<env>` only, so prod applies need the GitHub Environment's required reviewers.
 - **CI never talks to a cluster.** Argo CD pulls, so no kube credentials exist in GitHub at all. That's the strongest property the repo already has; keep it.
-- Replace the promoter's fine-grained PAT and the `GITHUB_TOKEN` PR-opening trick with a **GitHub App** whose private key lives in Secrets Manager (shared-services account). Production needs individual human and bot identities, or approvals mean nothing.
+- Use a **GitHub App**, whose private key lives in Secrets Manager (shared-services account), for the patch promoter and for opening promotion PRs, instead of today's `GITHUB_TOKEN` PR-opening trick. Production needs individual human and bot identities, or approvals mean nothing.
 
 **Repo changes:** `charts/orders-gateway/templates/serviceaccount.yaml` is unchanged. New Terraform modules `pod-identity`, `github-oidc`. `gitops/values/argocd.yaml` gains OIDC, RBAC and HA.
 
@@ -406,7 +406,7 @@ Locally every release is a rolling update of a plain Deployment named `app`. In 
 - **Steps:** 5% (2 min analysis) → 25% → 50% → 100%, plus a **background analysis** throughout. `abortScaleDownDelaySeconds` so a rollback is instant. `dynamicStableScale: true` to avoid doubling capacity. `maxSurge` so the canary pods land in different AZs.
 - **AnalysisTemplate with the Datadog provider:** the same two SLIs on the canary only, using a `rollouts-pod-template-hash` tag. Unified Service Tagging gives `version:<tag>`, so query by `version` instead, which is simpler. Datadog metrics arrive with ~1–2 min delay *(unsure on exact latency)*, so set `initialDelay: 2m` and keep the **fail-closed on empty data** design. A Datadog outage then means *Inconclusive → pause*, never a silent pass.
   - Alternative: keep a tiny in-cluster Prometheus (2 h retention) just for analysis. It's faster and has no SaaS dependency, but it's a second metrics system. **Prefer Datadog**, and revisit if the delay makes steps too slow.
-- **Low traffic:** if prod's real traffic is low at night, the 5% step will be Inconclusive. Either keep the promoter's trickle running in prod, or schedule promotions within working hours (Argo CD sync windows).
+- **Low traffic:** if prod's real traffic is low at night, the 5% step will be Inconclusive. Either keep the trickle running in prod, or schedule promotions within working hours (Argo CD sync windows).
 - **If Datadog isn't chosen (§3.8, option C):** the same AnalysisTemplates run against **Amazon Managed Service for Prometheus**. Rollouts' Prometheus provider signs requests with SigV4 through its `authentication.sigv4` block, using a Pod Identity role on the Rollouts controller allowed only `aps:QueryMetrics`. The PromQL is today's SLI recording rules, filtered to the canary's pods. Steps of 10 → 25 → 50 → 100, with an analysis after each, are fine for prod; the 5% first step above only matters at high traffic.
 - **Tell Argo CD to ignore the route weights** Rollouts sets: `ignoreDifferences` with jqPathExpression `.spec.rules[].backendRefs[]?.weight`. Without the `?`, a rule with no backends (the `/admin` 403) breaks the expression, Argo CD resets every canary step, and the analysis goes Inconclusive.
 - **Rollback paths:** (1) automatic abort by analysis; (2) `kubectl argo rollouts abort` (SSO, restricted to platform on-call); (3) a revert PR of the promotion commit, which is the durable fix, because Git otherwise re-promotes.
@@ -501,7 +501,7 @@ The local stack has runbooks and alerts but no people. Production needs the proc
 
 - **On-call.** One primary and one secondary rotation for the platform (PagerDuty or Datadog On-Call), with a weekly handover. Only `severity: page` alerts wake someone: today that's the two fast-burn SLO alerts. Everything else is a ticket worked in office hours. Review the page volume monthly. More than ~2 pages a week per rotation means an alert needs fixing, not more on-call.
 - **Incidents.** A short written process: declare (any page, or a customer report), one incident commander, a Slack channel per incident (Datadog Incident Management or incident.io), status updates every 30 minutes, then a blameless postmortem within 5 working days for anything that burned more than 10% of the monthly error budget. Postmortem actions become tickets with owners, and runbook fixes land in `runbooks/` in the same week.
-- **Error budget policy.** Written down, agreed with the service owner: when the 30-day budget is spent, feature promotions to prod stop (`promotion/PAUSED`, which the promoter already honours) until the budget recovers. Only fixes and patches ship. This is what makes the SLO more than a dashboard.
+- **Error budget policy.** Written down, agreed with the service owner: when the 30-day budget is spent, feature promotions to prod stop (`promotion/PAUSED`, which the patch promoter honours) until the budget recovers. Only fixes and patches ship. This is what makes the SLO more than a dashboard.
 - **Runbooks.** Keep them in Git next to the alerts, as today, and test them: every quarterly game day (§3.9) works through at least two runbooks as written. A runbook that needed a step not in it gets fixed the same day.
 - **Change management.** Every prod change is a merged PR: app promotions, platform values, Terraform. Argo CD sync windows block prod syncs outside working hours except for PRs labelled `hotfix`. Upgrades of platform components (Argo CD, Kyverno, Envoy Gateway, cert-manager, the Datadog Operator) go through Renovate PRs and land in dev, then staging, then prod, a few days apart.
 - **Cluster upgrades.** Quarterly, following EKS standard support (§3.2): read the upgrade insights, bump add-ons first, then the control plane, then Karpenter rolls the nodes within its disruption budgets. Major jumps use a blue/green cluster instead.
@@ -574,7 +574,7 @@ infra/
 **Phase 3: observability as code (1–2 weeks, overlaps phase 2)**
 - The `observability` root: the two SLOs × env, burn-rate monitors, platform monitors, ports of the `orders-gateway` and `platform-overview` dashboards, synthetics.
 - PagerDuty/Slack routing. Runbooks updated with Datadog queries.
-- Promoter gates switched to the Datadog APIs.
+- The patch promoter, gated on the Datadog APIs.
 
 **Phase 4: staging + test series (2 weeks)**
 - Staging: its own account, cluster and Argo CD, from the same modules. The canary on in staging.
@@ -604,7 +604,7 @@ infra/
 6. **Domain name** for the apex zone, and are the per-env subdomains OK?
 7. **Public Sigstore OK** (keyless signatures in the public Rekor log naming the repo), or switch to cosign with a KMS key?
 8. **Compliance target** (SOC 2, ISO 27001, PCI)? It changes Config packs, log retention and access reviews.
-9. **Who approves prod promotions** once every person and bot has its own GitHub identity? Does the patch promoter keep auto-merging prod patches?
+9. **Who approves prod promotions** once every person and bot has its own GitHub identity? Should the patch promoter auto-merge prod patches, or stop at staging?
 10. **Kyverno fail-closed in prod:** accept that a full Kyverno outage blocks new app pods (including rollbacks), relying on 3 replicas + PDB? Or keep `Ignore` with background re-scans as the safety net? Recommend **Fail**.
 11. **Terraform or OpenTofu**, and Terragrunt or plain roots?
 12. Should **prod's public edge stay this strict** (only `/work`, `/echo`, `/version`), when the local edge forwards everything the app serves?

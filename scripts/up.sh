@@ -101,7 +101,7 @@ fi
 
 # Argo CD syncs from the in-stack Git server by default: the cluster runs this
 # checkout. REPO_URL (e.g. this repo on GitHub) switches to
-# GitHub mode, where CI's promotion PRs and the patch promoter apply.
+# GitHub mode, where CI's promotion PRs apply.
 if [ -z "${REPO_URL:-}" ]; then
   bash "$(dirname "$0")/git-sync.sh"
   export REPO_URL=http://git.git.svc.cluster.local:23232/platform.git REVISION=main
