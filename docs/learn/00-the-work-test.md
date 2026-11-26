@@ -176,9 +176,9 @@ kubectl -n dev get deploy app -w            # back to 1 within seconds: self-hea
 
 **Asked (CI/CD):** workflows valid on real GitHub: lint and test, build, scan, push, update desired state. Bonus: least privilege, caching, PR vs main triggers, SBOM and signing, prod approvals.
 
-**Where:** [`.github/workflows/`](../../.github/workflows/), README → *Environments, secrets, CI/CD and GitOps*. Read `app.yml` top to bottom: pull requests build and scan without pushing; `main` pushes, signs with cosign (no keys), attaches an SBOM, and commits the new image to dev.
+**Where:** [`.github/workflows/`](../../.github/workflows/), README → *Environments, secrets, CI/CD and GitOps*. Read `ci-app.yml` (pull requests) and then `cd-app.yml` (merges to `main`) top to bottom: pull requests build and scan without pushing; `main` pushes, signs with cosign (no keys), attaches an SBOM, and commits the new image to dev.
 
-**See it:** the repo's **Actions** tab on GitHub. The `platform` workflow's fresh-install job ("Fresh install, the reviewer's way") runs `docker compose up -d --wait` on a fresh runner, ships and rolls back under traffic, and fails on a single non-200.
+**See it:** the repo's **Actions** tab on GitHub. The **CI · platform** workflow's **E2E · Fresh install** job runs `docker compose up -d --wait` on a fresh runner, ships and rolls back under traffic, and fails on a single non-200.
 
 **Check yourself:** what stops an unsigned image from running in prod? (Find the Kyverno policy in `policies/`.) Then explain why `./platform ship`'s unsigned `localhost/orders-gateway:` builds are still admitted: look at `policies/restrict-image-registries.yaml` and [decision 0030](../decisions/0030-ship-and-rollback.md).
 

@@ -1,4 +1,4 @@
-name: policies
+name: CI · policies
 
 # Runs the Kyverno policy tests (policies/tests/) with the Kyverno CLI that
 # matches the in-cluster Kyverno (gitops/apps/templates/kyverno.yaml).

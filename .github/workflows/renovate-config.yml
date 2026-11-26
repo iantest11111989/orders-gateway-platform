@@ -1,4 +1,4 @@
-name: renovate-config
+name: CI · renovate config
 
 # Validates renovate.json5. The other workflows are path-filtered and don't
 # cover it, so without this a config change would have no check at all.

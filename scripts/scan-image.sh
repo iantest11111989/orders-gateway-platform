@@ -3,7 +3,7 @@
 # HIGH or CRITICAL one that has a fix available (decision 0016).
 # Exit status: 0 clean, 3 findings, anything else a scanner error (registry
 # or DB download), so callers can tell an outage from a real finding. CI runs it in
-# the app workflow: on pull requests against the image the PR builds, and on
+# the app's CI and CD workflows: on pull requests against the image the PR builds, and on
 # main against the published image before dev gets it.
 #   TRIVY_IMAGE=ghcr.io/aquasecurity/trivy:<v>@sha256:... \
 #     scripts/scan-image.sh <image>@sha256:...

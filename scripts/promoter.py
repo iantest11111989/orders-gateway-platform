@@ -123,7 +123,7 @@ def trailer(message, name):
 
 
 def image_tag(message):
-    """The tag from the promotion commit's subject, which app.yml's promote-prs
+    """The tag from the promotion commit's subject, which cd-app.yml's promote-prs
     writes as '<env>: orders-gateway sha-<12 hex>'."""
     m = re.match(r"(?:staging|prod): orders-gateway (sha-[0-9a-f]{12})\b", message)
     return m.group(1) if m else None
@@ -142,7 +142,7 @@ def is_paused(gh_raw):
 
 def pushed_by_ci(activity, sha):
     """The newest push to the promotion branch is the PR's head and came from
-    app.yml's promote-prs job (actor github-actions[bot]). The bots share one
+    cd-app.yml's promote-prs job (actor github-actions[bot]). The bots share one
     GitHub account, so a commit's author and its trailers could be written by
     anyone; who pushed it can't be."""
     if not activity:
