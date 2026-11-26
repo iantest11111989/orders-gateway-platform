@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# ./platform demo hello-world [--keep]: a second app through the whole local
-# CI/CD, narrated step by step.
+# ./platform demo hello-world: a second app through the whole local CI/CD,
+# narrated step by step. It stays running afterwards, to play with.
+# ./platform demo hello-world clean: tear it down again.
 #
 #   1. Add the app: demo/hello-world/{app,chart,cd} are copied to
 #      apps/hello-world, helm/hello-world and cd/hello-world in this checkout.
@@ -14,11 +15,11 @@
 #   6. Observe: hello-world answers at http://hello-world.localhost:<port>,
 #      its metrics are in Prometheus (service="hello-world") and its logs in
 #      Loki ({app="hello-world"}), next to orders-gateway's.
-#   7. Clean up (also on Ctrl-C or a failure): the three folders are removed
-#      and the checkout pushed again, so Argo CD deletes hello-world-dev,
-#      -staging and -prod. The images stay in the registry (harmless).
 #
-# --keep skips step 7; ./platform demo clean removes it later.
+# Teardown (./platform demo hello-world clean, or ./platform demo clean): the
+# three folders are removed and the checkout pushed again, so Argo CD deletes
+# hello-world-dev, -staging and -prod. The images stay in the registry
+# (harmless). Running the demo again tears down the previous run first.
 # Needs a running cluster (./platform up) and the host tools ./pipeline needs
 # (Docker, curl).
 # Runs on the host, like ./pipeline (it calls it). The copied folders are
@@ -34,12 +35,11 @@ APP=hello-world
 SRC=demo/hello-world
 DIRS="apps/$APP helm/$APP cd/$APP"
 MARKER=.build/hello-world-demo
-keep='' clean_only=''
+clean_only=''
 case "${1:-}" in
-  --keep) keep=1 ;;
-  --clean) clean_only=1 ;;   # ./platform demo clean: remove a copy left by --keep
+  clean) clean_only=1 ;;
   '') ;;
-  *) die "usage: ./platform demo hello-world [--keep]" ;;
+  *) die "usage: ./platform demo hello-world [clean]" ;;
 esac
 
 step() { printf '\n==> %s\n' "$*"; }
@@ -64,7 +64,7 @@ unhide_from_git() {
 # deletes the hello-world Applications, and their finalizers the workloads.
 remove_copy() {
   [ -f "$MARKER" ] || return 0
-  step "Clean up: remove hello-world from the checkout and from the cluster"
+  step "Teardown: remove hello-world from the checkout and from the cluster"
   # shellcheck disable=SC2086
   rm -rf $DIRS
   unhide_from_git
@@ -74,20 +74,20 @@ remove_copy() {
     sleep 3
   done
   if kc -n argocd get applications.argoproj.io -o name 2>/dev/null | grep -q "/$APP-"; then
-    say "! Argo CD is still deleting the hello-world Applications; they go on their own"
+    rm -f "$MARKER"
+    die "Argo CD still has hello-world Applications after 3 minutes: kubectl -n argocd get applications"
   else
     ok "hello-world-dev, -staging and -prod deleted (the images stay in the registry)"
   fi
   rm -f "$MARKER"
 }
+# Whatever happens, say how to tear it down: a failed or interrupted run
+# leaves what it got to, to look at.
 on_exit() {
   rc=$?
-  if [ -n "$keep" ] && [ "$rc" -eq 0 ]; then
-    printf '\n  --keep: hello-world stays. ./platform demo clean removes it.\n'
-  else
-    [ "$rc" -eq 0 ] || say "the demo stopped (exit $rc): cleaning up"
-    remove_copy || say "! clean-up failed: run ./platform demo clean"
-  fi
+  [ -f "$MARKER" ] || return 0
+  [ "$rc" -eq 0 ] || printf '\n  The demo stopped (exit %s); what it set up is still there to look at.\n' "$rc"
+  printf '  Tear it down: ./platform demo hello-world clean\n'
 }
 
 # Answers /version with $1 on entrypoint port $2, 5 times in a row (an old
@@ -116,12 +116,15 @@ next_version() {
 
 # --- 0. Preconditions --------------------------------------------------------
 check_docker
-if [ -n "$clean_only" ]; then remove_copy; exit 0; fi
+if [ -n "$clean_only" ]; then
+  if [ -f "$MARKER" ]; then remove_copy; else ok "no hello-world demo to tear down"; fi
+  exit 0
+fi
 kc get namespace argocd >/dev/null 2>&1 || die "no cluster: start it with ./platform up (or docker compose up -d --wait)"
 for d in $DIRS; do
   [ ! -e "$d" ] || [ -f "$MARKER" ] || die "$d already exists and isn't from this demo: move it away first"
 done
-[ ! -f "$MARKER" ] || { say "a previous run left hello-world behind: removing it first"; remove_copy; }
+[ ! -f "$MARKER" ] || { say "hello-world from a previous run is still there: tearing it down first"; remove_copy; }
 
 trap on_exit EXIT
 trap 'exit 130' INT TERM
@@ -208,3 +211,5 @@ say "                {namespace=\"prod\", app=\"hello-world\"} | json"
 say "  orders-gateway's SLO alerts count only orders-gateway: hello-world can't"
 say "  burn its error budget or block its promotions."
 step "Done: hello-world went through CI, dev → staging → prod, a refused promotion and a rollback"
+say "It stays running: try ./pipeline cd hello-world dev --version $W, scale it,"
+say "break it, watch it in Grafana."

@@ -99,10 +99,10 @@ case "$cmd" in
   demo)
     check_docker
     # hello-world drives ./pipeline, so it runs here on the host; the other
-    # demos run in the toolbox. clean also removes a hello-world copy.
+    # demos run in the toolbox. clean also tears hello-world down.
     case "${1:-}" in
       hello-world) shift; exec bash scripts/demo-hello-world.sh "$@" ;;
-      clean) bash scripts/demo-hello-world.sh --clean ;;
+      clean) bash scripts/demo-hello-world.sh clean ;;
     esac
     run_toolbox bash scripts/demo.sh "$@" ;;
   doctor|urls|verify|budget)

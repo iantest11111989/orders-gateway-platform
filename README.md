@@ -281,8 +281,8 @@ The largest users at idle: `kube-system` (API server, etcd) 2.3 GiB, `monitoring
 | `gitops-revert` | a bad config commit (30% of requests fail) on a temporary branch that a copy of dev follows; Argo CD syncs it, then `git revert` heals it. Pushes to the cluster's Git server | ~5 min |
 | `autoscale` | k6 sends a fixed 20 requests/s (`AUTOSCALE_RATE`), mostly CPU-heavy `/work`; the HPA scales 3 → 6 pods, then back to 3 about 5 minutes after the load stops | ~8 min |
 | `policy` | Kyverno refuses an unsigned image and a `:latest` image, printing which policy refused each and why; a signed image is admitted | <1 min |
-| `hello-world` | a second app through the whole CI/CD, next to orders-gateway in dev, staging and prod: added to the checkout, `./pipeline ci --version`, `cd` dev → staging → prod, a refused out-of-order promotion, a rollback; then its metrics and logs, and it's removed again. Runs on the host (it drives `./pipeline`), not in namespace `demo` | ~6 min |
-| `clean` | delete the demo copy (after an interrupted demo, or `--keep`), and a `hello-world` left by `--keep` | |
+| `hello-world` | a second app through the whole CI/CD, next to orders-gateway in dev, staging and prod: added to the checkout, `./pipeline ci --version`, `cd` dev → staging → prod, a refused out-of-order promotion, a rollback; then where to see its metrics and logs. It stays running to play with; `./platform demo hello-world clean` tears it down. Runs on the host (it drives `./pipeline`), not in namespace `demo` | ~6 min |
+| `clean` | delete the demo copy (after an interrupted demo, or `--keep`), and tear `hello-world` down | |
 
 Add `--keep` to leave the copy running. Watch in Argo CD or Grafana (environment `demo`).
 

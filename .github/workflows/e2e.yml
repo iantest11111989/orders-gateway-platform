@@ -12,7 +12,7 @@ name: E2E
 #                        out-of-order promotion, then rollback, with traffic
 #                        on prod the whole time
 #   5 · Demo             ./platform demo hello-world: a second app through
-#                        the same CI/CD, then removed again
+#                        the same CI/CD, then its teardown
 # A stage runs only if the ones before it passed. Argo CD syncs from the
 # in-stack Git server, which the bootstrap fills with this job's checkout,
 # exactly what a fresh clone gets. About 20 minutes, so pull requests run it
@@ -208,10 +208,14 @@ jobs:
           serves 0.1.0
       # A second app through the same CI/CD next to orders-gateway: added,
       # published, promoted in order, refused out of order, rolled back,
-      # seen in Prometheus, then removed. It fails on any step that does.
+      # seen in Prometheus. Then the teardown, which fails unless Argo CD has
+      # deleted the hello-world Applications.
       - name: "5 · Demo: ./platform demo hello-world (a second app through the CI/CD)"
         id: s5_demo
         run: ./platform demo hello-world
+      - name: "5 · Demo: teardown (./platform demo hello-world clean)"
+        id: s5_teardown
+        run: ./platform demo hello-world clean
       - name: Stages (job summary)
         if: always()
         env:
@@ -219,7 +223,7 @@ jobs:
           S2: ${{ steps.s2_kubeconfig.outcome }} ${{ steps.s2_restart.outcome }} ${{ steps.s2_rerun.outcome }} ${{ steps.s2_verify.outcome }} ${{ steps.s2_health.outcome }} ${{ steps.s2_budget.outcome }}
           S3: ${{ steps.s3_ci.outcome }}
           S4: ${{ steps.s4_cd.outcome }}
-          S5: ${{ steps.s5_demo.outcome }}
+          S5: ${{ steps.s5_demo.outcome }} ${{ steps.s5_teardown.outcome }}
         run: |
           result() { # failure if any step failed, skipped if none ran, else success
             case " $1 " in

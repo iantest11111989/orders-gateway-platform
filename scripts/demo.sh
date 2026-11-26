@@ -18,8 +18,9 @@
 #                then back to 3 once k6 stops
 #   hello-world  a second app through the whole ./pipeline: CI, dev → staging
 #                → prod, a refused promotion, a rollback (runs on the host:
-#                scripts/demo-hello-world.sh)
-#   clean        delete the demo copy (and a hello-world left by --keep)
+#                scripts/demo-hello-world.sh). It stays running;
+#                ./platform demo hello-world clean tears it down
+#   clean        delete the demo copy (and tear hello-world down)
 #
 # The demos run in namespace demo, a copy of the live prod (chaos,
 # autoscale) or dev (rolling-update, gitops-revert) Argo CD Application:
