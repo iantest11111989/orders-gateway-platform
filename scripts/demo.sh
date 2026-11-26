@@ -67,7 +67,7 @@ create_app() { # create_app <source app> <image tag> [helm-param=value ...]
     --arg tag "$tag" --arg src "$src" --arg rev "${DEMO_REVISION:-}" --args '
     {apiVersion, kind,
      metadata: {name: $app, namespace: "argocd",
-                labels: {"app.kubernetes.io/part-of": "orders-gateway-platform", "demo": "true", "demo-source": $src},
+                labels: {"app.kubernetes.io/part-of": "platform-demo", "demo": "true", "demo-source": $src},
                 # deleting the Application deletes what it created
                 finalizers: ["resources-finalizer.argocd.argoproj.io"]},
      # One source: helm/orders-gateway from Git with the source

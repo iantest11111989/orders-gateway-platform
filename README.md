@@ -1,4 +1,4 @@
-# orders-gateway-platform
+# platform-demo
 
 A local **"cluster in a box"**: one command starts a Kubernetes cluster that runs, ships, monitors and operates `orders-gateway`, a small Node.js service, the way a platform team would in production.
 
@@ -9,11 +9,11 @@ docker compose up -d --wait
 That's all it takes. Compose's `ready` service creates a kind cluster and hands it to Argo CD, and Argo CD installs everything else from Git, with Helm, in order. `--wait` returns when the platform is installed and prod is serving, about 9 minutes from cold. While it runs, four progress services turn **Healthy** one by one:
 
 ```
- ✔ Container orders-gateway-platform-step-1-cluster-1    Healthy   (kind nodes Ready)
- ✔ Container orders-gateway-platform-step-2-argocd-1     Healthy   (Git server and Argo CD running)
- ⠿ Container orders-gateway-platform-step-3-platform-1   Waiting   (every platform component Synced and Healthy)
- ⠿ Container orders-gateway-platform-step-4-apps-1       Waiting   (dev, staging and prod Synced and Healthy)
- ⠿ Container orders-gateway-platform-ready-1             Waiting   (all of it, and prod serving on :8080)
+ ✔ Container platform-demo-step-1-cluster-1    Healthy   (kind nodes Ready)
+ ✔ Container platform-demo-step-2-argocd-1     Healthy   (Git server and Argo CD running)
+ ⠿ Container platform-demo-step-3-platform-1   Waiting   (every platform component Synced and Healthy)
+ ⠿ Container platform-demo-step-4-apps-1       Waiting   (dev, staging and prod Synced and Healthy)
+ ⠿ Container platform-demo-ready-1             Waiting   (all of it, and prod serving on :8080)
 ```
 
 To follow every detail as it happens: `docker compose logs -f ready`.
@@ -44,8 +44,8 @@ To follow every detail as it happens: `docker compose logs -f ready`.
 | Docker | Docker Engine with the Compose plugin | Colima: `colima start --cpu 6 --memory 12`, plus `brew install docker-compose` |
 
 ```sh
-git clone https://github.com/iantest11111989/orders-gateway-platform.git
-cd orders-gateway-platform
+git clone https://github.com/iantest11111989/platform-demo.git
+cd platform-demo
 docker compose up -d --wait
 curl localhost:8080/version
 ```
@@ -152,7 +152,7 @@ A published version is never overwritten. Without `--version`, `ci` makes a dev-
 
 These are Git changes on purpose: `kubectl set image` or `kubectl rollout undo` would be reverted by Argo CD within seconds.
 
-**Tested with traffic flowing.** CI ships and rolls back while three clients hit `:8080` the whole time, and fails on any non-200: 2,641 requests, 0 errors ([run](https://github.com/iantest11111989/orders-gateway-platform/actions/runs/45710719231/job/139544268716)).
+**Tested with traffic flowing.** CI ships and rolls back while three clients hit `:8080` the whole time, and fails on any non-200: 2,641 requests, 0 errors ([run](https://github.com/iantest11111989/platform-demo/actions/runs/45710719231/job/139544268716)).
 
 **Why local, and how production differs.** All CI/CD here runs on your machine, so the whole stack stays reproducible from one checkout; GitHub only checks pull requests. [`docs/ci-cd-in-production.md`](docs/ci-cd-in-production.md) describes the pipeline a real team would run in CI: signed images and chart packages, and promotion by pull request.
 
@@ -268,7 +268,7 @@ Measured on 2026-11-25 on a Mac mini under Colima (6 CPU / 12 GiB, arm64):
 
 The largest users at idle: `kube-system` (API server, etcd) 2.3 GiB, `monitoring` 1.3 GiB, `argocd` 0.6 GiB; each app environment uses under 40 MiB.
 
-**Time to healthy:** 9 min 43 s from `docker compose up -d --wait` on a GitHub-hosted runner ([run](https://github.com/iantest11111989/orders-gateway-platform/actions/runs/45710719231/job/139544268716)). Most of it is pulling about 60 images.
+**Time to healthy:** 9 min 43 s from `docker compose up -d --wait` on a GitHub-hosted runner ([run](https://github.com/iantest11111989/platform-demo/actions/runs/45710719231/job/139544268716)). Most of it is pulling about 60 images.
 
 ## Demos
 

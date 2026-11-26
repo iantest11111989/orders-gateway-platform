@@ -9,7 +9,7 @@ terraform {
   }
   # State in S3 with locking, one state per cluster (prod apart from the rest).
   backend "s3" {
-    bucket       = "ogp-terraform-state"
+    bucket       = "platform-demo-terraform-state"
     key          = "clusters/prod/terraform.tfstate"
     region       = "eu-west-1"
     use_lockfile = true
@@ -18,7 +18,7 @@ terraform {
 
 provider "aws" {
   region = var.region
-  default_tags { tags = { project = "orders-gateway-platform", env = var.env } }
+  default_tags { tags = { project = "platform-demo", env = var.env } }
 }
 
 data "aws_availability_zones" "available" { state = "available" }
@@ -30,7 +30,7 @@ module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "~> 6.0"
 
-  name            = "ogp-${var.env}"
+  name            = "platform-demo-${var.env}"
   cidr            = var.vpc_cidr
   azs             = local.azs
   private_subnets = [for i, _ in local.azs : cidrsubnet(var.vpc_cidr, 4, i)]
@@ -49,7 +49,7 @@ module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 21.0"
 
-  name               = "ogp-${var.env}"
+  name               = "platform-demo-${var.env}"
   kubernetes_version = var.kubernetes_version
   vpc_id             = module.vpc.vpc_id
   subnet_ids         = module.vpc.private_subnets
@@ -118,7 +118,7 @@ module "irsa" {
     external-secrets = { namespace = "external-secrets", sa = "external-secrets", attach = "external_secrets" }
   }
 
-  name = "ogp-${var.env}-${each.key}"
+  name = "platform-demo-${var.env}-${each.key}"
   oidc_providers = {
     main = {
       provider_arn               = module.eks.oidc_provider_arn
@@ -130,7 +130,7 @@ module "irsa" {
   external_dns_hosted_zone_arns           = [var.route53_zone_arn]
   attach_load_balancer_controller_policy  = each.value.attach == "load_balancer_controller"
   attach_external_secrets_policy          = each.value.attach == "external_secrets"
-  external_secrets_secrets_manager_arns   = ["arn:aws:secretsmanager:${var.region}:*:secret:ogp/${var.env}/*"]
+  external_secrets_secrets_manager_arns   = ["arn:aws:secretsmanager:${var.region}:*:secret:platform-demo/${var.env}/*"]
 }
 
 # Images: the same signed images CI pushes to GHCR today, mirrored to ECR

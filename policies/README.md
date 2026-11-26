@@ -40,7 +40,7 @@ Each failure is also a `PolicyViolation` event on the resource
 (`kubectl get events -A --field-selector reason=PolicyViolation`). Only
 admission requests are checked (background scans are off), so a pod that
 already exists shows up only once it's created or updated again.
-(Metric name and labels checked on ogp with Kyverno 1.20.) The query leaves out
+(Metric name and labels checked on the local cluster with Kyverno 1.20.) The query leaves out
 `default`, where earlier versions of `./platform verify` made a test dry run. `verify` now makes its
 dry run in `dev`, so expect one `disallow-latest-tag` failure there per run.
 

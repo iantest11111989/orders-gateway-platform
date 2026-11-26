@@ -32,7 +32,7 @@ tests:
             exp_annotations:
               summary: "orders-gateway in prod is burning its availability error budget fast"
               description: "9.091% of /work and /echo requests failed with 5xx over the last hour (the SLO allows 0.5%). At this rate the whole 30-day error budget is gone in about 2 days."
-              runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/OrdersGatewayAvailabilityFastBurn.md
+              runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/OrdersGatewayAvailabilityFastBurn.md
       - eval_time: 10m
         alertname: OrdersGatewayAvailabilitySlowBurn
         exp_alerts: []
@@ -43,7 +43,7 @@ tests:
             exp_annotations:
               summary: "orders-gateway in prod is steadily burning its availability error budget"
               description: "9.091% of /work and /echo requests failed with 5xx over the last 6 hours (the SLO allows 0.5%). At this rate the 30-day error budget is gone in about 5 days."
-              runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/OrdersGatewayAvailabilitySlowBurn.md
+              runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/OrdersGatewayAvailabilitySlowBurn.md
       - eval_time: 30m
         alertname: OrdersGatewayLatencyFastBurn
         exp_alerts: []
@@ -75,7 +75,7 @@ tests:
             exp_annotations:
               summary: "orders-gateway in staging is steadily burning its availability error budget"
               description: "4.762% of /work and /echo requests failed with 5xx over the last 6 hours (the SLO allows 0.5%). At this rate the 30-day error budget is gone in about 5 days."
-              runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/OrdersGatewayAvailabilitySlowBurn.md
+              runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/OrdersGatewayAvailabilitySlowBurn.md
       - eval_time: 40m
         alertname: OrdersGatewayAvailabilityFastBurn
         exp_alerts: []
@@ -112,7 +112,7 @@ tests:
             exp_annotations:
               summary: "orders-gateway in prod is burning its latency error budget fast"
               description: "16.67% of /echo and /version requests took longer than 250 ms over the last hour (the SLO allows 0.5%). At this rate the whole 30-day error budget is gone in about 2 days."
-              runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/OrdersGatewayLatencyFastBurn.md
+              runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/OrdersGatewayLatencyFastBurn.md
       - eval_time: 10m
         alertname: OrdersGatewayAvailabilityFastBurn
         exp_alerts: []

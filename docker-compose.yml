@@ -18,7 +18,7 @@
 # untouched. `./platform down` removes these services and deletes the
 # cluster. If the cluster disappears some other way, `ready` notices within
 # a minute and exits; its restart policy brings it back to rebuild it.
-name: orders-gateway-platform
+name: platform-demo
 
 # What every service shares: the toolbox image, the checkout, the kubeconfig.
 x-toolbox: &toolbox
@@ -81,7 +81,6 @@ services:
     <<: *toolbox
     command: ["bash", "scripts/compose-ready.sh"]
     environment:
-      REVISION: ${REVISION:-}
       PRELOAD_IMAGES: ${PRELOAD_IMAGES:-}  # CI's image cache (scripts/images.sh)
     healthcheck:
       test: ["CMD", "bash", "scripts/ready-check.sh"]
@@ -94,4 +93,4 @@ services:
 
 volumes:
   kube:
-    name: ogp-kube  # the same volume ./platform uses, so both see one kubeconfig
+    name: platform-demo-kube  # the same volume ./platform uses, so both see one kubeconfig

@@ -24,7 +24,7 @@ metadata:
   name: apps
   namespace: argocd
   labels:
-    app.kubernetes.io/part-of: orders-gateway-platform
+    app.kubernetes.io/part-of: platform-demo
   annotations:
     argocd.argoproj.io/sync-wave: "40"
 spec:
@@ -45,7 +45,7 @@ spec:
       name: {{ `'{{ .path.basename }}-{{ .env }}'` }}
       namespace: argocd
       labels:
-        app.kubernetes.io/part-of: orders-gateway-platform
+        app.kubernetes.io/part-of: platform-demo
         app.kubernetes.io/name: {{ `'{{ .path.basename }}'` }}
       # Pruning or deleting this Application also deletes what it created.
       finalizers: [resources-finalizer.argocd.argoproj.io]

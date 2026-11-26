@@ -24,7 +24,7 @@ tests:
             exp_annotations:
               summary: "Argo CD application orders-gateway-prod has been OutOfSync for 15 minutes"
               description: "The live state of orders-gateway-prod differs from Git and Argo CD hasn't been able to sync it. Changes merged for it aren't reaching the cluster."
-              runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/ArgoCDAppOutOfSync.md
+              runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/ArgoCDAppOutOfSync.md
 
   # A manual-sync app OutOfSync for 90 minutes: no ArgoCDAppOutOfSync, and
   # ArgoCDManualSyncPending only after the hour. An auto-sync app OutOfSync
@@ -47,7 +47,7 @@ tests:
             exp_annotations:
               summary: "Argo CD application orders-gateway-dev has been OutOfSync for 15 minutes"
               description: "The live state of orders-gateway-dev differs from Git and Argo CD hasn't been able to sync it. Changes merged for it aren't reaching the cluster."
-              runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/ArgoCDAppOutOfSync.md
+              runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/ArgoCDAppOutOfSync.md
       - eval_time: 80m
         alertname: ArgoCDManualSyncPending
         exp_alerts:
@@ -55,7 +55,7 @@ tests:
             exp_annotations:
               summary: "Argo CD application orders-gateway-staging has waited an hour for a manual Sync"
               description: "Git has a change for orders-gateway-staging that nobody has synced, so it still runs what it ran before. Sync it (the Argo CD UI, or ./pipeline cd --sync), or revert the change in Git."
-              runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/ArgoCDManualSyncPending.md
+              runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/ArgoCDManualSyncPending.md
 
   - name: Argo CD app Degraded
     interval: 1m
@@ -72,18 +72,18 @@ tests:
             exp_annotations:
               summary: "Argo CD application orders-gateway-staging is Degraded"
               description: "orders-gateway-staging has been Degraded for 10 minutes."
-              runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/ArgoCDAppUnhealthy.md
+              runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/ArgoCDAppUnhealthy.md
 
   # Three nodes at 3.8 GiB each = 11.4 GiB, 95% of 12 GiB. At 2.4 GiB each
   # (60%, today's level) nothing fires.
   - name: stack near its memory budget
     interval: 1m
     input_series:
-      - series: 'container_memory_working_set_bytes{id="/", node="ogp-control-plane"}'
+      - series: 'container_memory_working_set_bytes{id="/", node="platform-demo-control-plane"}'
         values: '4080218931x15'
-      - series: 'container_memory_working_set_bytes{id="/", node="ogp-worker"}'
+      - series: 'container_memory_working_set_bytes{id="/", node="platform-demo-worker"}'
         values: '4080218931x15'
-      - series: 'container_memory_working_set_bytes{id="/", node="ogp-worker2"}'
+      - series: 'container_memory_working_set_bytes{id="/", node="platform-demo-worker2"}'
         values: '4080218931x15'
     alert_rule_test:
       - eval_time: 12m
@@ -93,12 +93,12 @@ tests:
             exp_annotations:
               summary: "The stack uses 95% of its 12 GiB memory budget"
               description: "Memory across the kind nodes has been above 90% of the budget for 10 minutes."
-              runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/StackNearMemoryBudget.md
+              runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/StackNearMemoryBudget.md
 
   - name: stack at today's level stays quiet
     interval: 1m
     input_series:
-      - series: 'container_memory_working_set_bytes{id="/", node="ogp-worker"}'
+      - series: 'container_memory_working_set_bytes{id="/", node="platform-demo-worker"}'
         values: '2576980378x15'
     alert_rule_test:
       - eval_time: 12m

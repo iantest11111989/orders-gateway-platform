@@ -52,15 +52,15 @@ run_toolbox() {
   # land in your checkout.
   # Create that volume as Compose would (its labels), so a later `docker
   # compose up` adopts it instead of warning that Compose didn't create it.
-  docker volume inspect ogp-kube >/dev/null 2>&1 ||
-    docker volume create --label com.docker.compose.project=orders-gateway-platform \
-      --label com.docker.compose.volume=kube ogp-kube >/dev/null
+  docker volume inspect platform-demo-kube >/dev/null 2>&1 ||
+    docker volume create --label com.docker.compose.project=platform-demo \
+      --label com.docker.compose.volume=kube platform-demo-kube >/dev/null
   # shellcheck disable=SC2086
   ${TOOLBOX_EXEC-exec} docker run --rm $tty \
     --network host \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "$REPO_ROOT":/work \
-    -v ogp-kube:/root/.kube \
+    -v platform-demo-kube:/root/.kube \
     -w /work \
     -e TOOLBOX_IMAGE="$img" \
     -e PRELOAD_IMAGES="${PRELOAD_IMAGES:-}" \

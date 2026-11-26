@@ -37,7 +37,7 @@ usage() {
 # (an old one left running would just sit there with no cluster). Volumes are
 # kept. No Compose plugin needed: the containers are found by Compose's label.
 compose_down() {
-  ids=$(docker ps -aq --filter label=com.docker.compose.project=orders-gateway-platform)
+  ids=$(docker ps -aq --filter label=com.docker.compose.project=platform-demo)
   [ -n "$ids" ] || return 0
   printf '==> Stopping the Compose services (ready, step-1..4)\n'
   # shellcheck disable=SC2086
@@ -50,7 +50,7 @@ compose_down() {
 # own browser would reach on each host port.
 host_ports() {
   [ "$(uname -s)" = Darwin ] || return 0
-  hp_name="${CLUSTER_NAME:-ogp}" hp_up='' hp_bad=0
+  hp_name="${CLUSTER_NAME:-platform-demo}" hp_up='' hp_bad=0
   [ -n "$(docker ps -q --filter "name=^${hp_name}-control-plane$" 2>/dev/null)" ] && hp_up=1
   printf '==> Ports on this Mac\n'
   while read -r port path want label; do
@@ -88,7 +88,7 @@ case "$cmd" in
   -h|--help|help) usage 0 ;;
   up)
     check_docker
-    host_ports || [ -n "$(docker ps -q --filter "name=^${CLUSTER_NAME:-ogp}-control-plane$")" ] || die "free the ports above first"
+    host_ports || [ -n "$(docker ps -q --filter "name=^${CLUSTER_NAME:-platform-demo}-control-plane$")" ] || die "free the ports above first"
     TOOLBOX_EXEC='' run_toolbox bash scripts/up.sh "$@" ;;
   down)
     check_docker

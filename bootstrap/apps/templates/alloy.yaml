@@ -9,7 +9,7 @@ metadata:
   name: alloy
   namespace: argocd
   labels:
-    app.kubernetes.io/part-of: orders-gateway-platform
+    app.kubernetes.io/part-of: platform-demo
   annotations:
     argocd.argoproj.io/sync-wave: "20"
     argocd.argoproj.io/manifest-generate-paths: "/system/alloy"

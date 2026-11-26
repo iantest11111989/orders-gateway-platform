@@ -12,7 +12,7 @@ kind: PrometheusRule
 metadata:
   name: platform-security
   labels:
-    app.kubernetes.io/part-of: orders-gateway-platform
+    app.kubernetes.io/part-of: platform-demo
     app.kubernetes.io/component: security
 spec:
   groups:
@@ -32,7 +32,7 @@ spec:
               No Kyverno admission controller has answered a metrics scrape for 5 minutes. Its webhooks
               fail open (failurePolicy: Ignore), so new pods, including in the app namespaces, skip the tag and
               signature policies until it's back.
-            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/KyvernoDown.md
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/KyvernoDown.md
         # A policy that errors instead of passing or failing doesn't protect
         # anything (for example a CEL expression that breaks on a new field,
         # or a signature check that can't reach the registry).
@@ -49,7 +49,7 @@ spec:
             description: >-
               {{ $value | humanize }} evaluations of {{ $labels.policy_name }} ended in an error in the last
               15 minutes. An erroring policy neither admits nor refuses on its merits.
-            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/KyvernoPolicyErrors.md
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/KyvernoPolicyErrors.md
         - alert: SealedSecretsControllerDown
           expr: absent(up{job="sealed-secrets-controller-metrics"} == 1)
           for: 10m
@@ -60,7 +60,7 @@ spec:
             description: >-
               No Sealed Secrets controller has answered a metrics scrape for 10 minutes. Existing Secrets
               keep working; new or changed SealedSecrets in Git won't become Secrets until it's back.
-            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/SealedSecretsControllerDown.md
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/SealedSecretsControllerDown.md
         # condition_info is 1 when a SealedSecret's Synced condition is True,
         # 0 when it's False (it couldn't be decrypted or written).
         - alert: SealedSecretUnsealFailed
@@ -73,7 +73,7 @@ spec:
             description: >-
               The controller couldn't turn SealedSecret {{ $labels.namespace }}/{{ $labels.name }} into a
               Secret. Anything that reads that Secret has the old value, or none.
-            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/SealedSecretUnsealFailed.md
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/SealedSecretUnsealFailed.md
         - alert: TrivyOperatorDown
           expr: absent(up{job="trivy-operator"} == 1)
           for: 15m
@@ -84,7 +84,7 @@ spec:
             description: >-
               Trivy Operator hasn't answered a metrics scrape for 15 minutes. New vulnerabilities in the
               images that run in the cluster won't be found until it's back (CI's daily rescan still runs).
-            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/TrivyOperatorDown.md
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/TrivyOperatorDown.md
         # By digest: the environments run images by digest, so image_tag is empty.
         # Our own app's images only: the platform's third-party images carry
         # known findings, which would keep this firing.
@@ -101,4 +101,4 @@ spec:
             description: >-
               Trivy Operator found {{ $value }} critical vulnerabilities in
               {{ $labels.image_repository }}@{{ $labels.image_digest }}, running in {{ $labels.namespace }}.
-            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/OrdersImageCriticalVulnerability.md
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/OrdersImageCriticalVulnerability.md

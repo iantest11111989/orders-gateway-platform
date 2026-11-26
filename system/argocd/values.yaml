@@ -125,11 +125,11 @@ configs:
 controller:
   resources:
     # The first sync of every app fills the cluster cache at once: peak use is
-    # well above the ~275Mi steady state. With 512Mi it was OOMKilled on ogp,
+    # well above the ~275Mi steady state. With 512Mi it was OOMKilled on the local cluster,
     # and on CI it restarted 4 times in 10 min, losing sync progress each time.
     # At 1Gi it was still OOMKilled once during a fresh CI bootstrap
     # (`./platform budget`, PR #29), after Kyverno, NetworkPolicies and Sealed
-    # Secrets added more resources to watch; on ogp its peak was 856Mi.
+    # Secrets added more resources to watch; on the local cluster its peak was 856Mi.
     # The request is ~2x steady state (~400Mi): under node memory pressure the
     # kubelet evicts by usage above request, and an eviction loses sync
     # progress just like an OOM kill.
@@ -160,7 +160,7 @@ repoServer:
   resources:
     # A fresh bootstrap renders every chart at once (kube-prometheus-stack is
     # the big one; Kyverno and Trivy added more). At 512Mi `./platform budget`
-    # caught it OOMKilled in CI (PR #40's run), and on ogp its cgroup peak sat
+    # caught it OOMKilled in CI (PR #40's run), and on the local cluster its cgroup peak sat
     # at the 512Mi limit. Steady state is ~120Mi.
     requests: {cpu: 50m, memory: 256Mi}
     limits: {memory: 1Gi}

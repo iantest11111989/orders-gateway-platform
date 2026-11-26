@@ -5,6 +5,6 @@ type: application
 # Chart version. The image is chosen per environment (cd/orders-gateway/<env>.yaml).
 version: 0.1.0
 appVersion: "main"
-home: https://github.com/iantest11111989/orders-gateway-platform
+home: https://github.com/iantest11111989/platform-demo
 sources:
-  - https://github.com/iantest11111989/orders-gateway-platform/tree/main/app
+  - https://github.com/iantest11111989/platform-demo/tree/main/app

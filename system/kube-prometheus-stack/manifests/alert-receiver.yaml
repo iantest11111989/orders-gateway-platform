@@ -53,7 +53,7 @@ kind: Deployment
 metadata:
   name: alert-receiver
   namespace: monitoring
-  labels: {app.kubernetes.io/name: alert-receiver, app.kubernetes.io/part-of: orders-gateway-platform}
+  labels: {app.kubernetes.io/name: alert-receiver, app.kubernetes.io/part-of: platform-demo}
 spec:
   replicas: 1
   selector:

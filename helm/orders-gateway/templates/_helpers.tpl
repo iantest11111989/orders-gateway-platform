@@ -13,7 +13,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- define "orders-gateway.labels" -}}
 {{ include "orders-gateway.selectorLabels" . }}
 app.kubernetes.io/version: {{ .Values.image.tag | quote }}
-app.kubernetes.io/part-of: orders-gateway-platform
+app.kubernetes.io/part-of: platform-demo
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 env: {{ .Values.env }}

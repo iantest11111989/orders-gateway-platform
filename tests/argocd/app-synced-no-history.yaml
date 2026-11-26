@@ -1,5 +1,5 @@
 # A child whose resources already matched Git when it was created: Synced
-# without ever running a sync, so no history (seen with cert-manager on ogp). It must
+# without ever running a sync, so no history (seen with cert-manager on the local cluster). It must
 # count as Healthy, or the root would wait for it forever.
 apiVersion: argoproj.io/v1alpha1
 kind: Application

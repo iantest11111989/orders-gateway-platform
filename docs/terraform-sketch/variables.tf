@@ -24,7 +24,7 @@ variable "ghcr_credential_arn" { type = string }
 
 variable "repo_url" {
   type    = string
-  default = "https://github.com/iantest11111989/orders-gateway-platform.git"
+  default = "https://github.com/iantest11111989/platform-demo.git"
 }
 
 variable "argocd_apps_chart_version" { type = string }
