@@ -70,7 +70,7 @@ Then open Grafana at <http://localhost:3000> (`admin` / `admin12345`) and its **
 ./platform ship     # ship app/ to prod; ./platform rollback to undo it
 ./platform demo chaos    # and the other demos below
 ./platform shell    # a shell with kubectl, helm, argocd, k6, ... pointed at the cluster
-./platform down     # delete the cluster (docker compose down only stops `ready`)
+./platform down     # delete everything: the Compose services and the cluster (volumes kept)
 ```
 
 `./platform up` does the same as `docker compose up` in the foreground, for development; both are safe to re-run. `out/` is written by the toolbox as root, with the kubeconfig mode 0644 so you can read it.
@@ -219,6 +219,7 @@ Start with `./platform doctor` (Docker, CPU, memory, disk, ports) and `./platfor
 | A pod in `dev`, `staging`, `prod` or `demo` is refused by `disallow-latest-tag` or `verify-image-signatures` | Working as intended: `:latest` and unsigned app images aren't allowed there | Use a tagged, signed image ([0022](docs/decisions/0022-enforce-in-orders.md)) |
 | An app in Argo CD is `OutOfSync` after a manual change | Self-heal puts it back from Git within seconds | Change Git, not the cluster |
 | The promoter logs `dry run (no token)` after a rebuild | `./platform down` deleted its GitHub token, which lives only in the cluster | On macOS, `./platform up` restores it from the Keychain if you saved it once with `./platform promoter-token save`; or run `./platform promoter-token load` ([decision 0024](docs/decisions/0024-patch-promoter.md)). One `dry run` pass right after `up` is normal: it can fire before the token is restored |
+| `docker compose up -d --wait` waits forever, `ready` unhealthy, steps "starting" | The cluster was deleted (for example by an older `./platform down`) while an old `ready` kept running | `docker compose down && docker compose up -d --wait`. Since 2026-11-25, `./platform down` removes the Compose services too, and `ready` rebuilds a cluster that disappears |
 | A demo was interrupted | Its copy is left in `demo` | `./platform demo clean` |
 | Under Colima, a path in `/tmp` isn't found | Colima mounts only your home folder | Keep the checkout (and any worktree) under `~` |
 | Slow or evicted pods | Docker has less than 6 CPU / 12 GB | Colima: `colima start --cpu 6 --memory 12`; check with `./platform budget` |

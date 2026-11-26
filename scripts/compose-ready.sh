@@ -26,4 +26,21 @@ ok "kubectl --kubeconfig out/kubeconfig.yaml get nodes"
 
 touch /tmp/bootstrapped
 ok "bootstrap done; the healthcheck now decides when the platform is ready"
-exec sleep infinity
+
+# Stay up for the healthcheck, and watch the cluster. If it disappears (a
+# `kind delete`, an older ./platform down, Docker's VM reset), exit: the
+# restart policy starts this service again and the bootstrap rebuilds the
+# cluster. Two misses in a row, so a slow `docker inspect` can't trigger it.
+# `sleep & wait` so SIGTERM (docker compose stop) isn't held up by the sleep.
+missing=0
+while sleep 30 & wait $!; do
+  if docker inspect "$CLUSTER_NAME-control-plane" >/dev/null 2>&1; then
+    missing=0
+  else
+    missing=$((missing + 1))
+  fi
+  if [ "$missing" -ge 2 ]; then
+    warn "the kind cluster '$CLUSTER_NAME' is gone; exiting so Compose restarts this service and rebuilds it"
+    exit 1
+  fi
+done

@@ -9,11 +9,15 @@
 #   platform   every platform Application is Synced and Healthy
 #   apps       dev, staging and prod are Synced and Healthy
 # `ready` (scripts/ready-check.sh) still decides when the platform is ready.
-# Like it, a step stays healthy once passed, until its container restarts,
-# and then costs nothing. For the full story: docker compose logs -f ready
+# Like it, a step stays healthy once passed, and then costs one `docker
+# inspect`, until the cluster is replaced: then it checks again. For the full story: docker compose logs -f ready
 set -euo pipefail
 DONE=/tmp/step-done
-[ -f "$DONE" ] && exit 0
+# The marker holds the cluster it was earned on: a rebuilt cluster (new
+# control-plane container) makes every step check again from the start.
+cluster_id=$(docker inspect -f '{{.Id}}' ogp-control-plane 2>/dev/null || true)
+if [ -n "$cluster_id" ] && [ -f "$DONE" ] && [ "$(cat "$DONE")" = "$cluster_id" ]; then exit 0; fi
+rm -f "$DONE"
 
 # Every Application's name, sync and health, small enough for --argjson.
 apps() {
@@ -61,4 +65,4 @@ case "${1:-}" in
     [ -z "$left" ] || { echo "not Synced/Healthy yet: $(tr "\n" " " <<<"$left")"; exit 1; } ;;
   *) echo "usage: $0 cluster|argocd|platform|apps" >&2; exit 2 ;;
 esac
-touch "$DONE"
+[ -z "$cluster_id" ] || echo "$cluster_id" >"$DONE"

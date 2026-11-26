@@ -15,7 +15,9 @@
 # The kind node containers are created by kind, not by Compose: `docker compose
 # stop`/`start` only restarts these containers; `ready` re-runs the (idempotent)
 # bootstrap against the running cluster, so the cluster and its data are
-# untouched. `./platform down` deletes the cluster.
+# untouched. `./platform down` removes these services and deletes the
+# cluster. If the cluster disappears some other way, `ready` notices within
+# a minute and exits; its restart policy brings it back to rebuild it.
 name: orders-gateway-platform
 
 # What every service shares: the toolbox image, the checkout, the kubeconfig.
