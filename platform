@@ -96,7 +96,16 @@ case "$cmd" in
     run_toolbox bash scripts/down.sh "$@" ;;
   ship|rollback)
     die "./platform $cmd is now ./pipeline: ./pipeline ci <app> [--version V], ./pipeline cd <app> <env>, ./pipeline rollback <app> <env>" ;;
-  doctor|urls|verify|budget|demo)
+  demo)
+    check_docker
+    # hello-world drives ./pipeline, so it runs here on the host; the other
+    # demos run in the toolbox. clean also removes a hello-world copy.
+    case "${1:-}" in
+      hello-world) shift; exec bash scripts/demo-hello-world.sh "$@" ;;
+      clean) bash scripts/demo-hello-world.sh --clean ;;
+    esac
+    run_toolbox bash scripts/demo.sh "$@" ;;
+  doctor|urls|verify|budget)
     check_docker
     [ "$cmd" != doctor ] || host_ports || true
     run_toolbox bash "scripts/$cmd.sh" "$@" ;;

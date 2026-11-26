@@ -16,7 +16,10 @@
 #                20/s, 60% of it GET /work burning 10-50 ms of CPU each) pushes
 #                CPU past the HPA's 70% target, it scales from 3 to 6 pods,
 #                then back to 3 once k6 stops
-#   clean        delete the demo copy
+#   hello-world  a second app through the whole ./pipeline: CI, dev → staging
+#                → prod, a refused promotion, a rollback (runs on the host:
+#                scripts/demo-hello-world.sh)
+#   clean        delete the demo copy (and a hello-world left by --keep)
 #
 # The demos run in namespace demo, a copy of the live prod (chaos,
 # autoscale) or dev (rolling-update, gitops-revert) Argo CD Application:
@@ -34,7 +37,7 @@ APP=orders-gateway-demo NS=demo URL=http://localhost:8084
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 K6_LOG=/tmp/demo-k6.log
 
-usage() { die "usage: ./platform demo <rolling-update|chaos|gitops-revert|autoscale|policy|clean> [--keep]"; }
+usage() { die "usage: ./platform demo <rolling-update|chaos|gitops-revert|autoscale|policy|hello-world|clean> [--keep]"; }
 name=${1:-}; shift || true
 keep=; [ "${1:-}" = --keep ] && keep=1
 
