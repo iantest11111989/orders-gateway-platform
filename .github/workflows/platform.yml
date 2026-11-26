@@ -263,6 +263,22 @@ jobs:
           # A known baseline first: environments/prod may pin an older image.
           ./platform ship ci-ship-0
           before=ci-ship-0
+          # rollout status returns once the new pods are ready, but an old pod
+          # stays in Traefik's endpoints for its 5 s preStop, so a request
+          # right after can still reach it. Wait (up to 20 s) until 5 requests
+          # in a row answer the expected version.
+          serves() {
+            n=0
+            for _ in $(seq 1 80); do
+              if [ "$(curl -s --max-time 2 http://localhost:8080/version | jq -r '.version // empty')" = "$1" ]; then
+                n=$((n + 1)); [ "$n" -ge 5 ] && return 0
+              else
+                n=0
+              fi
+              sleep 0.25
+            done
+            echo "::error::prod didn't settle on version $1 within 20 s"; return 1
+          }
           : >"$RUNNER_TEMP/codes"
           # Three clients at once: two fast, and one slow (/work?ms=200) so
           # requests are in flight while old pods drain.
@@ -277,9 +293,9 @@ jobs:
              done) &
           done
           ./platform ship ci-ship-1
-          test "$(curl -s http://localhost:8080/version | jq -r '.version // empty')" = ci-ship-1
+          serves ci-ship-1
           ./platform rollback
-          test "$(curl -s http://localhost:8080/version | jq -r '.version // empty')" = "$before"
+          serves "$before"
           touch "$RUNNER_TEMP/stop"; wait
           total=$(grep -c . "$RUNNER_TEMP/codes"); bad=$(grep -vc '^200$' "$RUNNER_TEMP/codes" || true)
           echo "requests during ship + rollback: $total, not 200: $bad"
