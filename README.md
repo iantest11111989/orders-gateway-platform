@@ -326,6 +326,8 @@ Idle memory was higher than under load because the idle sample came first, while
 
 What would change, and why it's different here:
 
+The full plan for a real AWS production setup (accounts, EKS, IAM, ECR, Argo CD per environment, Datadog, tests, canaries in prod, DR, cost, on-call) is in [docs/production-on-aws.md](docs/production-on-aws.md).
+
 | Here (local) | On EKS/GKE | Why it's this way locally |
 | --- | --- | --- |
 | kind in Docker, 3 nodes, two labelled "zones" | Managed control plane, node groups in 3 real zones, Karpenter or the cluster autoscaler adding nodes when the HPA runs out | One machine, 6 CPU / 12 GB |
@@ -409,6 +411,7 @@ toolbox/                toolbox image
 docs/decisions/         architecture decision records
 docs/learn/             hands-on exercises
 docs/terraform-sketch/  the EKS version, sketched (not applied)
+docs/production-on-aws.md  the plan for running it on AWS for real
 .github/workflows/      CI
 ```
 
