@@ -1,5 +1,5 @@
-# Alerts for the delivery side of the platform: Argo CD,
-# cert-manager, and the 6 CPU / 12 GiB budget.
+# Alerts for the delivery side of the platform: Argo CD and the
+# 6 CPU / 12 GiB budget.
 #
 # Severities match the routing (page | ticket), like the SLO alerts in
 # orders-gateway-slo.yaml. The chart's defaults already cover TargetDown,
@@ -43,30 +43,6 @@ spec:
             description: >-
               {{ $labels.name }} has been {{ $labels.health_status }} for 10 minutes.
             runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/ArgoCDAppUnhealthy.md
-
-        - alert: CertificateNotReady
-          expr: max by (exported_namespace, name) (certmanager_certificate_ready_status{condition="False"}) == 1
-          for: 10m
-          labels:
-            severity: ticket
-          annotations:
-            summary: "Certificate {{ $labels.exported_namespace }}/{{ $labels.name }} isn't Ready"
-            description: >-
-              cert-manager couldn't issue or renew this certificate for 10 minutes.
-            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/CertificateNotReady.md
-
-        # cert-manager renews well before this (the gateway's certificate 30 days
-        # ahead), so under 14 days left means renewal has been failing.
-        - alert: CertificateExpiringSoon
-          expr: (max by (exported_namespace, name) (certmanager_certificate_expiration_timestamp_seconds) - time()) < 14 * 86400
-          for: 1h
-          labels:
-            severity: ticket
-          annotations:
-            summary: "Certificate {{ $labels.exported_namespace }}/{{ $labels.name }} expires in {{ $value | humanizeDuration }}"
-            description: >-
-              It should have been renewed already; renewal is failing.
-            runbook_url: https://github.com/iantest11111989/orders-gateway-platform/blob/main/runbooks/CertificateExpiringSoon.md
 
         # The whole stack against its 12 GiB budget. cAdvisor's root cgroup on
         # each kind node is the node container itself (pods plus kubelet and

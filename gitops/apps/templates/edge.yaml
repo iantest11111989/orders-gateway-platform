@@ -1,16 +1,11 @@
-# The shared HTTPS entry point: demo CA and *.localtest.me certificate
-# (cert-manager), the Envoy GatewayClass and Gateway, the HTTP -> HTTPS
-# redirect, and HTTPRoutes for the platform UIs. Plain manifests in
-# gitops/manifests/gateway/. Wave 25: after cert-manager and Envoy Gateway
-# (10) and after observability (20), whose `monitoring` namespace the
-# Grafana/Prometheus/Alertmanager routes live in. At wave 15 the first sync
-# failed with 'namespaces "monitoring" not found' and only got through on
-# retries that happened to outlast wave 20's start. Nothing before wave 40
-# (the apps) needs the Gateway.
+# Ingresses for the platform UIs (Argo CD, Grafana, Prometheus, Alertmanager),
+# each on its own Traefik entrypoint. Plain manifests in gitops/manifests/edge/.
+# Wave 25: after Traefik (10) and observability (20), whose `monitoring`
+# namespace the Grafana/Prometheus/Alertmanager Ingresses live in.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: platform-gateway
+  name: edge
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: orders-gateway-platform
@@ -24,10 +19,10 @@ spec:
   source:
     repoURL: {{ .Values.repo.url }}
     targetRevision: {{ .Values.repo.revision }}
-    path: gitops/manifests/gateway
+    path: gitops/manifests/edge
   destination:
     server: https://kubernetes.default.svc
-    namespace: envoy-gateway-system
+    namespace: traefik
   syncPolicy:
     automated:
       prune: true

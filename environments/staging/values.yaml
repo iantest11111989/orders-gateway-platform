@@ -7,8 +7,8 @@ image:
 
 replicas: 2
 
-route:
-  hostname: orders.staging.localtest.me
+ingress:
+  entrypoint: staging
 
 podDisruptionBudget:
   enabled: true

@@ -1,6 +1,6 @@
 # Alerts for the security components: Kyverno (admission),
 # Sealed Secrets (secrets in Git) and Trivy Operator (vulnerability scans).
-# Argo CD and cert-manager alerts live in their own file.
+# Argo CD alerts live in their own file (platform-delivery.yaml).
 #
 # Severities follow the SLO alerts: "page" for something that weakens a
 # security control right now, "ticket" for something to fix today.

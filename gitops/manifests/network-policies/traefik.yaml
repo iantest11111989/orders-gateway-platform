@@ -1,4 +1,4 @@
-# Baseline for cert-manager: deny ingress by default; allow its own pods and the
+# Baseline for traefik: deny ingress by default; allow its own pods and the
 # nodes (kubelet, API server webhooks and service proxy). "The nodes" is an
 # ipBlock, everything outside the pod range 10.244.0.0/16: on kindnet a
 # deny-all would also drop the control-plane node's traffic to pods.
@@ -6,7 +6,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-ingress
-  namespace: cert-manager
+  namespace: traefik
 spec:
   podSelector: {}
   policyTypes: [Ingress]
@@ -15,7 +15,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-same-namespace
-  namespace: cert-manager
+  namespace: traefik
 spec:
   podSelector: {}
   policyTypes: [Ingress]
@@ -27,7 +27,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-from-nodes
-  namespace: cert-manager
+  namespace: traefik
 spec:
   podSelector: {}
   policyTypes: [Ingress]
@@ -37,12 +37,12 @@ spec:
         # on kind that's the nodes and the API server on the control plane.
         - ipBlock: {cidr: 0.0.0.0/0, except: [10.244.0.0/16]}
 ---
-# Prometheus scrapes cert-manager.
+# Prometheus scrapes Traefik's metrics.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-monitoring-metrics
-  namespace: cert-manager
+  namespace: traefik
 spec:
   podSelector: {}
   policyTypes: [Ingress]
@@ -52,4 +52,27 @@ spec:
             matchLabels:
               kubernetes.io/metadata.name: monitoring
       ports:
-        - {port: 9402, protocol: TCP}
+        - {port: 9100, protocol: TCP}
+---
+# The public entry point: every entrypoint takes traffic from anywhere
+# (NodePort from the host, or pods such as the trickle that call Traefik).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-entrypoints
+  namespace: traefik
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: traefik
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - {port: 18080, protocol: TCP} # prod
+        - {port: 18081, protocol: TCP} # Argo CD
+        - {port: 18082, protocol: TCP} # dev
+        - {port: 18083, protocol: TCP} # staging
+        - {port: 18084, protocol: TCP} # demo
+        - {port: 13000, protocol: TCP} # Grafana
+        - {port: 19090, protocol: TCP} # Prometheus
+        - {port: 19093, protocol: TCP} # Alertmanager

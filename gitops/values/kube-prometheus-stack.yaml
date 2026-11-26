@@ -117,8 +117,6 @@ grafana:
   grafana.ini:
     server:
       # Grafana's local address: http://localhost:3000, at the root, plain HTTP.
-      # Redirects are relative, so the TLS hostname
-      # https://grafana.localtest.me keeps working too.
       root_url: http://localhost:3000/
       serve_from_sub_path: false
     analytics:
@@ -158,9 +156,8 @@ prometheusOperator:
   resources:
     requests: {cpu: 10m, memory: 64Mi}
     limits: {memory: 128Mi}
-  # The validating webhook needs certificates from a hook Job (or
-  # cert-manager, which arrives in the gateway PR). Rules are validated by
-  # promtool in CI instead. Revisit once cert-manager is in.
+  # The validating webhook needs certificates from a hook Job; rules are
+  # validated by promtool in CI instead.
   admissionWebhooks:
     enabled: false
   tls:

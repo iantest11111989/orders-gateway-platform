@@ -1,11 +1,13 @@
-# cert-manager issues the demo CA and the *.localtest.me certificate
-# (gitops/manifests/gateway/). Values: gitops/values/cert-manager.yaml.
-# Wave 10 (controllers). Its CRDs ship with the chart (crds.enabled), so it
-# has no separate CRD Application.
+# Traefik: the ingress controller, and the only way in from the host. It
+# serves every Ingress in the cluster on plain HTTP, one entrypoint per host
+# port, through a NodePort Service that kind maps to 127.0.0.1 (cluster/kind.yaml).
+# Values: gitops/values/traefik.yaml. Wave 10 (controllers), after the
+# Prometheus Operator CRDs (-10) its ServiceMonitor needs. The chart brings
+# its own CRDs (Middleware is the one used here).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: cert-manager
+  name: traefik
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: orders-gateway-platform
@@ -14,25 +16,23 @@ metadata:
 spec:
   project: default
   sources:
-    - repoURL: https://charts.jetstack.io
-      chart: cert-manager
-      targetRevision: v1.21.3
+    - repoURL: https://traefik.github.io/charts
+      chart: traefik
+      targetRevision: 43.0.0
       helm:
-        releaseName: cert-manager
+        releaseName: traefik
         valueFiles:
-          - $values/gitops/values/cert-manager.yaml
+          - $values/gitops/values/traefik.yaml
     - repoURL: {{ .Values.repo.url }}
       targetRevision: {{ .Values.repo.revision }}
       ref: values
   destination:
     server: https://kubernetes.default.svc
-    namespace: cert-manager
+    namespace: traefik
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
-    # Auto-sync does not retry a failed sync of the same revision on its own;
-    # this covers transient failures such as a CRD not yet Established.
     retry:
       limit: 5
       backoff: {duration: 5s, factor: 2, maxDuration: 1m}

@@ -10,7 +10,7 @@ Conventions: "**Recommend**" is the opinionated pick. "*(unsure)*" marks things 
 
 ## 1. Summary and target shape
 
-Production drops Docker Compose, kind and the in-stack Git server. Terraform builds an **AWS Organization with one account per environment** (dev, staging, prod), plus shared-services (ECR, CI roles, root DNS) and the usual security and log-archive accounts. Each environment account has **its own VPC across 3 AZs** (public subnets for the load balancer and NAT, private subnets for nodes) and **its own EKS cluster**, with nodes on Graviton managed by **Karpenter**. **Each cluster runs its own Argo CD**, which reconciles only that cluster from GitHub with the same `gitops/apps` app-of-apps and sync waves as today, so nothing in dev or staging can deploy to prod. CI uses **GitHub OIDC to assume short-lived roles** (no AWS keys), pushes signed, immutable images to **ECR**, and promotes by Git change as it does today. Traffic enters through an **ALB with ACM certificates and WAF**, managed by the AWS Load Balancer Controller, and goes to **Envoy Gateway**, which keeps the Gateway API routes, the `/admin` 403 and the canary weights. **Route 53 records come from ExternalDNS**. Secrets come from **Secrets Manager through External Secrets**, encrypted with per-account KMS keys. **Datadog** replaces Prometheus, Loki, Alertmanager and Grafana for metrics, logs, APM, SLOs, monitors, dashboards and synthetics. The app keeps its Prometheus-format `/metrics`, which the Datadog Agent scrapes as OpenMetrics, so `app/server.js` stays unchanged. Prod finally runs the **Argo Rollouts canary**, with analysis driven by Datadog.
+Production drops Docker Compose, kind and the in-stack Git server. Terraform builds an **AWS Organization with one account per environment** (dev, staging, prod), plus shared-services (ECR, CI roles, root DNS) and the usual security and log-archive accounts. Each environment account has **its own VPC across 3 AZs** (public subnets for the load balancer and NAT, private subnets for nodes) and **its own EKS cluster**, with nodes on Graviton managed by **Karpenter**. **Each cluster runs its own Argo CD**, which reconciles only that cluster from GitHub with the same `gitops/apps` app-of-apps and sync waves as today, so nothing in dev or staging can deploy to prod. CI uses **GitHub OIDC to assume short-lived roles** (no AWS keys), pushes signed, immutable images to **ECR**, and promotes by Git change as it does today. Traffic enters through an **ALB with ACM certificates and WAF**, managed by the AWS Load Balancer Controller, which terminates TLS and sends it to **Traefik**, which keeps the chart's Ingresses, the `/admin` 403 and the canary weights. **Route 53 records come from ExternalDNS**. Secrets come from **Secrets Manager through External Secrets**, encrypted with per-account KMS keys. **Datadog** replaces Prometheus, Loki, Alertmanager and Grafana for metrics, logs, APM, SLOs, monitors, dashboards and synthetics. The app keeps its Prometheus-format `/metrics`, which the Datadog Agent scrapes as OpenMetrics, so `app/server.js` stays unchanged. Prod finally runs the **Argo Rollouts canary**, with analysis driven by Datadog.
 
 One account, one VPC, one EKS cluster and one Argo CD per environment. Nothing is shared between environments except the images in ECR and the Git repo.
 
@@ -38,7 +38,7 @@ flowchart TB
       end
       subgraph prodacct [prod acct]
         prodvpc[VPC 3 AZ<br/>NAT per AZ, endpoints] --- prodeks[EKS prod + its Argo CD<br/>Rollouts canary]
-        alb[ALB + ACM + WAF] --> envoy[Envoy Gateway x2+] --> app[orders-gateway pods]
+        alb[ALB + ACM + WAF] --> traefik[Traefik x3] --> app[orders-gateway pods]
         sm[(Secrets Manager + KMS)]
       end
     end
@@ -69,8 +69,8 @@ flowchart TB
 | GHCR (`cd-app.yml` `IMAGE: ghcr.io/...`) | ECR in shared-services. Optionally dual-push to GHCR during migration | IAM-native pulls, no external dependency in the data path, Inspector scanning |
 | cosign keyless + BuildKit SBOM | Keep. Change the registry glob and the identity in `policies/verify-image-signatures.yaml` | Already the right design |
 | Kyverno, 1 replica, `failurePolicy: Ignore` | Kyverno, 3 replicas, `Fail` for app namespaces, every policy on Enforce | What production needs |
-| Envoy Gateway on NodePorts, 1 proxy | ALB (LBC, ACM, WAF) to Envoy Gateway, 2+ proxies across AZs with a PDB | WAF and ACM need an ALB. Envoy keeps HTTPRoutes and the `/admin` filter, and works with Argo Rollouts' Gateway API plugin |
-| cert-manager + demo CA, `*.localtest.me` | ACM for public certificates. cert-manager only for the ALB→Envoy hop | ACM renews itself, and it's free on ALB |
+| Traefik on NodePorts, 2 replicas, plain HTTP | ALB (LBC, ACM, WAF) to Traefik, 3 replicas across AZs with a PDB | WAF and ACM need an ALB. Traefik keeps the chart's Ingresses and the `/admin` middleware, and Argo Rollouts can split traffic through it |
+| Plain HTTP on `127.0.0.1` ports, no hostnames | ACM certificates on the ALB, which terminates TLS in front of Traefik | ACM renews itself, and it's free on ALB |
 | No DNS | Route 53, a delegated subzone per env account, ExternalDNS per cluster | |
 | Sealed Secrets with a committed demo key | External Secrets Operator + Secrets Manager + KMS | The standard production path |
 | kube-prometheus-stack, Prometheus 24 h | Datadog Agent + Cluster Agent (Datadog Operator). Keep metrics-server for the HPA | See §3.8. 15 months of metrics, so the real 30-day error budget can be computed (locally, 24 h) |
@@ -125,7 +125,7 @@ flowchart TB
 - **The app's sizing stays as charted:** 100m request, no CPU limit, 128Mi memory limit, HPA 3–6 at 70% (`charts/orders-gateway/values.yaml`). Raise `maxReplicas` in prod (e.g. 12) now that Karpenter can add nodes. 6 was the laptop's ceiling.
 - **Upgrades:** follow EKS standard support. Avoid extended support (it costs 6× more for the control plane). Upgrade dev, then staging, then prod a week apart. For big jumps, build a new cluster blue/green from the same Terraform module and GitOps, then shift Route 53 weights. Statelessness makes this cheap.
 
-**Repo changes:** `gitops/values/*` gain an EKS layer (`gitops/values/eks/<component>.yaml`, as the sketch's `root.yaml` comment foresees): storage classes, tolerations for `system`, LBC/ExternalDNS/ESO/Karpenter Applications, and the removal of kind-only bits (metrics-server's insecure TLS, NodePort pins in `gitops/manifests/gateway/envoyproxy.yaml`).
+**Repo changes:** `gitops/values/*` gain an EKS layer (`gitops/values/eks/<component>.yaml`, as the sketch's `root.yaml` comment foresees): storage classes, tolerations for `system`, LBC/ExternalDNS/ESO/Karpenter Applications, and the removal of kind-only bits (metrics-server's insecure TLS, NodePort pins in `gitops/values/traefik.yaml`).
 
 ### 3.3 Identity: IAM, Pod Identity, Kubernetes RBAC, SSO
 
@@ -149,7 +149,7 @@ Roles, one per controller per cluster, least privilege:
 - **External Secrets:** `secretsmanager:GetSecretValue`/`DescribeSecret` on `arn:...:secret:ogp/<env>/*`, and `kms:Decrypt` on the env CMK through the `kms:ViaService` condition.
 - **Karpenter:** the controller policy scoped to the cluster's tags, plus a node role.
 - **EBS CSI:** the managed policy.
-- **cert-manager:** none if ACM handles public certs (the sketch's DNS-01 role then goes away).
+- **cert-manager:** none. ACM handles public certificates on the ALB (the sketch's DNS-01 role goes away).
 - **The app:** **no AWS role at all**, and `automountServiceAccountToken: false` as today.
 - **Argo CD:** no AWS role. It manages only its own cluster through its in-cluster service account, so no cross-account role exists that could deploy to prod from elsewhere. Its repo credential is a read-only GitHub App installation (or deploy key) per cluster.
 
@@ -233,31 +233,35 @@ Each service's chart, `orders-gateway` included, depends on a pinned version of 
 
 ### 3.6 Ingress, DNS and TLS
 
+Locally, Traefik is the ingress controller: plain HTTP, one entrypoint per port, and standard Kubernetes Ingresses from the chart. `/admin/*` gets a 403 from a deny-all `IPAllowList` middleware on its own Ingress.
+
 **Options:**
-| | ALB Ingress straight to the app (LBC) | NLB → Envoy Gateway | **ALB → Envoy Gateway (recommended)** | LBC's own Gateway API support |
+| | ALB Ingress straight to the app (LBC) | NLB → Traefik | **ALB → Traefik (recommended)** | Gateway API (LBC or Envoy Gateway) |
 | --- | --- | --- | --- | --- |
 | WAF | Yes | **No** (WAF doesn't attach to an NLB) | Yes | Yes for ALB-backed Gateways |
 | ACM certs | Yes | Yes (TLS listener) | Yes | Yes |
-| `/admin` 403, path filters | ALB listener rules (annotation JSON) | Envoy `HTTPRouteFilter` | Both: WAF rule + Envoy filter | Gateway API, limited filters *(unsure)* |
-| Canary traffic split | Rollouts ALB provider (weighted target groups) | Gateway API plugin | Gateway API plugin, unchanged | Gateway API plugin *(unsure if supported)* |
-| Keeps the repo's routes and tests | No, rewrite as Ingress | Yes | Yes | Mostly |
-| Extra hop and cost | none | NLB | ALB + Envoy pods | none |
+| `/admin` 403, path filters | ALB listener rules (annotation JSON) | Traefik middleware | Both: WAF rule + Traefik middleware | HTTPRoute filters |
+| Canary traffic split | Rollouts ALB provider (weighted target groups) | Rollouts Traefik support | Rollouts Traefik support | Rollouts Gateway API plugin |
+| Keeps the repo's Ingresses and tests | Mostly (new class and annotations) | Yes | Yes | No, rewrite as HTTPRoutes |
+| Extra hop and cost | none | NLB | ALB + Traefik pods | depends on the controller |
 
-**Recommend ALB → Envoy Gateway.** WAF in prod is non-negotiable, and Envoy keeps every Gateway API route, the `/admin` filter, the JSON access logs, and Argo Rollouts' Gateway API plugin can split its traffic for canaries. The ALB is created by LBC from a small `Ingress` (class `alb`) in `envoy-gateway-system`, with Envoy's Service as default backend (IP targets). Annotations:
+**Recommend ALB → Traefik.** WAF in prod is non-negotiable. Traefik keeps the chart's Ingresses, the `/admin` middleware and the JSON access logs, and Argo Rollouts can split its traffic for canaries. **TLS terminates at the ALB**, in front of the ingress controller; the hop from the ALB to Traefik stays inside the VPC. The ALB is created by LBC from a small `Ingress` (class `alb`) in the `traefik` namespace, with Traefik's Service as default backend (IP targets). Annotations:
 
 - `certificate-arn` (or ACM auto-discovery by host), `wafv2-acl-arn`, `ssl-policy` = a TLS 1.2/1.3 policy, `ssl-redirect`
-- `healthcheck-path` against Envoy's ready endpoint
+- `healthcheck-path` against Traefik's ping endpoint
 - `load-balancer-attributes: deletion_protection.enabled=true`, access logs to S3
 - `external-dns.alpha.kubernetes.io/hostname` for the record
 
-**Alternative: NLB → Envoy, with an ALB only if WAF is needed.** Envoy Gateway's `EnvoyProxy` Service becomes an internet-facing **NLB** through the AWS Load Balancer Controller (IP targets, cross-zone). TLS terminates **at Envoy**, with certificates from cert-manager and Let's Encrypt DNS-01 through Route 53. That keeps today's design closest: the same Gateway, listeners, HTTPRoutes, the `/admin` 403 filter and the path-normalising `ClientTrafficPolicy`, with one fewer hop. **Recommend:** both keep Envoy and every route. The only question is whether the edge needs AWS WAF, which only attaches to an ALB, CloudFront or API Gateway. A public `orders` API should have WAF (managed rule groups, rate limits, body-size limits), so **prod gets ALB → Envoy and non-prod can use NLB → Envoy**. If the owner decides prod doesn't need WAF, NLB everywhere is simpler.
+The chart's Ingresses then match on each environment's hostname instead of a port-per-environment entrypoint.
 
-Envoy's `EnvoyProxy` (`gitops/manifests/gateway/envoyproxy.yaml`) becomes `ClusterIP` with `replicas: 3`, topology spread across AZs and a PDB (the README's "What we'd do next" #1). Watch out: the ALB's idle timeout (60 s) must stay **below** Envoy's and the app's keep-alive (`server.keepAliveTimeout = 65000` in server.js, so that already holds) to avoid 502s on reused connections.
+**Alternative: NLB → Traefik, with an ALB only if WAF is needed.** Traefik's Service becomes an internet-facing **NLB** through LBC (IP targets, cross-zone), with ACM on a TLS listener. One fewer hop, but no WAF. A public `orders` API should have WAF (managed rule groups, rate limits, body-size limits), so **prod gets ALB → Traefik and non-prod can use NLB → Traefik**. If the owner decides prod doesn't need WAF, NLB everywhere is simpler.
 
-*Considered:* making LBC's Gateway API implementation the only proxy (drops Envoy). It's attractive once its filter support and the Rollouts plugin's compatibility are confirmed *(unsure)*. Not now.
+Traefik (`gitops/values/traefik.yaml`) becomes `ClusterIP` with `replicas: 3`, topology spread across AZs and its PDB. Watch out: the ALB's idle timeout (60 s) must stay **below** Traefik's and the app's keep-alive (`server.keepAliveTimeout = 65000` in server.js, so that already holds) to avoid 502s on reused connections.
+
+**Why Ingress, not Gateway API.** Gateway API (with Envoy Gateway) was built and explored for this project, then set aside: it adds more moving parts than a single-service demo needs, and the brief asks for an Ingress. For a new production system we'd adopt it: role-based ownership, traffic splitting and portability are built into the standard. Traefik also implements Gateway API, so that move would keep the controller.
 
 **Edge rules for prod. These are stricter than local on purpose:**
-- **Only route the app's real paths:** `/work`, `/echo` (POST), `/version`. Return 404 at Envoy for everything else, including **`/metrics`, `/healthz` and `/readyz`, which the local edge forwards today**.
+- **Only route the app's real paths:** `/work`, `/echo` (POST), `/version`. Return 404 at Traefik for everything else, including **`/metrics`, `/healthz` and `/readyz`, which the local edge forwards today**.
   - Reason one: `/metrics` leaks internals.
   - Reason two: **server.js keys its in-memory counters and histograms by the raw path** (`route = url.pathname`, then `inc()`/`observe()` for every non-probe request, 404s included). A scanner hitting random URLs grows the process's memory without bound until the 128Mi limit OOM-kills the pod. The ServiceMonitor only drops those series at scrape time, so it protects Prometheus, not the pod. Filtering unknown paths at the edge is the only fix that leaves server.js unchanged. *(Worth confirming with a soak test, §3.9.)*
 - WAF: AWS managed rule groups (Common, KnownBadInputs, IP reputation, Anonymous IP optional). A rate-based rule per IP. A body-size limit on `POST /echo` (the app reads the whole body into memory). An explicit block of `/admin*`.
@@ -265,12 +269,12 @@ Envoy's `EnvoyProxy` (`gitops/manifests/gateway/envoyproxy.yaml`) becomes `Clust
 
 **DNS:**
 - An apex zone (e.g. `example.com`, open question) in shared-services. Delegate `dev.orders.example.com` and `staging.orders.example.com` hosted zones to the dev and staging accounts. Prod's `orders.example.com` lives in the prod account.
-- **ExternalDNS per cluster**, `--domain-filter` set to its own zone, `--txt-owner-id=<cluster>`, `policy: upsert-only` in prod (no deletes), sources `ingress` + `gateway-httproute`.
+- **ExternalDNS per cluster**, `--domain-filter` set to its own zone, `--txt-owner-id=<cluster>`, `policy: upsert-only` in prod (no deletes), source `ingress`.
 - For blue/green clusters or DR, use weighted or failover records with Route 53 health checks, managed by Terraform (not ExternalDNS) for the apex.
 
 **TLS:**
-- **Public:** ACM certificates (DNS validation in the env zone, from Terraform), attached to the ALB. Free and auto-renewed. The sketch's cert-manager + Let's Encrypt DNS-01 isn't needed at the edge.
-- **ALB → Envoy:** HTTPS with a cert from cert-manager's in-cluster CA (ALB doesn't validate backend certs, so this protects the bytes in the VPC without a PKI). Keep cert-manager. Drop `gitops/manifests/gateway/ca.yaml`'s demo naming. AWS Private CA (~$400/month per CA *(unsure)*) isn't worth it here.
+- **Public:** ACM certificates (DNS validation in the env zone, from Terraform), attached to the ALB, which terminates TLS. Free and auto-renewed. No cert-manager.
+- **ALB → Traefik:** plain HTTP inside the VPC, limited by security groups to the ALB. If the bytes in the VPC must be encrypted too, re-encrypt with a self-signed cert on Traefik (ALB doesn't validate backend certs). AWS Private CA (~$400/month per CA *(unsure)*) isn't worth it here.
 - **Internal UIs** (each cluster's Argo CD, the Rollouts dashboard): an internal ALB per cluster, reached over Client VPN, with SSO. Grafana, Prometheus and Alertmanager disappear with Datadog.
 
 ### 3.7 Secrets
@@ -325,15 +329,15 @@ If cost or lock-in dominates, C is the defensible answer. Either way, **keep the
 
 **Logs:**
 - The app's JSON lines parse automatically. Add a pipeline that remaps `status` → `http.status_code` and `duration_ms` → `duration`, plus a trace-id remapper on `trace_id`.
-- Exclusion filters: drop the trickle (`cust-trickle`) and Envoy health checks.
+- Exclusion filters: drop the trickle (`cust-trickle`) and the load balancer's health checks.
 - Indexes: prod 15 days. Dev/staging at 10–20% sampling, or Flex Logs. Archive everything to S3 in log-archive for 1 year (rehydrate on demand).
 
 **Traces:**
 - The app has no SDK and server.js must not change.
   - **Recommend Datadog's admission-controller library injection** (Single Step Instrumentation for Node). It adds `dd-trace` through an init container at pod start, with no image change. Enable it on the app namespace only, with `DD_TRACE_PROPAGATION_STYLE=tracecontext,datadog` so the incoming `traceparent` is honoured.
   - Alternative, more neutral: the OpenTelemetry Operator's Node auto-instrumentation, exporting OTLP to the Agent.
-- Envoy Gateway can also emit OTLP spans for the edge hop.
-- **Honest note:** the app makes no downstream calls (README, Limitations), so a trace is ~2 spans (Envoy + app). APM mainly buys per-request latency breakdowns, error tracking and log↔trace links, which is useful but not transformative here. APM is billed per host, so consider enabling it only in prod and staging.
+- Traefik can also emit OTLP spans for the edge hop.
+- **Honest note:** the app makes no downstream calls (README, Limitations), so a trace is ~2 spans (Traefik + app). APM mainly buys per-request latency breakdowns, error tracking and log↔trace links, which is useful but not transformative here. APM is billed per host, so consider enabling it only in prod and staging.
 - *(unsure: the injected tracer must not double-handle `traceparent`. Check that the app's logged `trace_id` matches the APM trace id in W3C mode.)*
 
 **SLOs and burn-rate alerts (mapping today's rules):**
@@ -343,7 +347,7 @@ If cost or lock-in dominates, C is the defensible answer. Either way, **keep the
 | Latency SLI: `/echo`+`/version` within 250 ms (`le="0.25"` bucket) | Metric SLO from the bucket counter: good = `http_request_duration_seconds.bucket{route IN (/echo,/version), upper_bound:0.25}`, total = `…count{route IN …}`. Exact, as locally *(unsure about the exact bucket tag name the OpenMetrics check emits; verify on the dev cluster)*. Or a time-slice SLO on p99 from the distribution, which is simpler but a different semantic. Prefer the ratio |
 | Fast burn 14.4× over 1 h & 5 m, `severity: page` | **SLO burn-rate alert**, long window 1 h. Datadog uses a short window of 1/12 of the long, so 5 m, which matches. Threshold 14.4 → `@pagerduty-orders` |
 | Slow burn 6× over 6 h & 30 m, `severity: ticket` | Burn-rate alert, long window 6 h (short 30 m), threshold 6 → `@slack-orders-alerts` + `@jira` |
-| Platform/security alerts (`alerts/platform-delivery.yaml`, `platform-security.yaml`) | Monitors: Argo CD app health/sync (Argo CD metrics via the Agent's Argo CD integration in each cluster), Kyverno admission errors and denials, cert expiry (ACM's `DaysToExpiry` via the AWS integration, and cert-manager's for the internal cert), ExternalSecret sync failures, Inspector critical findings, Rollouts aborted, Karpenter provisioning failures |
+| Platform/security alerts (`alerts/platform-delivery.yaml`, `platform-security.yaml`) | Monitors: Argo CD app health/sync (Argo CD metrics via the Agent's Argo CD integration in each cluster), Kyverno admission errors and denials, cert expiry (ACM's `DaysToExpiry` via the AWS integration), ExternalSecret sync failures, Inspector critical findings, Rollouts aborted, Karpenter provisioning failures |
 | Watchdog / dead-man's switch | Datadog is the receiver now, so turn it around: **no-data monitors** on `http_requests_total` per env (the trickle and synthetics guarantee data), and an Agent-up monitor per cluster. Also a PagerDuty heartbeat fed by a Datadog synthetic, so that "Datadog can't page" is noticed *(optional)* |
 | `runbook_url` annotation + a CI check that it exists (`scripts/test-alerts.sh`) | Every monitor message carries `Runbook: https://github.com/.../runbooks/<Name>.md`, and a CI check over the Terraform monitor definitions asserts the file exists. Keep the runbook names |
 | promtool unit tests (`alerts/tests/`) | No equivalent offline test. Replace them with: (1) `terraform validate` plus Datadog's monitor validate endpoint in CI; (2) a **weekly fire drill in staging** that sets `FAULT_ERROR_RATE` (an in-cluster `POST /admin/fault`, which the edge blocks) and asserts that the fast-burn monitor goes to Alert within N minutes and recovers after reset. That tests the whole delivery path, which promtool never did |
@@ -359,7 +363,7 @@ Principle: every promotion step requires evidence from the step before, collecte
 | Test | What and tool | Where it runs | Gates |
 | --- | --- | --- | --- |
 | Unit | `node --test` (existing `app/server.test.js`) | PR, main | merge |
-| Static | hadolint, shellcheck, actionlint, `helm lint` + `kubeconform` per env, `helm-unittest` for the chart's conditionals (HPA, PDB, publicRoute), `kyverno test policies/tests`, `tflint`/`checkov` (or `trivy config`) on `infra/`, `terraform validate` | PR | merge |
+| Static | hadolint, shellcheck, actionlint, `helm lint` + `kubeconform` per env, `helm-unittest` for the chart's conditionals (HPA, PDB, Ingress), `kyverno test policies/tests`, `tflint`/`checkov` (or `trivy config`) on `infra/`, `terraform validate` | PR | merge |
 | API | Write an **OpenAPI spec** for the black box (`app/openapi.yaml`: `/work` incl. the `ms` cap at 2000, `POST /echo`, `/version`, 404 shape, 503 `/readyz` while draining). Run **Schemathesis** against the built container in CI (property-based, catches 5xx on odd inputs). Plus a hand-written **Hurl** or k6 suite for exact behaviours: the SIGTERM drain (`/readyz` → 503, in-flight finishes), `connection: close` while shutting down, the `ms` cap, invalid JSON on `/admin/fault` → 500 *(that last is a real server.js behaviour: `JSON.parse` throws into the catch)* | PR (on the image built in the `image` job) | merge |
 | Integration | The existing kind cluster job (`platform.yml`): full `up`, `verify`, ship/rollback under traffic. Add an **EKS-layer render test**: `argocd app diff` preview, or [argo-cd-diff-preview](https://github.com/dag-andersen/argocd-diff-preview), posting rendered manifest diffs for every cluster on the PR | PR | merge |
 | Terraform plan | `terraform plan` per affected root, plan posted to the PR (read-only OIDC role) | PR | merge; apply on main with an environment approval for prod |
@@ -368,7 +372,7 @@ Principle: every promotion step requires evidence from the step before, collecte
 | Canary analysis | Argo Rollouts AnalysisTemplate with the Datadog provider (§3.10) | prod releases | automatic abort/rollback |
 | Load | k6 (existing `app/k6/load.js`) via the **k6 Operator** in staging: a nightly 15 min at 2× prod's peak rate, plus a weekly step test to find the knee (when the HPA saturates, p99 vs replicas). Thresholds as in load.js (`orders_slo_good >= 0.995`, p99 < 250 ms). Results sent to Datadog | nightly + before a feature promotion | **feature** promotion to prod requires the latest staging load run green on that image |
 | Soak | 8–24 h in staging weekly at prod-like rate, **including a slice of random-path requests**, watching memory per pod (the unbounded-route-map risk in §3.6), event-loop lag, and fd counts | weekly; before major Node base-image upgrades | ticket on regression |
-| Chaos | **AWS FIS** experiments: terminate a node, AZ power-interruption scenario, `ec2:stop` on Envoy's node, API throttling. In-cluster: pod kill, CoreDNS loss, Kyverno down (verifies fail-closed doesn't block rollbacks: an **open question**, because `Fail` + a Kyverno outage blocks new pods). Reuse `./platform demo chaos` logic, with the SLO gate at 99.5% | monthly game day in staging; quarterly in prod in business hours with stop conditions on the burn-rate monitors | findings become tickets |
+| Chaos | **AWS FIS** experiments: terminate a node, AZ power-interruption scenario, `ec2:stop` on a Traefik node, API throttling. In-cluster: pod kill, CoreDNS loss, Kyverno down (verifies fail-closed doesn't block rollbacks: an **open question**, because `Fail` + a Kyverno outage blocks new pods). Reuse `./platform demo chaos` logic, with the SLO gate at 99.5% | monthly game day in staging; quarterly in prod in business hours with stop conditions on the burn-rate monitors | findings become tickets |
 | Security | Trivy (CI gate), Inspector (continuous), an OWASP ZAP baseline DAST against staging nightly | PR / nightly | critical findings block promotion (an Inspector finding on the target digest is a promoter gate) |
 | Alert fire drill | The `/admin/fault` drill in staging (§3.8) | weekly | ticket if a monitor didn't fire |
 
@@ -384,11 +388,11 @@ Principle: every promotion step requires evidence from the step before, collecte
 | Post-apply smoke | a CI job after `apply` that asserts the live result with the AWS CLI: the EKS endpoint is private, nodes are Ready, every Pod Identity association resolves (a test pod per controller runs `aws sts get-caller-identity` and gets the expected role), ECR pulls work from each account, ExternalDNS can write only its own zone (a write to another zone is denied) | after every apply | permissions that look right on paper but don't work, cross-account trust mistakes |
 | Drift | nightly `plan -detailed-exitcode`, opening an issue on drift | nightly | console changes, out-of-band fixes |
 | Continuous compliance | AWS Config rules and conformance packs, Security Hub (FSBP, CIS) | continuous | regressions after deploy, resources created outside Terraform |
-| Resilience | AWS FIS (see Chaos above), Route 53 failover tests for the DR record | monthly / quarterly | single-AZ dependencies (one NAT, one Envoy), untested failover |
+| Resilience | AWS FIS (see Chaos above), Route 53 failover tests for the DR record | monthly / quarterly | single-AZ dependencies (one NAT, Traefik pods in one AZ), untested failover |
 | Cost | Infracost on the plan, posted to the PR; AWS Budgets alerts | every PR / continuous | a change that quietly adds a NAT gateway per AZ in dev |
 
 **Gaps in the app's own tests, found in this repo.** Worth fixing before any of the above, because they hide failures:
-- **Injected latency can't trip the latency SLO.** server.js applies `FAULT_LATENCY_MS` only to `/work`, and the latency SLI measures `/echo` and `/version` (`/work` is left out on purpose: the caller chooses how long it takes). So a latency drill through `/admin/fault`, never moves the latency SLI. A real latency drill has to slow `/echo` indirectly, by saturating the event loop with `/work` calls on the same pods, or by adding latency at Envoy (a fault-injection `BackendTrafficPolicy`), which is the better production drill anyway.
+- **Injected latency can't trip the latency SLO.** server.js applies `FAULT_LATENCY_MS` only to `/work`, and the latency SLI measures `/echo` and `/version` (`/work` is left out on purpose: the caller chooses how long it takes). So a latency drill through `/admin/fault`, never moves the latency SLI. A real latency drill has to slow `/echo` indirectly, by saturating the event loop with `/work` calls on the same pods, or by adding latency in the network with a chaos tool (for example AWS FIS or Chaos Mesh), which is the better production drill anyway.
 - **The canary's "no data" path.** A canary that gets too little traffic is Inconclusive and pauses, waiting for a human. That's correct (fail closed), but nothing alerts on a Rollout paused for a long time. Add a monitor on a Rollout `Paused` for over 30 minutes.
 
 **Promotion gates, summarised:**
@@ -402,7 +406,7 @@ Locally every release is a rolling update of a plain Deployment named `app`. In 
 
 **Recommend:**
 - Add a `Rollout` to the chart, on in prod and staging (so the canary path is itself tested before prod). A native `Rollout` template is clearer for on-call than `workloadRef`, which leaves the Deployment at 0/0.
-- **Traffic routing:** Argo Rollouts' Gateway API plugin (Envoy stays, §3.6), with stable and canary Services as the HTTPRoute's two backends.
+- **Traffic routing:** Argo Rollouts' Traefik support (§3.6): a weighted `TraefikService` with the stable and canary Services as its two backends.
 - **Steps:** 5% (2 min analysis) → 25% → 50% → 100%, plus a **background analysis** throughout. `abortScaleDownDelaySeconds` so a rollback is instant. `dynamicStableScale: true` to avoid doubling capacity. `maxSurge` so the canary pods land in different AZs.
 - **AnalysisTemplate with the Datadog provider:** the same two SLIs on the canary only, using a `rollouts-pod-template-hash` tag. Unified Service Tagging gives `version:<tag>`, so query by `version` instead, which is simpler. Datadog metrics arrive with ~1–2 min delay *(unsure on exact latency)*, so set `initialDelay: 2m` and keep the **fail-closed on empty data** design. A Datadog outage then means *Inconclusive → pause*, never a silent pass.
   - Alternative: keep a tiny in-cluster Prometheus (2 h retention) just for analysis. It's faster and has no SaaS dependency, but it's a second metrics system. **Prefer Datadog**, and revisit if the delay makes steps too slow.
@@ -421,7 +425,7 @@ What's stateful? **Almost nothing.** The app is stateless. Argo CD state is Git 
 **Recommend:**
 - **In-region HA (do now):**
   - Prod across 3 AZs: app topology spread (already in the chart) with `whenUnsatisfiable: DoNotSchedule` on zone, PDB `maxUnavailable: 1` (exists).
-  - Envoy 3 replicas + PDB. Kyverno 3 + PDB. CoreDNS scaled with `cluster-proportional-autoscaler` or more replicas, plus a PDB.
+  - Traefik 3 replicas + PDB. Kyverno 3 + PDB. CoreDNS scaled with `cluster-proportional-autoscaler` or more replicas, plus a PDB.
   - Karpenter `disruption.budgets`.
   - A NAT gateway per AZ (§3.1).
   - Test with FIS AZ power interruption.
@@ -503,7 +507,7 @@ The local stack has runbooks and alerts but no people. Production needs the proc
 - **Incidents.** A short written process: declare (any page, or a customer report), one incident commander, a Slack channel per incident (Datadog Incident Management or incident.io), status updates every 30 minutes, then a blameless postmortem within 5 working days for anything that burned more than 10% of the monthly error budget. Postmortem actions become tickets with owners, and runbook fixes land in `runbooks/` in the same week.
 - **Error budget policy.** Written down, agreed with the service owner: when the 30-day budget is spent, feature promotions to prod stop (`promotion/PAUSED`, which the patch promoter honours) until the budget recovers. Only fixes and patches ship. This is what makes the SLO more than a dashboard.
 - **Runbooks.** Keep them in Git next to the alerts, as today, and test them: every quarterly game day (§3.9) works through at least two runbooks as written. A runbook that needed a step not in it gets fixed the same day.
-- **Change management.** Every prod change is a merged PR: app promotions, platform values, Terraform. Argo CD sync windows block prod syncs outside working hours except for PRs labelled `hotfix`. Upgrades of platform components (Argo CD, Kyverno, Envoy Gateway, cert-manager, the Datadog Operator) go through Renovate PRs and land in dev, then staging, then prod, a few days apart.
+- **Change management.** Every prod change is a merged PR: app promotions, platform values, Terraform. Argo CD sync windows block prod syncs outside working hours except for PRs labelled `hotfix`. Upgrades of platform components (Argo CD, Kyverno, Traefik, the Datadog Operator) go through Renovate PRs and land in dev, then staging, then prod, a few days apart.
 - **Cluster upgrades.** Quarterly, following EKS standard support (§3.2): read the upgrade insights, bump add-ons first, then the control plane, then Karpenter rolls the nodes within its disruption budgets. Major jumps use a blue/green cluster instead.
 - **Access reviews.** Quarterly review of Identity Center group membership, Argo CD RBAC and break-glass use. Every break-glass session is alerted and reviewed.
 - **Capacity.** A monthly look at the HPA's peak replicas, Karpenter's node count and the SLO latency trend. Raise `maxReplicas` before the HPA sits at its ceiling, not after.
@@ -547,7 +551,7 @@ infra/
 - **Handover to Argo CD (the GitOps bridge):**
   1. `eks-cluster` creates the cluster, the system node group and the Pod Identity associations, plus the AWS resources the in-cluster controllers will need (roles, ACM cert, WAF ACL, zone).
   2. `argocd-bootstrap` installs Argo CD with `helm_release` and creates the root Application, passing those outputs as Helm values: `{env: prod, aws: {lbcRole: ..., certArn: ..., wafArn: ..., zone: ..., clusterName: ...}}`.
-  3. The root renders `gitops/apps` with those values, and the existing waves install Karpenter, LBC, ExternalDNS, ESO, Kyverno, Envoy Gateway, the Datadog Operator and finally the app. Argo CD then manages its own release through its `argocd` Application, so Terraform's `helm_release` is only the first install (`lifecycle { ignore_changes = all }`).
+  3. The root renders `gitops/apps` with those values, and the existing waves install Karpenter, LBC, ExternalDNS, ESO, Kyverno, Traefik, the Datadog Operator and finally the app. Argo CD then manages its own release through its `argocd` Application, so Terraform's `helm_release` is only the first install (`lifecycle { ignore_changes = all }`).
   4. Terraform applies nothing else to Kubernetes, so there's one owner per object, the property the sketch's README insists on.
 - **Not in Terraform:** anything with a Kubernetes API, Helm values of platform components, the app's environments. **In Terraform even though it's "observability":** Datadog monitors, SLOs and dashboards (§3.8).
 

@@ -146,15 +146,13 @@ host_ports() {
     fi
   done <<'EOF2'
 8080 /version "version" the app (prod)
+8082 /version "version" the app (dev)
+8083 /version "version" the app (staging)
 3000 /api/health "database" Grafana
 9090 /-/ready Prometheus Prometheus
 9093 /-/ready OK Alertmanager
 8081 /api/version "Version" Argo CD
 EOF2
-  if [ "$(docker context show 2>/dev/null)" = colima ]; then
-    printf '  i https://*.localtest.me needs ports 80 and 443 on 127.0.0.1, which macOS only lets root open,\n'
-    printf '    so with Colima those names do not reach this Mac'"'"'s browser. The ports above cover every UI.\n'
-  fi
   return "$hp_bad"
 }
 

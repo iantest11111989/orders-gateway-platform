@@ -11,11 +11,11 @@ spec:
       {{- include "orders-gateway.selectorLabels" . | nindent 6 }}
   policyTypes: [Ingress, Egress]
   ingress:
-    # Traffic from the Envoy proxies.
+    # Traffic from Traefik.
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: {{ .Values.networkPolicy.gatewayNamespace }}
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressNamespace }}
       ports:
         - port: http
     # Metrics scrapes from Prometheus.

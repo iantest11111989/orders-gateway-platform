@@ -3,7 +3,8 @@
 # itself. Keep both in sync by editing only this file.
 
 global:
-  domain: argocd.localtest.me
+  # Served by Traefik at http://localhost:8081 (gitops/manifests/edge).
+  domain: localhost:8081
   # Every Argo CD pod on the control plane is fine to spread; nothing special.
 
 # Trimmed for the 6 CPU / 12 GB budget: no Dex (local admin only), no
@@ -27,8 +28,7 @@ configs:
     argocdServerAdminPassword: "$2a$10$XEl/Kynful4ORRtkDtt9H.n7GglQet9YoTAnqiQNHj3Jxq7BgDimG"
     argocdServerAdminPasswordMtime: "2026-11-25T23:00:00Z"
   params:
-    # TLS is terminated at Envoy Gateway (gateway PR); Argo CD serves HTTP
-    # inside the cluster.
+    # Plain HTTP end to end: Traefik serves it on http://localhost:8081.
     server.insecure: true
     # JSON logs, so Loki can parse them with `| json` like every other component.
     controller.log.format: json
@@ -37,6 +37,8 @@ configs:
     applicationsetcontroller.log.format: json
     commitserver.log.format: json
   cm:
+    # The address users open (the chart would default to https://<domain>).
+    url: http://localhost:8081
     # Poll Git every 3 minutes (default 120s) to save CPU. The controller
     # reads this from argocd-cm, not argocd-cmd-params-cm.
     timeout.reconciliation: 180s

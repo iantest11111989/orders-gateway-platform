@@ -7,16 +7,16 @@ Helm chart for `orders-gateway` (the app in `app/`). Each environment installs i
 | `deployment.yaml` | yes | The workload. Startup, liveness and readiness probes; non-root, read-only root filesystem, all capabilities dropped, RuntimeDefault seccomp; no service account token; 30 s grace for the app's 5 s drain + 20 s shutdown; zero-downtime rolling update. |
 | `configmap.yaml` | yes | App settings as environment variables (`config.*`). `FAULT_*` only when set. |
 | `service.yaml`, `serviceaccount.yaml` | yes | ClusterIP on port 80; an identity without an API token. |
-| `httproute.yaml` | `route.enabled` | `https://<route.hostname>` on the shared Gateway. |
+| `ingress.yaml` | `ingress.enabled` | Two Ingresses (class `traefik`) on the environment's Traefik entrypoint (`ingress.entrypoint`: prod :8080, dev :8082, staging :8083, demo :8084), plus a Middleware: `/admin/*` goes through a deny-all `IPAllowList` (`app-admin-deny`) and gets a 403. |
 | `servicemonitor.yaml` | `serviceMonitor.enabled` | `/metrics` for Prometheus. The SLO rules are cluster-wide per namespace (`alerts/`), so there's no PrometheusRule here. |
-| `networkpolicy.yaml` | `networkPolicy.enabled` | Ingress only from the gateway and Prometheus; egress only DNS. |
+| `networkpolicy.yaml` | `networkPolicy.enabled` | Ingress only from Traefik and Prometheus; egress only DNS. |
 | `hpa.yaml` | `autoscaling.enabled` | CPU-based HorizontalPodAutoscaler (metrics-server). |
 | `pdb.yaml` | `podDisruptionBudget.enabled` | At most one pod down during voluntary disruptions. |
 | (in the Deployment) | `topologySpread.enabled` | Spread across zones and nodes. |
 
 ## Releases
 
-A new image is a rolling update of the Deployment: one extra pod comes up (`maxSurge: 1`), and an old one stops only once the new one is ready (`maxUnavailable: 0`), so capacity never drops. Pods get a 5 s `preStop` pause so the gateway stops sending them traffic before they shut down. To undo a release, put the previous image back in Git (`./platform rollback`, or a revert of the promotion commit) and Argo CD rolls back the same way.
+A new image is a rolling update of the Deployment: one extra pod comes up (`maxSurge: 1`), and an old one stops only once the new one is ready (`maxUnavailable: 0`), so capacity never drops. Pods get a 5 s `preStop` pause so Traefik stops sending them traffic before they shut down. To undo a release, put the previous image back in Git (`./platform rollback`, or a revert of the promotion commit) and Argo CD rolls back the same way.
 
 ## Image
 

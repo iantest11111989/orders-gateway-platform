@@ -43,9 +43,9 @@ docker ps --filter name=control-plane --filter name=worker    # the nodes are Do
 
 Open Argo CD at <http://localhost:8081> (`admin` / `admin12345`), or `./platform kubectl -n argocd get applications`.
 
-**Understand:** the bootstrap applies only what must exist before Argo CD can work: the demo Sealed Secrets key, the Git server, Argo CD itself and one root Application. Everything else is an Application in Git, applied in **sync waves**: CRDs, then controllers, then monitoring, policies and the gateway, then the apps. Argo CD manages itself too.
+**Understand:** the bootstrap applies only what must exist before Argo CD can work: the demo Sealed Secrets key, the Git server, Argo CD itself and one root Application. Everything else is an Application in Git, applied in **sync waves**: CRDs, then controllers, then monitoring, policies and the UI Ingresses, then the apps. Argo CD manages itself too.
 
-**Check yourself:** compare the `sync-wave` annotations of `cert-manager.yaml` and `platform-gateway.yaml`. Why must cert-manager run before the Gateway and its certificate are created?
+**Check yourself:** compare the `sync-wave` annotations of `traefik.yaml` and `edge.yaml`. Why must Traefik (and its Middleware CRD) exist before the UI Ingresses and the apps are synced?
 
 ---
 
@@ -58,14 +58,14 @@ Open Argo CD at <http://localhost:8081> (`admin` / `admin12345`), or `./platform
 | The `ready` health signal | `docker compose ps` | [`scripts/ready-check.sh`](../../scripts/ready-check.sh): until it first passes, every Argo CD Application must be Synced and Healthy and prod must answer; after that only prod |
 | The kubeconfig | `kubectl --kubeconfig out/kubeconfig.yaml get pods -A` | `scripts/up.sh` |
 | dev, staging, prod: a Deployment `app` in each | `kubectl --kubeconfig out/kubeconfig.yaml get deploy -A -l app.kubernetes.io/name=app` | [`charts/orders-gateway/`](../../charts/orders-gateway/) |
-| prod on `:8080`, `/admin/*` refused | `curl localhost:8080/version` → 200; `curl -X POST localhost:8080/admin/fault` → 403 | [`httproute-public.yaml`](../../charts/orders-gateway/templates/httproute-public.yaml), [`httproutefilter.yaml`](../../charts/orders-gateway/templates/httproutefilter.yaml) |
+| prod `:8080`, dev `:8082`, staging `:8083`; `/admin/*` refused | `curl localhost:8080/version` → 200; `curl -X POST localhost:8080/admin/fault` → 403 | [`ingress.yaml`](../../charts/orders-gateway/templates/ingress.yaml), [`gitops/values/traefik.yaml`](../../gitops/values/traefik.yaml) |
 | Logins | Grafana <http://localhost:3000>, Argo CD <http://localhost:8081> | [`gitops/values/argocd.yaml`](../../gitops/values/argocd.yaml) (a bcrypt hash), Grafana's SealedSecret |
-| Prometheus :9090, Alertmanager :9093 | open each | [`cluster/kind.yaml`](../../cluster/kind.yaml) port mappings → the gateway |
+| Prometheus :9090, Alertmanager :9093 | open each | [`cluster/kind.yaml`](../../cluster/kind.yaml) port mappings → Traefik → [`gitops/manifests/edge/`](../../gitops/manifests/edge/) |
 | Restarts keep data | `docker compose stop && docker compose start`, then check Grafana still has its history | `restart: unless-stopped`; volumes for Prometheus, Loki and the Git server |
 
 **Understand:**
 
-- **Gateway API, not Ingress.** Envoy Gateway serves every port, so `kubectl get ingress` is empty on purpose. A per-path filter answers `/admin/*` with 403 before it reaches the app.
+- **Standard Ingress, served by Traefik.** One Traefik entrypoint per host port, plain HTTP. `kubectl get ingress -A` lists them all. A second Ingress for `/admin` goes through a deny-all `IPAllowList` middleware, so `/admin/*` gets a 403 before it reaches the app.
 - **`/admin` is blocked at the edge, not in the app.** The app has no auth on `/admin/fault`, and a NetworkPolicy can't filter by path. From inside the cluster it still works; exercise 4 uses that to break the app on purpose.
 - **Restarts:** the cluster lives *outside* Compose (kind creates its own node containers), so `docker compose stop` only stops `ready` and the cluster keeps running.
 
@@ -97,10 +97,10 @@ Open Argo CD at <http://localhost:8081> (`admin` / `admin12345`), or `./platform
 
 **Understand:**
 
-- **Why preStop sleeps.** When a pod is deleted, Kubernetes sends SIGTERM *and* removes it from the endpoints at the same time, and the gateway learns a moment later. Without the sleep the app would stop accepting while the gateway still sends to it.
+- **Why preStop sleeps.** When a pod is deleted, Kubernetes sends SIGTERM *and* removes it from the endpoints at the same time, and Traefik learns a moment later. Without the sleep the app would stop accepting while Traefik still sends to it.
 - **Why no CPU limit.** A limit throttles the event loop even when the node has spare CPU, which shows up as latency. The request still reserves CPU and is what the HPA scales on.
 - **Why Helm.** "HPA, disruption budget and public route only in prod" is a conditional, which Helm expresses in values.
-- **Security:** non-root, read-only filesystem, every capability dropped, no service-account token, Pod Security `restricted`. NetworkPolicy: in only from the gateway and Prometheus, out only to DNS.
+- **Security:** non-root, read-only filesystem, every capability dropped, no service-account token, Pod Security `restricted`. NetworkPolicy: in only from Traefik and Prometheus, out only to DNS.
 
 **Check yourself:** if the app's exit took 40 s instead of 25 s, what would you change, and what goes wrong if you don't?
 
@@ -199,7 +199,7 @@ kubectl -n monitoring delete pod -l app.kubernetes.io/name=grafana
 kubectl -n kyverno delete pod --all
 ```
 
-**Understand:** requests go gateway → pod. Prometheus, Loki, Grafana and Argo CD are off that path, so losing them drops nothing. Kyverno **fails open**, so its outage can't block a rollout or rollback (meanwhile, policies aren't checked). The weak spot is the gateway's **single proxy replica**, listed in the README's limitations.
+**Understand:** requests go Traefik → pod. Prometheus, Loki, Grafana and Argo CD are off that path, so losing them drops nothing. Kyverno **fails open**, so its outage can't block a rollout or rollback (meanwhile, policies aren't checked). The weak spot is the gateway's **single proxy replica**, listed in the README's limitations.
 
 **Check yourself:** during `chaos`, why does the second eviction wait? Which object refuses it?
 

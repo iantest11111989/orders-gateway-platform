@@ -42,17 +42,6 @@
       datasourceTemplate: 'helm',
     },
     {
-      customType: 'regex',
-      // Only Envoy Gateway's charts come from an OCI registry.
-      description: 'Helm charts from docker.io/envoyproxy in gitops/apps',
-      managerFilePatterns: ['/^gitops/apps/templates/.+\\.yaml$/'],
-      matchStrings: [
-        'repoURL:\\s*docker\\.io/envoyproxy\\s+chart:\\s*(?<depName>\\S+)\\s+targetRevision:\\s*(?<currentValue>[^\\s#]+)',
-      ],
-      datasourceTemplate: 'docker',
-      packageNameTemplate: 'docker.io/envoyproxy/{{{depName}}}',
-    },
-    {
       // toolbox/versions.env: "# renovate: datasource=... depName=..." above each pin.
       customType: 'regex',
       description: 'Toolbox tool versions',
@@ -171,11 +160,6 @@
     {
       groupName: 'prometheus-operator',
       matchPackageNames: ['kube-prometheus-stack', 'prometheus-operator-crds'],
-    },
-    // Envoy Gateway's CRD chart and controller chart move together.
-    {
-      groupName: 'envoy-gateway',
-      matchDepNames: ['gateway-helm', 'gateway-crds-helm'],
     },
     // Argo CD: chart and CLI together. Never auto-merged: Argo CD manages
     // itself, so a bad update could break it with no automatic way back.

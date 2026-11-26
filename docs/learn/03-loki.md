@@ -10,7 +10,7 @@ By the end you will know how to find log lines in Loki by label, filter them by 
 
    ```sh
    ./platform shell
-   k6 run --quiet --insecure-skip-tls-verify -e BASE_URL=https://orders.dev.localtest.me -e RATE=5 -e DURATION=15m app/k6/load.js
+   k6 run --quiet -e BASE_URL=http://localhost:8082 -e RATE=5 -e DURATION=15m app/k6/load.js
    ```
 
 2. Open <http://localhost:3000> (`admin` / `admin12345`), go to **Explore** (the compass icon), and pick the **Loki** data source at the top. Switch the query editor from **Builder** to **Code**.
@@ -51,7 +51,7 @@ Line filters are fast, but they're plain text: they don't know that `200` is a s
 Send a few requests the app answers with 404 (`/echo` only takes `POST`):
 
 ```sh
-for i in 1 2 3; do curl -sk -o /dev/null https://orders.dev.localtest.me/echo; done
+for i in 1 2 3; do curl -s -o /dev/null http://localhost:8082/echo; done
 ```
 
 ```logql
@@ -71,7 +71,7 @@ Try a few more:
 The app logs a `trace_id` when the request carries a W3C `traceparent` header. Send one with an ID you choose:
 
 ```sh
-curl -sk -X POST https://orders.dev.localtest.me/echo \
+curl -s -X POST http://localhost:8082/echo \
   -H 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' -d '{"hello":"loki"}'
 ```
 

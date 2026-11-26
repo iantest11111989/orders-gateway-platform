@@ -23,16 +23,16 @@
 # The demos run in namespace demo, a copy of the live prod (chaos,
 # autoscale) or dev (rolling-update, gitops-revert) Argo CD Application:
 # same chart, same values file and sync options. Only the name, namespace,
-# hostname (orders-demo.localtest.me), the image under test and, for
+# Traefik entrypoint (demo, http://localhost:8084), the image under test and, for
 # rolling-update, the replica count (3, so there's something to roll)
 # differ, so the real environments only ever change through Git. k6 sends
-# ~10 requests/s through the gateway the whole time. --keep leaves the copy
+# ~10 requests/s through Traefik the whole time. --keep leaves the copy
 # running afterwards.
 # Runs in the toolbox.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
-APP=orders-gateway-demo NS=demo HOST=orders-demo.localtest.me
+APP=orders-gateway-demo NS=demo URL=http://localhost:8084
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 K6_LOG=/tmp/demo-k6.log
 
@@ -61,16 +61,12 @@ app_source() { kubectl -n argocd get applications.argoproj.io "$APP" -o jsonpath
 
 create_app() { # create_app <source app> <image tag> [helm-param=value ...]
   local src=$1 tag=$2; shift 2
-  # A copy of prod leaves out prod's hostless route on localhost:8080: the
-  # Gateway's "app" listener admits only the prod namespace, so the copy's
-  # route would be refused and Argo CD would call the demo Degraded.
-  [ "$src" != orders-gateway-prod ] || set -- publicRoute.enabled=false "$@"
   # Every copy labels its pods env=demo, not the source's env, so its logs
   # (Loki's env label) and metrics never pass for the real environment's.
   set -- env=demo "$@"
   step "Creating $APP: a copy of the $src Application, image $tag"
   kubectl -n argocd get applications.argoproj.io "$src" -o json | jq --arg app "$APP" --arg ns "$NS" \
-    --arg host "$HOST" --arg tag "$tag" --arg src "$src" --arg rev "${DEMO_REVISION:-}" --args '
+    --arg tag "$tag" --arg src "$src" --arg rev "${DEMO_REVISION:-}" --args '
     {apiVersion, kind,
      metadata: {name: $app, namespace: "argocd",
                 labels: {"app.kubernetes.io/part-of": "orders-gateway-platform", "demo": "true", "demo-source": $src},
@@ -80,12 +76,12 @@ create_app() { # create_app <source app> <image tag> [helm-param=value ...]
        | .destination.namespace = $ns
        | (if $rev != "" then .source.targetRevision = $rev else . end)
        | .source.helm.parameters = ([
-           {name: "route.hostname", value: $host},
+           {name: "ingress.entrypoint", value: "demo"},
            {name: "image.tag", value: $tag},
            {name: "image.digest", value: ""}]
            + ($ARGS.positional | map(split("=") | {name: .[0], value: (.[1:] | join("="))}))))}' "$@" |
     kubectl apply -f - >/dev/null
-  ok "Argo CD Application argocd/$APP (namespace $NS, https://$HOST)"
+  ok "Argo CD Application argocd/$APP (namespace $NS, $URL)"
 }
 
 # ensure_app <source app> <tag> [params...]: reuse the copy if it already
@@ -150,10 +146,9 @@ delete_app() {
 
 start_load() { # start_load [requests/s, default 10]
   local rate=${1:-10}
-  step "Starting k6: ~$rate requests/s to https://$HOST (log: $K6_LOG)"
-  # The demo CA isn't in k6's trust store; this is the demo's own hostname.
-  k6 run --quiet --insecure-skip-tls-verify --summary-mode=compact \
-    -e BASE_URL="https://$HOST" -e RATE="$rate" -e DURATION=30m "$ROOT/app/k6/load.js" >"$K6_LOG" 2>&1 &
+  step "Starting k6: ~$rate requests/s to $URL (log: $K6_LOG)"
+  k6 run --quiet --summary-mode=compact \
+    -e BASE_URL="$URL" -e RATE="$rate" -e DURATION=30m "$ROOT/app/k6/load.js" >"$K6_LOG" 2>&1 &
   K6_PID=$!
   sleep 15
   kill -0 "$K6_PID" 2>/dev/null || { cat "$K6_LOG"; die "k6 stopped (see above)"; }
@@ -162,8 +157,8 @@ start_load() { # start_load [requests/s, default 10]
 
 where_to_watch() {
   echo "  Watch it live:"
-  echo "    Argo CD             https://argocd.localtest.me/applications/argocd/$APP"
-  echo "    Grafana             https://grafana.localtest.me (orders-gateway dashboard, namespace $NS)"
+  echo "    Argo CD             http://localhost:8081/applications/argocd/$APP"
+  echo "    Grafana             http://localhost:3000 (orders-gateway dashboard, namespace $NS)"
   echo "    Terminal            ./platform shell -c 'kubectl -n $NS get pods -w'"
 }
 
