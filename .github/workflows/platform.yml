@@ -189,7 +189,13 @@ jobs:
       # `ready` service bootstraps everything and is healthy only when every
       # Argo CD Application is Synced and Healthy and prod serves.
       - name: "Start (docker compose up -d --wait)"
-        run: docker compose up -d --wait --wait-timeout 1200
+        # Compose can report success at the wait timeout without `ready` being
+        # healthy, so check it here: a slow start then fails at this step,
+        # not later on a missing out/kubeconfig.yaml.
+        run: |
+          docker compose up -d --wait --wait-timeout 1500
+          status=$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q ready)" 2>/dev/null || echo missing)
+          [ "$status" = healthy ] || { echo "::error::ready is $status after docker compose up --wait"; docker compose ps; exit 1; }
         env:
           PRELOAD_IMAGES: .cache/images
       - name: Compose logs (on failure)
@@ -204,6 +210,8 @@ jobs:
         run: |
           docker compose stop
           docker compose up -d --wait --wait-timeout 600
+          status=$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q ready)" 2>/dev/null || echo missing)
+          [ "$status" = healthy ] || { echo "::error::ready is $status after the restart"; docker compose ps; docker compose logs --tail=80 ready; exit 1; }
           kubectl --kubeconfig out/kubeconfig.yaml get nodes
       # A cold start is mostly image pulls (nothing is cached on a runner),
       # so list the slowest: a slow `up` can be explained from this log.
