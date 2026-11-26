@@ -1,0 +1,7 @@
+apiVersion: v2
+name: hello-world
+description: hello-world, the second app of ./platform demo hello-world. Built like the orders-gateway chart (probes, autoscaling, disruption budget, Ingress, metrics, network policy), named after its release.
+type: application
+# Chart version; ./pipeline ci hello-world --version X publishes it as X.
+version: 0.1.0
+appVersion: "main"

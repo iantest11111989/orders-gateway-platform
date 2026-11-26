@@ -1,0 +1,15 @@
+# prod: copied to cd/hello-world/prod.yaml when the demo promotes to prod.
+# ./pipeline cd adds the version and fills in the image before it pushes, so
+# the in-stack Git never sees this file without a version.
+env: prod
+
+# true: Argo CD applies every change by itself; false: a change waits for
+# its Sync click (the demo uses ./pipeline cd --sync).
+autoSync: false
+
+image:
+  tag: ""
+  digest: ""
+
+ingress:
+  entrypoint: prod

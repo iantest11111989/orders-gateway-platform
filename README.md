@@ -247,7 +247,7 @@ GitHub Actions only checks pull requests and `main`; nothing there builds a pack
 | --- | --- | --- |
 | **CI · app** (`ci-app.yml`) | pull requests touching the app | nothing is pushed; also the reference for production's CI stages · 1 · test, lint → 2 · build (amd64 + arm64), scan, rehearse signing → 3 · smoke-test the image as Kubernetes runs it (non-root, read-only: warm-up, endpoints, metrics, a clean SIGTERM drain) → 4 · a 60 s k6 performance gate held to the SLOs |
 | **CI · infra** (`infra.yml`) | pull requests and `main` touching the platform | shellcheck and actionlint · manifest validation (the chart for every environment, every manifest, checked against Kubernetes and CRD schemas and our policies) · toolbox build |
-| **E2E** (`e2e.yml`) | `main`, by hand, and pull requests with the `run-e2e` label (about 20 minutes) | one fresh cluster, four stages reported in the job summary: **1 · Platform build** (`docker compose up -d --wait` from a clean checkout) → **2 · Platform verify** (kubeconfig, restart, re-run, `./platform verify`, budget) → **3 · App CI** (`./pipeline ci`) → **4 · App CD** (`./pipeline cd` dev → staging → prod, then rollback, with traffic on prod and zero failed requests allowed) |
+| **E2E** (`e2e.yml`) | `main`, by hand, and pull requests with the `run-e2e` label (about 20 minutes) | one fresh cluster, five stages reported in the job summary: **1 · Platform build** (`docker compose up -d --wait` from a clean checkout) → **2 · Platform verify** (kubeconfig, restart, re-run, `./platform verify`, budget) → **3 · App CI** (`./pipeline ci`) → **4 · App CD** (`./pipeline cd` dev → staging → prod, a refused out-of-order promotion, then rollback, with traffic on prod and zero failed requests allowed) → **5 · Demo** (`./platform demo hello-world`) |
 | **CI · infra · alerts / policies** | pull requests and `main` | alert unit tests, runbook links and dashboard checks; `kyverno test` |
 | **CI · security** | pull requests, `main`, weekly | CodeQL; gitleaks over the whole history |
 | **CI · secrets / renovate config** | pull requests and `main` | no plain secrets; Renovate's config is valid |
@@ -281,7 +281,8 @@ The largest users at idle: `kube-system` (API server, etcd) 2.3 GiB, `monitoring
 | `gitops-revert` | a bad config commit (30% of requests fail) on a temporary branch that a copy of dev follows; Argo CD syncs it, then `git revert` heals it. Pushes to the cluster's Git server | ~5 min |
 | `autoscale` | k6 sends a fixed 20 requests/s (`AUTOSCALE_RATE`), mostly CPU-heavy `/work`; the HPA scales 3 → 6 pods, then back to 3 about 5 minutes after the load stops | ~8 min |
 | `policy` | Kyverno refuses an unsigned image and a `:latest` image, printing which policy refused each and why; a signed image is admitted | <1 min |
-| `clean` | delete the demo copy (after an interrupted demo, or `--keep`) | |
+| `hello-world` | a second app through the whole CI/CD, next to orders-gateway in dev, staging and prod: added to the checkout, `./pipeline ci --version`, `cd` dev → staging → prod, a refused out-of-order promotion, a rollback; then where to see its metrics and logs. It stays running to play with; `./platform demo hello-world clean` tears it down. Runs on the host (it drives `./pipeline`), not in namespace `demo` | ~6 min |
+| `clean` | delete the demo copy (after an interrupted demo, or `--keep`), and tear `hello-world` down | |
 
 Add `--keep` to leave the copy running. Watch in Argo CD or Grafana (environment `demo`).
 

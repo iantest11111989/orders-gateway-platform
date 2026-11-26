@@ -1,0 +1,21 @@
+# hello-world in this platform: what every environment shares (like
+# cd/orders-gateway/values.yaml). ./platform demo hello-world copies this
+# folder to cd/hello-world/ and removes it when the demo ends.
+
+image:
+  # The in-stack registry (system/registry/); ./pipeline publishes here.
+  repository: localhost:30500/hello-world
+
+# Traefik serves every environment. Its own host only: plain
+# http://localhost:<port> stays with orders-gateway.
+ingress:
+  className: traefik
+  hosts: [hello-world.localhost]
+  default: false
+
+# One pod per environment: nothing to keep up through a drain or to spread.
+replicas: 1
+podDisruptionBudget:
+  enabled: false
+topologySpread:
+  enabled: false

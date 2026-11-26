@@ -1,0 +1,33 @@
+{{- if .Values.serviceMonitor.enabled }}
+# Scraped by Prometheus, so hello-world's requests show in Prometheus and
+# Grafana next to orders-gateway's, as service="hello-world". The SLO rules
+# (alerts/orders-gateway-slo.yaml) count only orders-gateway.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "hello-world.name" . }}
+  labels:
+    {{- include "hello-world.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "hello-world.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.serviceMonitor.interval }}
+      # Unknown paths (scanners, typos) arrive with their raw path as
+      # `route`. Keep only the app's own routes, so they can't explode
+      # cardinality; they stay in the logs. Dropped, not
+      # renamed: renaming would collide series within one scrape.
+      metricRelabelings:
+        - sourceLabels: [__name__, route]
+          regex: 'http_request(s_total|_duration_seconds_(bucket|sum|count));(/work|/echo|/version|/admin)'
+          targetLabel: __tmp_keep
+          replacement: 'true'
+        - sourceLabels: [__name__, __tmp_keep]
+          regex: 'http_request(s_total|_duration_seconds_(bucket|sum|count));'
+          action: drop
+        - regex: __tmp_keep
+          action: labeldrop
+{{- end }}

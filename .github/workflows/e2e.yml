@@ -1,15 +1,18 @@
 name: E2E
 
-# The cluster test: a fresh kind cluster on a runner, in four stages, each
+# The cluster test: a fresh kind cluster on a runner, in five stages, each
 # reported in the job summary:
 #   1 · Platform build   docker compose up from a clean checkout
 #   2 · Platform verify  the kubeconfig works from the host; a restart and a
 #                        re-run of ./platform up (idempotent) come back
 #                        healthy; ./platform verify; the Argo CD health
 #                        check; the resource budget
-#   3 · App CI           ./pipeline ci: test, build, scan, load into kind
-#   4 · App CD           ./pipeline cd to dev, staging and prod, then
-#                        rollback, with traffic on prod the whole time
+#   3 · App CI           ./pipeline ci --version: test, build, scan, publish
+#   4 · App CD           ./pipeline cd to dev, staging and prod, a refused
+#                        out-of-order promotion, then rollback, with traffic
+#                        on prod the whole time
+#   5 · Demo             ./platform demo hello-world: a second app through
+#                        the same CI/CD, then its teardown
 # A stage runs only if the ones before it passed. Argo CD syncs from the
 # in-stack Git server, which the bootstrap fills with this job's checkout,
 # exactly what a fresh clone gets. About 20 minutes, so pull requests run it
@@ -203,6 +206,16 @@ jobs:
           # before 0.2.0), not back to 0.3.0.
           ./pipeline rollback orders-gateway prod --sync
           serves 0.1.0
+      # A second app through the same CI/CD next to orders-gateway: added,
+      # published, promoted in order, refused out of order, rolled back,
+      # seen in Prometheus. Then the teardown, which fails unless Argo CD has
+      # deleted the hello-world Applications.
+      - name: "5 · Demo: ./platform demo hello-world (a second app through the CI/CD)"
+        id: s5_demo
+        run: ./platform demo hello-world
+      - name: "5 · Demo: teardown (./platform demo hello-world clean)"
+        id: s5_teardown
+        run: ./platform demo hello-world clean
       - name: Stages (job summary)
         if: always()
         env:
@@ -210,6 +223,7 @@ jobs:
           S2: ${{ steps.s2_kubeconfig.outcome }} ${{ steps.s2_restart.outcome }} ${{ steps.s2_rerun.outcome }} ${{ steps.s2_verify.outcome }} ${{ steps.s2_health.outcome }} ${{ steps.s2_budget.outcome }}
           S3: ${{ steps.s3_ci.outcome }}
           S4: ${{ steps.s4_cd.outcome }}
+          S5: ${{ steps.s5_demo.outcome }} ${{ steps.s5_teardown.outcome }}
         run: |
           result() { # failure if any step failed, skipped if none ran, else success
             case " $1 " in
@@ -225,6 +239,7 @@ jobs:
             echo "| 2 · Platform verify | $(result "$S2") |"
             echo "| 3 · App CI | $(result "$S3") |"
             echo "| 4 · App CD | $(result "$S4") |"
+            echo "| 5 · Demo: hello-world | $(result "$S5") |"
           } | tee -a "$GITHUB_STEP_SUMMARY"
       # Refresh the image cache from main when the set of images changed (a
       # chart or image bump). Only main and manual runs save: PR caches are
