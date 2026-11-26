@@ -8,9 +8,9 @@ No Kyverno admission controller has answered a Prometheus scrape for 5 minutes. 
 
 ## Likely causes
 
-- The pod is crash-looping or OOM-killed (check its memory limit in `gitops/values/kyverno.yaml`).
+- The pod is crash-looping or OOM-killed (check its memory limit in `system/kyverno/values.yaml`).
 - It can't be scheduled: the nodes are full (`./platform budget`).
-- Only the metrics scrape is broken, for example a NetworkPolicy change in `gitops/manifests/network-policies/kyverno.yaml`. Then Kyverno is still working.
+- Only the metrics scrape is broken, for example a NetworkPolicy change in `system/network-policies/kyverno.yaml`. Then Kyverno is still working.
 
 ## How to check
 
@@ -28,7 +28,7 @@ In Grafana, the **Kyverno** dashboard's admission panels go flat while it's down
 
 ## How to fix
 
-- OOM-killed: raise the limit in `gitops/values/kyverno.yaml` through a PR. Don't `kubectl edit`, because Argo CD reverts it.
+- OOM-killed: raise the limit in `system/kyverno/values.yaml` through a PR. Don't `kubectl edit`, because Argo CD reverts it.
 - Not scheduled: free up room, for example `./platform demo clean`, or find what grew with `./platform budget`.
 - In Argo CD, check the `kyverno` Application is Synced and Healthy, and sync it if needed.
 

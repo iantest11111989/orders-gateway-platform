@@ -1,0 +1,48 @@
+# Trivy Operator: scans the running workloads' images and the cluster's
+# configuration continuously, and exports the results as Prometheus metrics
+# Values: system/trivy-operator/values.yaml.
+# Trimmed to fit the budget: one scan at a time against one shared Trivy
+# server. Wave 20, beside observability: its ServiceMonitor needs the
+# prometheus-operator CRDs (wave -10), and nothing before the apps needs it.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: trivy-operator
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: orders-gateway-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/manifest-generate-paths: "/system/trivy-operator"
+spec:
+  project: default
+  sources:
+    - repoURL: https://aquasecurity.github.io/helm-charts/
+      chart: trivy-operator
+      targetRevision: 0.38.1 # operator v0.36.1
+      helm:
+        releaseName: trivy-operator
+        valueFiles:
+          - $values/system/trivy-operator/values.yaml
+    - repoURL: {{ .Values.repo.url }}
+      targetRevision: {{ .Values.repo.revision }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: trivy-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff: {duration: 5s, factor: 2, maxDuration: 1m}
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/warn: restricted
+        pod-security.kubernetes.io/audit: restricted
+    syncOptions:
+      - CreateNamespace=true
+      # The CRDs are too large for client-side apply's annotation.
+      - ServerSideApply=true

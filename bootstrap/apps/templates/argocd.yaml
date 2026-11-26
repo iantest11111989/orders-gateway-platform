@@ -1,0 +1,43 @@
+# Argo CD manages itself after ./platform up installs it once with Helm.
+# No resources-finalizer: deleting this Application must never delete Argo CD.
+# Chart version and values must match scripts/argocd-bootstrap.sh.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: orders-gateway-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/manifest-generate-paths: "/system/argocd"
+spec:
+  project: default
+  sources:
+    - repoURL: https://argoproj.github.io/argo-helm
+      chart: argo-cd
+      targetRevision: 10.18.2
+      helm:
+        releaseName: argocd
+        valueFiles:
+          - $values/system/argocd/values.yaml
+    - repoURL: {{ .Values.repo.url }}
+      targetRevision: {{ .Values.repo.revision }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    # Auto-sync does not retry a failed sync of the same revision on its own;
+    # this covers transient failures such as a CRD not yet Established.
+    retry:
+      limit: 5
+      backoff: {duration: 5s, factor: 2, maxDuration: 1m}
+    syncOptions:
+      - ServerSideApply=true
+      # ServiceMonitors here need the Prometheus Operator CRDs (wave -10);
+      # don't fail the dry run on a fresh cluster if they're not there yet.
+      - SkipDryRunOnMissingResource=true

@@ -39,9 +39,9 @@ jobs:
           declare -A result
           : >report.md
           for env in dev staging prod; do
-            # image.digest from environments/<env>/values.yaml
-            d=$(awk '/^image:[[:space:]]*$/{f=1;next} f&&/^[^ #]/{f=0} f&&/^  digest:/{print $2}' "environments/$env/values.yaml")
-            [[ $d =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::no image.digest in environments/$env/values.yaml"; status=1; continue; }
+            # image.digest from cd/orders-gateway/<env>.yaml
+            d=$(awk '/^image:[[:space:]]*$/{f=1;next} f&&/^[^ #]/{f=0} f&&/^  digest:/{print $2}' "cd/orders-gateway/$env.yaml")
+            [[ $d =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::no image.digest in cd/orders-gateway/$env.yaml"; status=1; continue; }
             # staging and prod often run the same digest: scan it once.
             if [ -z "${result[$d]:-}" ]; then
               rc=0; out=$(scripts/scan-image.sh "$IMAGE@$d" 2>&1) || rc=$?

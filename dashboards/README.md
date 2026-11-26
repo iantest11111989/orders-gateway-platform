@@ -16,7 +16,7 @@ Open them at `http://localhost:3000/d/<name>` (e.g. <http://localhost:3000/d/ord
 ## Changing a dashboard
 
 1. Edit it in Grafana, then **Export → Export as JSON** (leave "Export for sharing externally" off), and save it over `dashboards/<name>.json`. Or edit the JSON directly.
-2. Run `scripts/dashboards.sh gen`. It writes the ConfigMap Argo CD applies (`gitops/manifests/monitoring/dashboard-<name>.yaml`, label `grafana_dashboard: "1"`).
+2. Run `scripts/dashboards.sh gen`. It writes the ConfigMap Argo CD applies (`system/kube-prometheus-stack/manifests/dashboard-<name>.yaml`, label `grafana_dashboard: "1"`).
 3. Run `scripts/dashboards.sh check` (CI runs it too). It checks that the ConfigMap is up to date, that every panel has a description, and that every PromQL query parses (with `promtool`).
 
 Changes made only in the Grafana UI are lost when Grafana restarts. Git is the source.

@@ -1,0 +1,38 @@
+# metrics-server: CPU and memory usage for HorizontalPodAutoscalers (the
+# prod orders-gateway HPA) and `kubectl top`. kind doesn't ship it.
+# Values: system/metrics-server/values.yaml. Wave 10 (controllers).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: metrics-server
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: orders-gateway-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/manifest-generate-paths: "/system/metrics-server"
+spec:
+  project: default
+  sources:
+    - repoURL: https://kubernetes-sigs.github.io/metrics-server/
+      chart: metrics-server
+      targetRevision: 3.14.0 # metrics-server v0.9.0
+      helm:
+        releaseName: metrics-server
+        valueFiles:
+          - $values/system/metrics-server/values.yaml
+    - repoURL: {{ .Values.repo.url }}
+      targetRevision: {{ .Values.repo.revision }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    # Auto-sync does not retry a failed sync of the same revision on its own;
+    # this covers transient failures such as a CRD not yet Established.
+    retry:
+      limit: 5
+      backoff: {duration: 5s, factor: 2, maxDuration: 1m}

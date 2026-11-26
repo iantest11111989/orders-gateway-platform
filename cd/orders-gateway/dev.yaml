@@ -1,0 +1,20 @@
+# dev: deployed automatically from main. Overrides values.yaml next to it.
+env: dev
+
+image:
+  # Set by CI (job promote-dev, "4 · Deploy dev", in .github/workflows/cd-app.yml) after every
+  # merge to main that publishes and signs a new image. Do not edit by hand.
+  tag: sha-afea67f310e9
+  digest: sha256:7cafa47104eacf31746748aa17290166676ed7f0d2117dc9a6d1559fcaecb6a1
+
+replicas: 1
+
+ingress:
+  entrypoint: dev
+
+
+# One pod: nothing to keep up through a drain or to spread.
+podDisruptionBudget:
+  enabled: false
+topologySpread:
+  enabled: false

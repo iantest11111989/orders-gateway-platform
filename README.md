@@ -58,7 +58,7 @@ Then open Grafana at <http://localhost:3000> and its **orders-gateway** dashboar
 ./platform verify        # check apps, scrape targets, logs, ports and policies
 ./platform urls          # every URL and login
 ./platform budget        # CPU and memory against 6 CPU / 12 GiB
-./platform ship          # ship app/ to prod; ./platform rollback undoes it
+./platform ship          # ship apps/orders-gateway/ to prod; ./platform rollback undoes it
 ./platform demo chaos    # and the other demos below
 ./platform shell         # a shell with kubectl, helm, argocd, k6 pointed at the cluster
 ./platform down          # delete everything: the Compose services and the cluster
@@ -131,11 +131,22 @@ flowchart LR
 # Optional, in a second terminal: traffic on prod while you do it
 while true; do curl -s -o /dev/null -w '%{http_code} ' 'http://localhost:8080/work?ms=20'; sleep 0.2; done
 
-./platform ship            # build app/, load it into kind, roll prod out to it
+./platform ship            # build apps/orders-gateway/, load it into kind, roll prod out to it
 ./platform rollback        # back to the image prod ran before
 ```
 
-`ship` builds `app/` as `localhost/orders-gateway:local-<timestamp>` (or `./platform ship <tag>`), loads it into the kind nodes, sets it in `environments/prod/values.yaml` and pushes the checkout to the cluster's Git server. Argo CD then replaces prod's pods one at a time, never dropping below full capacity. `rollback` puts back the image prod ran before (a second `rollback` goes further back) and leaves the values file as Git has it. Both wait for the rollout, then print the pods by version and the 5-minute error rate. `--env dev|staging` targets another environment.
+`ship` builds `apps/orders-gateway/` as `localhost/orders-gateway:local-<timestamp>` (or `./platform ship <tag>`), loads it into the kind nodes, sets it in `cd/orders-gateway/prod.yaml` and pushes the checkout to the cluster's Git server. Argo CD then replaces prod's pods one at a time, never dropping below full capacity. `rollback` puts back the image prod ran before (a second `rollback` goes further back) and leaves the values file as Git has it. Both wait for the rollout, then print the pods by version and the 5-minute error rate. `--env dev|staging` targets another environment.
+
+**Step by step, like CI: `./pipeline`.** The same thing split into stages, for any app with `apps/<app>/`, `helm/<app>/` and `cd/<app>/`:
+
+```sh
+./pipeline ci orders-gateway                # test, build, scan (Trivy), load into kind
+./pipeline cd orders-gateway dev            # deploy that build to dev ...
+./pipeline cd orders-gateway staging        # ... then staging, then prod
+./pipeline rollback orders-gateway staging  # back to staging's previous image
+```
+
+`ci` refuses a tag it has already built (`--tag T` picks one), and `cd` deploys the last `ci` build unless given `--tag`. The environment is always named: there's no default.
 
 These are Git changes on purpose: `kubectl set image` or `kubectl rollout undo` would be reverted by Argo CD within seconds.
 
@@ -171,7 +182,7 @@ Start with `./platform doctor` (Docker, CPU, memory, disk, ports) and `./platfor
 | macOS: a port shows another app | A program on the Mac holds the port | `./platform doctor` names it; stop it, then `colima restart` |
 | Pods in `ImagePullBackOff` during start-up | A registry rate-limited or flaked | Wait and re-run `./platform up`; Kubernetes keeps retrying |
 | `up` fails: "nodes advertise more than their cap" | An old cluster | `./platform down && ./platform up` |
-| `budget` reports `OOMKilled` | A container hit its memory limit | `./platform kubectl -n <ns> describe pod <pod>`; limits are in `gitops/values/` |
+| `budget` reports `OOMKilled` | A container hit its memory limit | `./platform kubectl -n <ns> describe pod <pod>`; limits are in `system/<component>/values.yaml` |
 | A pod in `dev`, `staging`, `prod` or `demo` is refused by `disallow-latest-tag` or `verify-image-signatures` | Working as intended | Use a tagged, signed image |
 | An app is `OutOfSync` after a manual change | Self-heal puts it back from Git | Change Git, not the cluster |
 | `docker compose up -d --wait` waits forever, `ready` unhealthy | The cluster was deleted while an old `ready` kept running | `docker compose down && docker compose up -d --wait` |
@@ -211,7 +222,7 @@ The app is a single Node event loop with a 3-second warm-up, a `/readyz` that tu
 
 ## Environments, secrets and CI/CD
 
-**Environments.** One chart, three values files: [`environments/{dev,staging,prod}/values.yaml`](environments/) override [`charts/orders-gateway/values.yaml`](charts/orders-gateway/values.yaml). dev runs 1 pod, staging 2, prod 3–6 with the HPA, disruption budget, spreading and the `:8080` route. A promotion changes one line: the image tag.
+**Environments.** One chart, three values files: [`cd/orders-gateway/{dev,staging,prod}.yaml`](cd/orders-gateway/), on top of the shared [`cd/orders-gateway/values.yaml`](cd/orders-gateway/values.yaml), override [`helm/orders-gateway/values.yaml`](helm/orders-gateway/values.yaml). dev runs 1 pod, staging 2, prod 3–6 with the HPA, disruption budget, spreading and the `:8080` route. A promotion changes one line: the image tag.
 
 **Secrets.** No plain secrets in the repo: they're SealedSecrets, encrypted for the cluster's Sealed Secrets controller. Its key is a **demo key committed to Git** so every clone can decrypt; a real setup keeps the key out of Git or uses External Secrets. CI fails on any plain `Secret` or private key apart from that demo key. `admin12345` is a published demo login, not a secret.
 
@@ -223,12 +234,12 @@ The app is a single Node event loop with a 3-second warm-up, a `/readyz` that tu
 flowchart LR
   pr["Pull request<br/>1 · test, lint<br/>2 · build both arches<br/>rehearse signing"] -->|review, merge| main["main"]
   main --> build["2 · build and push to GHCR<br/>3 · sign (cosign) · scan (Trivy)"]
-  build --> devc["4 · commit image to<br/>environments/dev"]
+  build --> devc["4 · commit image to<br/>cd/orders-gateway/dev.yaml"]
   devc --> devs(["Argo CD syncs dev"])
   build --> prs["5 · promotion PRs<br/>for staging and prod"]
-  prs -->|"owner merges"| stc["environments/staging"]
+  prs -->|"owner merges"| stc["cd/orders-gateway/staging.yaml"]
   stc --> sts(["Argo CD syncs staging"])
-  prs -->|"owner merges, after staging"| prc["environments/prod"]
+  prs -->|"owner merges, after staging"| prc["cd/orders-gateway/prod.yaml"]
   prc --> prs2(["Argo CD syncs prod"])
   localship["Locally: ./platform ship / rollback"] -->|"commit to the cluster's Git server"| prs2
 ```
@@ -316,15 +327,17 @@ The local platform keeps promotion manual on purpose. [docs/production-on-aws.md
 ## Repository layout
 
 ```
-app/                    the service (server.js), Dockerfile, tests, k6 scripts
-charts/orders-gateway/  Helm chart
-environments/           dev, staging and prod values
-gitops/                 Argo CD Applications, per-component values and manifests
+apps/orders-gateway/    the service (server.js), Dockerfile, tests, k6 scripts
+helm/orders-gateway/    its Helm chart
+cd/orders-gateway/      what each environment runs: values.yaml (shared), dev.yaml, staging.yaml, prod.yaml
+bootstrap/              root.yaml (what ./platform up applies) and the app-of-apps chart: one Argo CD Application per component
+system/<component>/     shared cluster components: Helm values and/or plain manifests (traefik, argocd, kube-prometheus-stack, ...)
 policies/               Kyverno policies and tests
 dashboards/             Grafana dashboards (JSON)
 alerts/                 Prometheus alert rules and tests
 runbooks/               one per alert
-platform                the CLI
+platform                the CLI: the cluster (up, down, verify, demos, ...)
+pipeline                ci, cd and rollback for an app, locally
 scripts/                what ./platform runs inside the toolbox
 cluster/                kind cluster config
 toolbox/                toolbox image

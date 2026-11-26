@@ -1,4 +1,4 @@
-# SLO rules for orders-gateway (app/server.js).
+# SLO rules for orders-gateway (apps/orders-gateway/server.js).
 #
 # SLO: 99.5% over 30 days, as two SLIs, each with its own 0.5% budget:
 #

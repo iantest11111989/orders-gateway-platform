@@ -1,35 +1,43 @@
 #!/usr/bin/env bash
-# ./platform ship [--env ENV] [TAG] / ./platform rollback [--env ENV]: ship a
-# new version of the app, or roll back the last one, by Git change. ENV
-# defaults to prod.
+# The deploy half of ./platform ship / rollback and ./pipeline cd / rollback:
+# ship a version of an app, or roll back the last one, by Git change.
 #
-#   ship      build app/ as localhost/orders-gateway:TAG (default
-#             local-YYYYMMDD-HHMMSS), load it into every kind node, point
-#             environments/ENV/values.yaml at it, push the checkout to the
-#             in-stack Git server; Argo CD rolls it out
-#   rollback  put back the image ENV ran before its last image change (read
-#             from the in-stack Git history), then push the same way
+#   ship [--env ENV] [TAG]    build apps/$APP/ as localhost/$APP:TAG (default
+#                             local-YYYYMMDD-HHMMSS), then load + deploy
+#   load TAG                  load localhost/$APP:TAG into every kind node
+#   deploy [--env ENV] TAG    point cd/$APP/ENV.yaml at localhost/$APP:TAG,
+#                             push the checkout to the in-stack Git server and
+#                             wait for Argo CD to roll it out
+#   rollback [--env ENV]      put back the image ENV ran before its last image
+#                             change (read from the in-stack Git history), then
+#                             push the same way
+# APP defaults to orders-gateway; ENV to prod for ship/rollback (./pipeline
+# always passes it).
 #
-# Both edit environments/ENV/values.yaml in this checkout: the change is a
-# normal file change you can see, commit or revert. Not `kubectl rollout
-# undo` or `kubectl set image`: Argo CD's self-heal would put Git's version
-# back within seconds.
-# Needs the default in-stack mode. In GitHub mode, commit the
-# values change and push it to GitHub instead. Runs in the toolbox.
+# Each edits cd/$APP/ENV.yaml in this checkout: the change is a normal file
+# change you can see, commit or revert. Not `kubectl rollout undo` or
+# `kubectl set image`: Argo CD's self-heal would put Git's version back
+# within seconds.
+# Needs the default in-stack mode. In GitHub mode, commit the values change
+# and push it to GitHub instead. Runs in the toolbox.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 IN_STACK=http://git.git.svc.cluster.local:23232/platform.git
-LOCAL_REPO=localhost/orders-gateway
+APP=${APP:-orders-gateway}
+LOCAL_REPO=localhost/$APP
 
 cmd=${1:-}; shift || true
 env=prod
 [ "${1:-}" = --env ] && { env=${2:?"--env needs dev, staging or prod"}; shift 2; }
 case "$env" in dev|staging|prod) ;; *) die "--env must be dev, staging or prod" ;; esac
-values="$ROOT/environments/$env/values.yaml"
+values="$ROOT/cd/$APP/$env.yaml"
 
-repo=$(kubectl -n argocd get applications.argoproj.io root -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || true)
-[ "$repo" = "$IN_STACK" ] || die "Argo CD syncs from ${repo:-?}, not the in-stack Git server: ship and rollback work in the default mode (docker compose up, or ./platform up without REPO_URL). In GitHub mode, change $values, commit and push to GitHub."
+in_stack_only() {
+  local repo
+  repo=$(kubectl -n argocd get applications.argoproj.io root -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || true)
+  [ "$repo" = "$IN_STACK" ] || die "Argo CD syncs from ${repo:-?}, not the in-stack Git server: ship and rollback work in the default mode (docker compose up, or ./platform up without REPO_URL). In GitHub mode, change $values, commit and push to GitHub."
+}
 
 # Change only the image lines of the values file, leaving every other line,
 # blank line and comment as it was (like scripts/set-image.sh). A yq rewrite
@@ -87,25 +95,44 @@ roll_out() { # push the checkout, then wait for the Deployment
   show
 }
 
+load() { # load <tag>: the local image into every kind node
+  step "Loading $LOCAL_REPO:$1 into the kind nodes (no registry involved)"
+  docker image inspect "$LOCAL_REPO:$1" >/dev/null 2>&1 || die "no local image $LOCAL_REPO:$1 (./pipeline ci $APP builds it)"
+  kind get clusters 2>/dev/null | grep -qx "$CLUSTER_NAME" || die "no kind cluster $CLUSTER_NAME: start it with ./platform up"
+  kind load docker-image "$LOCAL_REPO:$1" --name "$CLUSTER_NAME" >/dev/null
+  ok "loaded into every node"
+}
+
+deploy() { # deploy <tag>: point the env file at the local image and roll it out
+  step "Pointing $env at it: $values"
+  set_image "$LOCAL_REPO" "$1" ""
+  ok "image $LOCAL_REPO:$1 (digest empty: a local build has no registry digest)"
+  roll_out "$LOCAL_REPO:$1"
+}
+
 case "$cmd" in
   ship)
+    in_stack_only
     tag=${1:-local-$(date -u +%Y%m%d-%H%M%S)}
     [[ $tag != latest ]] || die "pick a real tag: :latest is refused in the app namespaces"
-    step "Building app/ as $LOCAL_REPO:$tag"
-    docker build -q -t "$LOCAL_REPO:$tag" --build-arg "VERSION=$tag" "$ROOT/app" >/dev/null
+    step "Building apps/$APP/ as $LOCAL_REPO:$tag"
+    docker build -q -t "$LOCAL_REPO:$tag" --build-arg "VERSION=$tag" "$ROOT/apps/$APP" >/dev/null
     ok "built"
-    step "Loading it into the kind nodes (no registry involved)"
-    kind load docker-image "$LOCAL_REPO:$tag" --name "$CLUSTER_NAME" >/dev/null
-    ok "loaded into every node"
-    step "Pointing $env at it: $values"
-    set_image "$LOCAL_REPO" "$tag" ""
-    ok "image $LOCAL_REPO:$tag (digest empty: a local build has no registry digest)"
-    roll_out "$LOCAL_REPO:$tag"
+    load "$tag"
+    deploy "$tag"
     echo
     if [ "$env" = prod ]; then echo "  Roll back: ./platform rollback" >&2
     else echo "  Roll back: ./platform rollback --env $env" >&2; fi
     ;;
+  load)
+    load "${1:?usage: ship.sh load TAG}"
+    ;;
+  deploy)
+    in_stack_only
+    deploy "${1:?usage: ship.sh deploy [--env ENV] TAG}"
+    ;;
   rollback)
+    in_stack_only
     step "Finding $env's previous image in the in-stack Git history"
     tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
     kubectl -n git port-forward svc/git :23232 >"$tmp/pf" 2>&1 & pf=$!
@@ -122,8 +149,8 @@ case "$cmd" in
     norm() { yq -o json -I0 '.image' | jq -cS 'with_entries(select(.value != "" and .value != null))'; }
     cur=$(norm <"$values")
     imgs=()
-    for c in $(git -C "$tmp/r" log --reverse --format=%H -- "environments/$env/values.yaml"); do
-      imgs+=("$(git -C "$tmp/r" show "$c:environments/$env/values.yaml" | norm)")
+    for c in $(git -C "$tmp/r" log --reverse --format=%H -- "cd/$APP/$env.yaml"); do
+      imgs+=("$(git -C "$tmp/r" show "$c:cd/$APP/$env.yaml" | norm)")
     done
     first=-1
     for i in "${!imgs[@]}"; do [ "${imgs[$i]}" = "$cur" ] && { first=$i; break; }; done
@@ -138,10 +165,10 @@ case "$cmd" in
     r=$(jq -r '.repository // ""' <<<"$prev")
     t=$(jq -r '.tag' <<<"$prev"); d=$(jq -r '.digest // ""' <<<"$prev")
     set_image "$r" "$t" "$d"
-    r=${r:-$(yq '.image.repository' "$ROOT/charts/orders-gateway/values.yaml")}
+    r=${r:-$(yq '.image.repository' "$ROOT/cd/$APP/values.yaml")}
     ok "back to $r:$t${d:+@${d:0:19}…}"
     want="$r:$t"; [ -z "$d" ] || want="$r@$d"
     roll_out "$want"
     ;;
-  *) die "usage: ./platform ship [--env dev|staging|prod] [TAG] | ./platform rollback [--env dev|staging|prod]" ;;
+  *) die "usage: ship.sh ship|deploy [--env dev|staging|prod] [TAG] | load TAG | rollback [--env dev|staging|prod]" ;;
 esac

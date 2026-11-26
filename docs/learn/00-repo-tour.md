@@ -39,7 +39,7 @@ docker ps --filter name=control-plane --filter name=worker    # the nodes are Do
 
 ### Everything installed from Git
 
-**Where:** [`gitops/root.yaml`](../../gitops/root.yaml) → [`gitops/apps/templates/`](../../gitops/apps/templates/) (one Argo CD Application per component, each a Helm chart with values in [`gitops/values/`](../../gitops/values/)).
+**Where:** [`bootstrap/root.yaml`](../../bootstrap/root.yaml) → [`bootstrap/apps/templates/`](../../bootstrap/apps/templates/) (one Argo CD Application per component, each a Helm chart with values in [`system/<component>/`](../../system/)).
 
 Open Argo CD at <http://localhost:8081> (`admin` / `admin12345`), or `./platform kubectl -n argocd get applications`.
 
@@ -57,10 +57,10 @@ Open Argo CD at <http://localhost:8081> (`admin` / `admin12345`), or `./platform
 | --- | --- | --- |
 | The `ready` health signal | `docker compose ps` | [`scripts/ready-check.sh`](../../scripts/ready-check.sh): until it first passes, every Argo CD Application must be Synced and Healthy and prod must answer; after that only prod |
 | The kubeconfig | `kubectl --kubeconfig out/kubeconfig.yaml get pods -A` | `scripts/up.sh` |
-| dev, staging, prod: a Deployment `app` in each | `kubectl --kubeconfig out/kubeconfig.yaml get deploy -A -l app.kubernetes.io/name=app` | [`charts/orders-gateway/`](../../charts/orders-gateway/) |
-| prod `:8080`, dev `:8082`, staging `:8083`; `/admin/*` refused | `curl localhost:8080/version` → 200; `curl -X POST localhost:8080/admin/fault` → 403 | [`ingress.yaml`](../../charts/orders-gateway/templates/ingress.yaml), [`gitops/values/traefik.yaml`](../../gitops/values/traefik.yaml) |
-| Logins | Grafana <http://localhost:3000>, Argo CD <http://localhost:8081> | [`gitops/values/argocd.yaml`](../../gitops/values/argocd.yaml) (a bcrypt hash), Grafana's SealedSecret |
-| Prometheus :9090, Alertmanager :9093 | open each | [`cluster/kind.yaml`](../../cluster/kind.yaml) port mappings → Traefik → [`gitops/manifests/edge/`](../../gitops/manifests/edge/) |
+| dev, staging, prod: a Deployment `app` in each | `kubectl --kubeconfig out/kubeconfig.yaml get deploy -A -l app.kubernetes.io/name=app` | [`helm/orders-gateway/`](../../helm/orders-gateway/) |
+| prod `:8080`, dev `:8082`, staging `:8083`; `/admin/*` refused | `curl localhost:8080/version` → 200; `curl -X POST localhost:8080/admin/fault` → 403 | [`ingress.yaml`](../../helm/orders-gateway/templates/ingress.yaml), [`system/traefik/values.yaml`](../../system/traefik/values.yaml) |
+| Logins | Grafana <http://localhost:3000>, Argo CD <http://localhost:8081> | [`system/argocd/values.yaml`](../../system/argocd/values.yaml) (a bcrypt hash), Grafana's SealedSecret |
+| Prometheus :9090, Alertmanager :9093 | open each | [`cluster/kind.yaml`](../../cluster/kind.yaml) port mappings → Traefik → [`system/edge/`](../../system/edge/) |
 | Restarts keep data | `docker compose stop && docker compose start`, then check Grafana still has its history | `restart: unless-stopped`; volumes for Prometheus, Loki and the Git server |
 
 **Understand:**
@@ -75,7 +75,7 @@ Open Argo CD at <http://localhost:8081> (`admin` / `admin12345`), or `./platform
 
 ## 3. Running the app well
 
-**Where:** [`app/server.js`](../../app/server.js) first, then [`charts/orders-gateway/values.yaml`](../../charts/orders-gateway/values.yaml) and [`templates/deployment.yaml`](../../charts/orders-gateway/templates/deployment.yaml).
+**Where:** [`apps/orders-gateway/server.js`](../../apps/orders-gateway/server.js) first, then [`helm/orders-gateway/values.yaml`](../../helm/orders-gateway/values.yaml) and [`templates/deployment.yaml`](../../helm/orders-gateway/templates/deployment.yaml).
 
 1. **Read the app** (about 100 lines). Find the 3-second warm-up before `/readyz` says 200; the SIGTERM handler (stops accepting, drains, exits after **25 s**); the metrics it writes; `/admin/fault`.
 2. **Match each behaviour to the chart:**
@@ -108,7 +108,7 @@ Open Argo CD at <http://localhost:8081> (`admin` / `admin12345`), or `./platform
 
 ## 4. Environments, ship and rollback
 
-**Where:** [`environments/`](../../environments/), [`scripts/ship.sh`](../../scripts/ship.sh).
+**Where:** [`cd/orders-gateway/`](../../cd/orders-gateway/), [`scripts/ship.sh`](../../scripts/ship.sh).
 
 ```sh
 # terminal 1: traffic on prod the whole time
@@ -125,19 +125,19 @@ Terminal 1 should show nothing but `200`. Watch it in Grafana → **orders-gatew
 
 **Understand:**
 
-- **The environments:** diff `environments/dev/values.yaml` against `environments/prod/values.yaml`. That diff *is* the difference between dev and prod.
-- **Ship is a Git commit.** `ship` edits the image lines in `environments/prod/values.yaml` and pushes your checkout to the cluster's Git server; Argo CD rolls it out. `kubectl set image` would be undone by self-heal within seconds.
+- **The environments:** diff `cd/orders-gateway/dev.yaml` against `cd/orders-gateway/prod.yaml`. That diff *is* the difference between dev and prod.
+- **Ship is a Git commit.** `ship` edits the image lines in `cd/orders-gateway/prod.yaml` and pushes your checkout to the cluster's Git server; Argo CD rolls it out. `kubectl set image` would be undone by self-heal within seconds.
 - **No downtime** comes from section 3: `maxUnavailable: 0`, readiness gating, preStop.
 - **Secrets:** run `find gitops -name '*.sealed.yaml'` and open one. It's encrypted for the cluster's Sealed Secrets controller, so it's safe in Git. The controller's key is a demo key committed so every clone works offline: **demo only**. `scripts/check-no-plain-secrets.sh` (CI) fails on any plain Secret.
 - **Re-runnable:** run `./platform up` on the running stack. It changes nothing.
 
-**Check yourself:** after a `ship` and a `rollback`, what does `git diff environments/prod/values.yaml` show?
+**Check yourself:** after a `ship` and a `rollback`, what does `git diff cd/orders-gateway/prod.yaml` show?
 
 ---
 
 ## 5. GitOps and CI/CD
 
-**Where:** [`gitops/manifests/git-server/`](../../gitops/manifests/git-server/), [`.github/workflows/`](../../.github/workflows/); exercise [5, step 1](05-k8s-operations.md).
+**Where:** [`system/git-server/`](../../system/git-server/), [`.github/workflows/`](../../.github/workflows/); exercise [5, step 1](05-k8s-operations.md).
 
 ```sh
 ./platform shell
@@ -209,8 +209,8 @@ kubectl -n kyverno delete pod --all
 
 | | How | Check it |
 | --- | --- | --- |
-| Every tool pinned | Versions and checksums in [`toolbox/versions.env`](../../toolbox/versions.env); chart versions and image digests in `gitops/`; Renovate keeps them current | `grep -rn "targetRevision" gitops/apps/templates/ \| head` |
-| The app unchanged across environments | Only configuration (environment variables) differs between dev, staging and prod | `diff environments/dev/values.yaml environments/prod/values.yaml` |
+| Every tool pinned | Versions and checksums in [`toolbox/versions.env`](../../toolbox/versions.env); chart versions and image digests in `bootstrap/` and `system/`; Renovate keeps them current | `grep -rn "targetRevision" bootstrap/apps/templates/ \| head` |
+| The app unchanged across environments | Only configuration (environment variables) differs between dev, staging and prod | `diff cd/orders-gateway/dev.yaml cd/orders-gateway/prod.yaml` |
 
 ---
 

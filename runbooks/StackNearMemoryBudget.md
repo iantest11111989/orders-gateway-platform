@@ -18,7 +18,7 @@ The **Budget** dashboard in Grafana shows the same per namespace over time, so y
 ## Likely causes and fixes
 
 - **A demo or load test left running:** `./platform demo clean`, or stop the k6 process.
-- **A component growing without limit** (a leak, or a cache: Prometheus series, Loki chunks). Find it in the per-namespace view and check its limits in `gitops/values/`. Prometheus with many new series is the usual suspect: look for a label with unbounded values (exercise 1 in `docs/learn/`).
+- **A component growing without limit** (a leak, or a cache: Prometheus series, Loki chunks). Find it in the per-namespace view and check its limits in `system/<component>/values.yaml`. Prometheus with many new series is the usual suspect: look for a label with unbounded values (exercise 1 in `docs/learn/`).
 - **Docker has less than 12 GiB:** `./platform doctor`. Under Colima: `colima start --cpu 6 --memory 12`.
 
 Change limits in Git, not with `kubectl edit`: Argo CD would put them back.

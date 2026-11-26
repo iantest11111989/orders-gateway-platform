@@ -1,0 +1,19 @@
+# orders-gateway in this platform: what every environment shares. Argo CD
+# passes the chart's defaults (helm/orders-gateway/values.yaml), then this
+# file, then the environment's own file (dev.yaml, staging.yaml, prod.yaml),
+# the later ones winning. The env files hold only what differs: the image
+# (a promotion changes that and nothing else), replicas and the entrypoint.
+
+image:
+  repository: ghcr.io/iantest11111989/orders-gateway
+
+# Traefik serves every environment (system/traefik/values.yaml).
+ingress:
+  className: traefik
+
+# staging and prod keep a pod up through node drains and spread over nodes
+# and zones; dev, with one pod, turns both off.
+podDisruptionBudget:
+  enabled: true
+topologySpread:
+  enabled: true

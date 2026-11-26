@@ -1,0 +1,47 @@
+# Logs: Loki in single-binary mode, in namespace logging, with 2 days of
+# retention on a local volume. Alloy (alloy.yaml) ships every pod's logs here.
+# Values: system/loki/values.yaml. The namespace enforces Pod Security
+# "restricted".
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: loki
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: orders-gateway-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/manifest-generate-paths: "/system/loki"
+spec:
+  project: default
+  sources:
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: loki
+      targetRevision: 7.7.0 # Loki 3.6.20
+      helm:
+        releaseName: loki
+        valueFiles:
+          - $values/system/loki/values.yaml
+    - repoURL: {{ .Values.repo.url }}
+      targetRevision: {{ .Values.repo.revision }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: logging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    # Auto-sync does not retry a failed sync of the same revision on its own;
+    # this covers transient failures such as a CRD not yet Established.
+    retry:
+      limit: 5
+      backoff: {duration: 5s, factor: 2, maxDuration: 1m}
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/warn: restricted
+        pod-security.kubernetes.io/audit: restricted
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

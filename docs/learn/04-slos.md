@@ -22,7 +22,7 @@ Open the **orders-gateway** dashboard in Grafana and set **environment** to `dem
 
 ## 1. Break it (2 min)
 
-The app has a fault switch: `FAULT_ERROR_RATE` makes that share of `/work` and `/echo` requests return `500` (`{"error":"injected fault"}`). In Git it's `config.faultErrorRate` in `environments/<env>/values.yaml`, and changing it through a commit is what the `gitops-revert` demo does. The copy is its own Application, so here you can set it as a Helm parameter on the Application instead:
+The app has a fault switch: `FAULT_ERROR_RATE` makes that share of `/work` and `/echo` requests return `500` (`{"error":"injected fault"}`). In Git it's `config.faultErrorRate` in `cd/orders-gateway/<env>.yaml`, and changing it through a commit is what the `gitops-revert` demo does. The copy is its own Application, so here you can set it as a Helm parameter on the Application instead:
 
 ```sh
 ./platform shell

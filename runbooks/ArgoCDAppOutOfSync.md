@@ -25,4 +25,4 @@ Or open `http://localhost:8081/applications/argocd/<name>`: the sync status and 
 
 ## Fix
 
-Fix it in Git, not in the cluster: revert or correct the commit that broke the sync. If a controller keeps changing a field, add that field to the app's `ignoreDifferences` (in `gitops/apps/templates/<name>.yaml`). Argo CD syncs again within about 3 minutes, or right away with `argocd app sync <name>`.
+Fix it in Git, not in the cluster: revert or correct the commit that broke the sync. If a controller keeps changing a field, add that field to the app's `ignoreDifferences` (in `bootstrap/apps/templates/<name>.yaml`). Argo CD syncs again within about 3 minutes, or right away with `argocd app sync <name>`.
