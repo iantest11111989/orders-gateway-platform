@@ -90,17 +90,6 @@ jobs:
           build-args: |
             VERSION=ci
             COMMIT=${{ github.sha }}
-      # The v2-bad demo stage, so a PR that breaks it fails before main.
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: app
-          target: bad
-          platforms: linux/amd64,linux/arm64
-          push: false
-          build-args: |
-            VERSION=ci-bad
-            COMMIT=${{ github.sha }}
-            FEATURES=delivery-estimates
       - uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
       - name: Signing rehearsal (localhost registry)
         # Fork PRs get no OIDC token, so they skip the rehearsal.

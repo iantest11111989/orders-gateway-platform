@@ -169,7 +169,7 @@ Roles, one per controller per cluster, least privilege:
 
 **Recommend:**
 - **ECR in shared-services**, repository `orders-gateway`:
-  - **Tag immutability ON.** This breaks today's practice of re-pushing `v1`/`v2`/`v2-bad` from every main commit. Move the demo images to a separate `orders-gateway-demo` repository with mutable tags, never admitted in prod. Immutability still allows *adding* a tag to an existing digest, which promotion uses below.
+  - **Tag immutability ON.** This breaks today's practice of re-pushing `v1`/`v2` from every main commit. Move the demo images to a separate `orders-gateway-demo` repository with mutable tags, never admitted in prod. Immutability still allows *adding* a tag to an existing digest, which promotion uses below.
   - **Enhanced scanning (Inspector), continuous** on `orders-gateway`, scan-on-push on the rest. Findings go to Security Hub and Datadog. This replaces `rescan.yml`'s daily job; keep `rescan.yml` until Inspector has run in parallel for a month.
   - **Lifecycle:** expire untagged manifests after 7 days *(careful: cosign v3 bundles and BuildKit SBOM manifests are referrers/index children. Check that the lifecycle rules don't treat them as untagged orphans. Unsure; test it in dev first.)* Keep the last 100 `sha-*` images. Never expire `release-*`, which the promotion job adds to a digest when it reaches prod.
   - **Encryption** with a shared-services KMS CMK. The repo policy grants pull to the org (`aws:PrincipalOrgID` plus the `Workloads` OU path condition) for the node roles. **Cross-account pull, not replication, within one region.** Cross-region **replication** only to the DR region (§3.11).

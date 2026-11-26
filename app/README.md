@@ -29,4 +29,4 @@ Probes, metrics and `/healthz` aren't counted or logged. Every other request is 
 
 ## Images
 
-`Dockerfile` builds from `node:22.23.5-alpine`, pinned by digest. Target `bad` (the `v2-bad` demo image) only adds `FAULT_ERROR_RATE=0.1 FAULT_LATENCY_MS=400`. CI runs `npm test` and `npm run lint` in that same Node image (`.github/workflows/ci-app.yml` and `cd-app.yml`).
+`Dockerfile` builds from `node:22.23.5-alpine`, pinned by digest. CI runs `npm test` and `npm run lint` in that same Node image (`.github/workflows/ci-app.yml` and `cd-app.yml`).
