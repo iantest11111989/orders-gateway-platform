@@ -1,5 +1,5 @@
 # Defaults for every environment. environments/<env>/values.yaml overrides
-# them; Argo CD passes both (gitops/apps/templates/<env>.yaml).
+# them; Argo CD passes both (gitops/apps/templates/orders-gateway-<env>.yaml).
 
 # Environment name: the `env` label on pods (Loki, Grafana).
 env: dev
