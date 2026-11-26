@@ -64,7 +64,10 @@ create_app() { # create_app <source app> <image tag> [helm-param=value ...]
   local src=$1 tag=$2; shift 2
   # prod itself is a plain Deployment (environments/prod/values.yaml); its
   # demo copy turns the Rollout on, so the canary demos have a canary.
-  [ "$src" != prod ] || set -- rollout.enabled=true "$@"
+  # It also leaves out prod's hostless route on localhost:8080: the
+  # Gateway's "app" listener admits only the prod namespace, so the copy's
+  # route would be refused and Argo CD would call the demo Degraded.
+  [ "$src" != prod ] || set -- rollout.enabled=true publicRoute.enabled=false "$@"
   step "Creating $APP: a copy of the $src Application, image $tag"
   kubectl -n argocd get applications.argoproj.io "$src" -o json | jq --arg app "$APP" --arg ns "$NS" \
     --arg host "$HOST" --arg tag "$tag" --arg src "$src" --arg rev "${DEMO_REVISION:-}" --args '
