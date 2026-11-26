@@ -206,6 +206,16 @@ Argo CD Agent (one UI, agents pulling in each cluster) was also considered. Revi
 
 **One view across environments.** With no hub, two things show dev, staging and prod side by side. **argocd-notifications** in each Argo CD reports its syncs to GitHub as **Deployments** for its environment (its GitHub service has a `deployment` template, triggered on sync succeeded, failed and degraded), so the repo's **Environments** panel shows what each environment runs and since when. And the Datadog Agent's Argo CD integration puts every Application's sync and health on one Datadog dashboard.
 
+**Three repositories, not one.** Locally everything is in this repo for convenience. In production the app's code doesn't live with the cluster config:
+
+| Repo | Holds | Who can merge |
+| --- | --- | --- |
+| `orders-gateway` (app) | `app/`, the Helm chart, and CI that tests, builds, signs and publishes the image and the chart | The app's developers |
+| `orders-gateway-deploy` (GitOps) | What Argo CD syncs: the per-environment files that pin image and chart versions, plus the cluster-wide `system/` components | The platform team; promotion PRs need the release group for prod |
+| `orders-gateway-infra` (Terraform) | Accounts, networks, clusters, IAM (§4) | The platform team |
+
+Why: app developers can't change cluster-wide config by accident, each repo has its own history and reviewers, and the app repo's CI never writes cluster config directly. It only opens promotion PRs in the deploy repo, through a GitHub App installed there with pull-request rights only. Argo CD reads only the deploy repo and the chart registry. The promotion steps below happen in the deploy repo.
+
 **Promotion across clusters: a Git change.**
 - `main` merge → CI builds, signs and pushes to ECR → the `promote-dev` commit edits `environments/dev/values.yaml` → dev's Argo CD syncs it.
 - Staging and prod move by **promotion PR** (`promote/staging`, `promote/prod`). Each changes only that environment's image line, pinned to **digest + tag**, so the same image moves through every environment without a rebuild.
@@ -523,7 +533,7 @@ infra/
 
 - **State:** one S3 bucket per account (versioned, KMS, S3 native lockfile as in the sketch's `use_lockfile = true`), key `<root>/terraform.tfstate`. CI assumes the target account's plan/apply role, so no cross-account state access is needed. Separate roots for `network` and `eks-cluster` within an env, so a cluster rebuild doesn't touch the VPC. Small roots keep plans fast and blast radius small.
 - **Locking:** Terraform 1.10+ locks state with a lockfile in the S3 bucket itself (`use_lockfile = true`), so the older S3 + DynamoDB lock table isn't needed. The DynamoDB table also works, but the lockfile is one less resource.
-- **Which repo:** the Terraform can live in **its own repo** (`orders-gateway-infra`), with its own reviewers and CODEOWNERS, so a platform-config PR can never touch IAM by accident. The layout below works as a separate repo or as `infra/` here. **Recommend a separate repo** once more than one service exists; `infra/` in this repo is fine while it's one service and one team.
+- **Which repo:** the Terraform can live in **its own repo** (`orders-gateway-infra`), with its own reviewers and CODEOWNERS, so a platform-config PR can never touch IAM by accident. The layout below works as a separate repo or as `infra/` here. **Recommend a separate repo** (see the three repositories in §3.5).
 - **Tooling:** plain Terraform (or OpenTofu; open question) with one `env.tfvars` per root. Terragrunt helps with DRY backends and dependency ordering across ~15 roots. **Recommend starting without it** and adding it if the copy-paste hurts.
 - **Pin providers and modules.** Renovate already manages pins. Add the `terraform` manager.
 - **CI:** `.github/workflows/infra.yml`. On PR: fmt, validate, tflint, checkov/trivy config, and `plan` for changed roots, posted as a PR comment. On main: `apply` per root in dependency order. Prod roots wait on a GitHub Environment approval. **Nightly drift detection** (`plan -detailed-exitcode`) opens an issue on drift (the same pattern as `rescan.yml`'s tracking issue).
