@@ -177,7 +177,7 @@ kubectl -n dev get deploy app -w            # back to 1 within seconds: self-hea
 
 **Asked (CI/CD):** workflows valid on real GitHub: lint and test, build, scan, push, update desired state. Bonus: least privilege, caching, PR vs main triggers, SBOM and signing, prod approvals.
 
-**Where:** [`.github/workflows/`](../../.github/workflows/), README → *Environments, secrets, CI/CD and GitOps*. Read `ci-app.yml` (pull requests) and then `cd-app.yml` (merges to `main`) top to bottom: pull requests build and scan without pushing; `main` pushes, signs with cosign (no keys), attaches an SBOM, and commits the new image to dev.
+**Where:** [`.github/workflows/`](../../.github/workflows/), README → *Environments, secrets, CI/CD and GitOps*. Read `ci-app.yml` (pull requests) and then `cd-app.yml` (merges to `main`) top to bottom: pull requests build and scan without pushing, smoke-test the image (`scripts/smoke-test-image.sh`: try it locally on any image) and hold a 60-second k6 run to the SLOs (`app/k6/perf-gate.js`); `main` pushes, signs with cosign (no keys), attaches an SBOM, and commits the new image to dev.
 
 **See it:** the repo's **Actions** tab on GitHub. The **CI · platform** workflow's **E2E · Fresh install** job runs `docker compose up -d --wait` on a fresh runner, ships and rolls back under traffic, and fails on a single non-200.
 

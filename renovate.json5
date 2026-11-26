@@ -92,6 +92,16 @@
       datasourceTemplate: 'docker',
     },
     {
+      // The k6 image CI's performance gate runs (K6_IMAGE in ci-app.yml).
+      customType: 'regex',
+      description: 'k6 image in the app CI workflow',
+      managerFilePatterns: ['/^\\.github/workflows/ci-app\\.yml$/'],
+      matchStrings: [
+        '(?<depName>grafana/k6):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]+)',
+      ],
+      datasourceTemplate: 'docker',
+    },
+    {
       // Images pinned in Helm values files. Renovate's helm-values manager only
       // reads files named values.yaml; ours are gitops/values/<chart>.yaml, so
       // an explicit image there (the argo-rollouts plugin fetcher's alpine) was

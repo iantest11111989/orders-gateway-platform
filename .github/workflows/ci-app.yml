@@ -5,7 +5,7 @@ name: CI · app
 
 on:
   pull_request:
-    paths: ["app/**", "!app/k6/**", "!app/**/*.md", ".github/workflows/ci-app.yml", ".github/workflows/cd-app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh", "scripts/promotion-kind.sh"]
+    paths: ["app/**", "!app/k6/**", "!app/**/*.md", "app/k6/load.js", "app/k6/perf-gate.js", "scripts/smoke-test-image.sh", ".github/workflows/ci-app.yml", ".github/workflows/cd-app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh", "scripts/promotion-kind.sh"]
 
 # Least privilege: jobs read the repo, and only the `image` job (the signing
 # rehearsal) may request an OIDC token. Nothing here writes packages or the
@@ -22,6 +22,9 @@ env:
   # Vulnerability scanner for scripts/scan-image.sh, pinned by tag and digest;
   # a regex manager in renovate.json5 keeps it current.
   TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
+  # k6 for the performance gate, pinned by tag and digest (a regex manager in
+  # renovate.json5 keeps it current; the toolbox pins the same version).
+  K6_IMAGE: grafana/k6:2.4.0@sha256:d41bb79cd8de5a7ad619b53570e3712633e8bff0937010a5c6c57a4747e7a276
 
 defaults:
   run:
@@ -116,3 +119,69 @@ jobs:
           TRIVY_INSECURE: "true" # the localhost registry is plain HTTP
           DIGEST: ${{ steps.build.outputs.digest }}
         run: scripts/scan-image.sh "localhost:5000/orders-gateway@$DIGEST"
+
+  # Runs the image the way Kubernetes will (uid 1000, read-only, no
+  # capabilities) and checks what the chart relies on: /healthz at once,
+  # /readyz 503 during the warm-up then 200, the endpoints, the metrics the
+  # SLOs read, and that SIGTERM drains an in-flight request and exits 0
+  # (scripts/smoke-test-image.sh). A plain single-platform build of the same
+  # Dockerfile, loaded into the runner's Docker.
+  smoke:
+    name: "3 · Smoke test the image"
+    needs: [test, lint]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the image
+        run: docker build -t orders-gateway:ci --build-arg VERSION=ci .
+      - name: Start-up, endpoints, metrics, graceful shutdown
+        working-directory: .
+        run: scripts/smoke-test-image.sh orders-gateway:ci
+
+  # The SLOs as a gate: 60 s of the demos' traffic mix (app/k6/load.js) at
+  # 20 requests/s against one container, failing on any SLO threshold
+  # (app/k6/perf-gate.js): 99.5% good, /echo and /version p99 under 250 ms,
+  # under 0.5% failed requests.
+  perf:
+    name: "4 · Performance gate (k6, 60 s)"
+    needs: [test, lint]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build and start the image
+        run: |
+          docker build -t orders-gateway:ci --build-arg VERSION=ci .
+          docker run -d --name app -p 127.0.0.1:8080:8080 \
+            --user 1000:1000 --read-only --cap-drop ALL orders-gateway:ci
+          for _ in $(seq 1 100); do
+            [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/readyz)" = 200 ] && exit 0
+            sleep 0.1
+          done
+          echo "::error::the app never became ready"; docker logs app; exit 1
+      - name: k6, 60 s at 20 requests/s, held to the SLOs
+        run: |
+          mkdir -p "$RUNNER_TEMP/k6" && chmod 777 "$RUNNER_TEMP/k6"  # k6 runs as its own user
+          docker run --rm --network host -v "$PWD/k6":/k6:ro -v "$RUNNER_TEMP/k6":/out \
+            -e BASE_URL=http://127.0.0.1:8080 -e RATE=20 -e DURATION=60s \
+            "$K6_IMAGE" run --summary-trend-stats "avg,p(95),p(99),max" \
+            --summary-export /out/summary.json /k6/perf-gate.js
+      - name: Summary
+        if: always()
+        run: |
+          f="$RUNNER_TEMP/k6/summary.json"
+          [ -f "$f" ] || exit 0
+          jq -r '.metrics as $m | def pct: . * 10000 | round / 100; def ms: . * 100 | round / 100;
+            "| Check | Value | Gate |", "| --- | --- | --- |",
+            "| Requests | \($m.http_reqs.count) | |",
+            "| Good per the SLO | \($m.orders_slo_good.value | pct)% | ≥ 99.5% |",
+            "| Failed | \($m.http_req_failed.value | pct)% | < 0.5% |",
+            "| POST /echo p99 | \($m["http_req_duration{name:POST /echo}"]["p(99)"] | ms) ms | < 250 ms |",
+            "| GET /version p99 | \($m["http_req_duration{name:GET /version}"]["p(99)"] | ms) ms | < 250 ms |"' \
+            "$f" >>"$GITHUB_STEP_SUMMARY"
+      - name: App logs (on failure)
+        if: failure()
+        run: docker logs app 2>&1 | tail -50
