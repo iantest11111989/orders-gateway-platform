@@ -23,8 +23,8 @@
 #         back to what <env> ran before its last change. Always allowed.
 #
 # <env> is dev, staging or prod; there's no default. The cluster must be up
-# (./platform up). How a production setup does the same with a CI service:
-# docs/ci-cd-in-production.md.
+# (./platform up). All CI/CD here is local; GitHub only runs checks on pull
+# requests. docs/ci-cd-in-production.md describes how production would do it.
 set -eu
 
 cd "$(dirname "$0")"

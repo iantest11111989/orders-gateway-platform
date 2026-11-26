@@ -29,4 +29,4 @@ Probes, metrics and `/healthz` aren't counted or logged. Every other request is 
 
 ## Images
 
-`Dockerfile` builds from `node:22.23.5-alpine`, pinned by digest. CI runs `npm test` and `npm run lint` in that same Node image (`.github/workflows/ci-app.yml` and `cd-app.yml`).
+`Dockerfile` builds from `node:22.23.5-alpine`, pinned by digest. CI runs `npm test` and `npm run lint` in that same Node image (`.github/workflows/ci-app.yml`, on pull requests).
