@@ -17,8 +17,8 @@ Grafana is <http://localhost:3000> (`admin` / `admin12345`); the other logins ar
 
    ```sh
    ./platform shell
-   kubectl -n dev scale deploy app --replicas=2
-   kubectl -n dev get deploy app -w
+   kubectl -n dev scale deploy orders-gateway --replicas=2
+   kubectl -n dev get deploy orders-gateway -w
    ```
 
    Within seconds `replicas` goes back to `1`. On the local cluster it took 5 seconds. Argo CD saw the live state drift from Git (dev runs one replica, `cd/orders-gateway/dev.yaml`) and **self-healed** it. Press Ctrl-C. In the UI, `dev`'s **History and rollback** and the dashboard's **Syncs per Application** panel show the extra sync.
@@ -27,21 +27,21 @@ That's the rule for this whole platform: **change Git, not the cluster.** A manu
 
 ## 2. A rolling update, step by step (5 min)
 
-Every environment runs a plain Deployment named `app`. A new image replaces its pods one at a time: `maxSurge: 1` adds one new pod, and `maxUnavailable: 0` removes an old one only once the new one is Ready.
+Every environment runs a plain Deployment named after its app (`orders-gateway`). A new image replaces its pods one at a time: `maxSurge: 1` adds one new pod, and `maxUnavailable: 0` removes an old one only once the new one is Ready.
 
 1. Start the rolling-update demo in one terminal (`./platform demo rolling-update`, about 2 minutes). It makes a 3-pod copy of dev in namespace `demo` and moves it from v1 to v2 under k6 traffic.
 2. In a second terminal, watch the ReplicaSets:
 
    ```sh
    ./platform shell
-   kubectl -n demo get rs -l app.kubernetes.io/name=app -w
+   kubectl -n demo get rs -l app.kubernetes.io/name=orders-gateway -w
    ```
 
    The new ReplicaSet goes 1 → 2 → 3 while the old one goes 3 → 2 → 1 → 0, and the total never drops below 3 ready pods. Press Ctrl-C when the old one reaches 0.
 3. See the history Kubernetes keeps:
 
    ```sh
-   kubectl -n demo rollout history deploy/app
+   kubectl -n demo rollout history deploy/orders-gateway
    ```
 
    Each revision is a ReplicaSet. `kubectl rollout undo` would go back one, but here Argo CD would undo *that* within seconds, which is why `./platform rollback` changes Git instead.

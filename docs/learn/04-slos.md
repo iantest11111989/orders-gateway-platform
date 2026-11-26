@@ -58,7 +58,7 @@ Also look at **Prometheus → Alerts** (<http://localhost:9090/alerts>) and **Al
 The alert carries a `runbook_url`. Open [`runbooks/OrdersGatewayAvailabilityFastBurn.md`](../../runbooks/OrdersGatewayAvailabilityFastBurn.md) and use `demo` for `<namespace>`:
 
 1. **How bad, and where?** `sum by (route, status) (rate(http_requests_total{namespace="demo", route=~"/work|/echo"}[5m]))` shows `500` next to `200` on both routes. `sum by (pod) (...)` shows every pod failing alike, so it isn't one bad pod (as a runtime `/admin/fault` on one pod would be).
-2. **What do the failing requests say?** In Explore, choose Loki: `{namespace="demo", app="app"} | json | level="error"`. Each is a `500` with `duration_ms` near 0: the request failed before doing any work. (The response body says `{"error":"injected fault"}`; the log line doesn't.)
+2. **What do the failing requests say?** In Explore, choose Loki: `{namespace="demo", app="orders-gateway"} | json | level="error"`. Each is a `500` with `duration_ms` near 0: the request failed before doing any work. (The response body says `{"error":"injected fault"}`; the log line doesn't.)
 3. **Did something just change?** The app reads its settings from a ConfigMap (`envFrom`): `kubectl -n demo get configmap app -o yaml | grep FAULT` shows `FAULT_ERROR_RATE: "0.2"`, and Argo CD shows a recent sync of `demo`.
 
 So the runbook leads to the cause: an injected fault.

@@ -84,7 +84,7 @@ create_app() { # create_app <source app> <image tag> [helm-param=value ...]
            targetRevision: (if $rev != "" then $rev else ($git.targetRevision // $vals.targetRevision) end),
            path: "helm/orders-gateway",
            helm: {
-             releaseName: "app",
+             releaseName: "orders-gateway",
              valueFiles: ["../../cd/orders-gateway/values.yaml", ("../../cd/orders-gateway/" + ($src | sub("^orders-gateway-"; "")) + ".yaml")],
              parameters: ([
                {name: "ingress.entrypoint", value: "demo"},
@@ -119,7 +119,7 @@ wait_healthy() { # wait_healthy <tag> <timeout s>
   while :; do
     s=$(kubectl -n argocd get applications.argoproj.io "$APP" -o jsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null || true)
     # every Deployment replica updated and available
-    ready=$(kubectl -n "$NS" get deployment app -o json 2>/dev/null |
+    ready=$(kubectl -n "$NS" get deployment orders-gateway -o json 2>/dev/null |
       jq -r 'select(.status.observedGeneration >= .metadata.generation and (.status.updatedReplicas // 0) == .spec.replicas and (.status.availableReplicas // 0) == .spec.replicas and ((.status.replicas // 0) == .spec.replicas)) | "ok"' || true)
     if [ "$s" = Synced/Healthy ] && [ -n "$ready" ]; then
       ok "$APP Synced and Healthy, every pod on $1"; return 0
@@ -191,7 +191,7 @@ k6_summary() {
 narrate_rolling() { # narrate_rolling <generation before the change> <timeout s>
   local gen0=$1 deadline=$(( $(date +%s) + $2 )) last='' line st
   while :; do
-    st=$(kubectl -n "$NS" get deployment app -o json 2>/dev/null)
+    st=$(kubectl -n "$NS" get deployment orders-gateway -o json 2>/dev/null)
     line=$(jq -r '"updated \(.status.updatedReplicas // 0)/\(.spec.replicas)  ready \(.status.readyReplicas // 0)  total pods \(.status.replicas // 0)  unavailable \(.status.unavailableReplicas // 0)"' <<<"$st")
     if [ "$line" != "$last" ]; then printf '  %s  %s\n' "$(date +%H:%M:%S)" "$line" >&2; last=$line; fi
     # Finished only once a newer generation (the image change) has rolled out.
@@ -206,7 +206,7 @@ narrate_rolling() { # narrate_rolling <generation before the change> <timeout s>
 # --- chaos helpers -----------------------------------------------------------
 
 demo_pods() { # name node phase ready, one line per demo pod
-  kubectl -n "$NS" get pods -l app.kubernetes.io/name=app -o json |
+  kubectl -n "$NS" get pods -l app.kubernetes.io/name=orders-gateway -o json |
     jq -r '.items[] | select(.metadata.deletionTimestamp == null) |
       "\(.metadata.name) \(.spec.nodeName // "-") \(.status.phase) \(([.status.conditions[]? | select(.type == "Ready") | .status][0]) // "False")"'
 }
@@ -321,7 +321,7 @@ narrate_git() { # narrate_git <commit> <settle s> <timeout s>
   while :; do
     rev=$(kubectl -n argocd get applications.argoproj.io "$APP" -o jsonpath='{.status.sync.revision}' 2>/dev/null)
     if [ -z "$synced_at" ] && [ "$rev" = "$want" ] &&
-       kubectl -n "$NS" rollout status deployment/app --timeout=1s >/dev/null 2>&1; then
+       kubectl -n "$NS" rollout status deployment/orders-gateway --timeout=1s >/dev/null 2>&1; then
       synced_at=$(date +%s)
       printf '  %s  Argo CD synced %s and the pods rolled out\n' "$(date +%H:%M:%S)" "${want:0:7}" >&2
     fi
@@ -345,7 +345,7 @@ demo_chaos() {
   wait_healthy v1 600
   start_load
   where_to_watch
-  want=$(kubectl -n "$NS" get deployment app -o jsonpath='{.spec.replicas}')
+  want=$(kubectl -n "$NS" get deployment orders-gateway -o jsonpath='{.spec.replicas}')
   echo "  Pods (name, node, zone, phase):" >&2; show_pods
 
   step "Deleting one pod"
@@ -387,7 +387,7 @@ demo_rolling_update() {
   start_load
   where_to_watch
   step "Rolling out v2"
-  gen0=$(kubectl -n "$NS" get deployment app -o jsonpath='{.metadata.generation}')
+  gen0=$(kubectl -n "$NS" get deployment orders-gateway -o jsonpath='{.metadata.generation}')
   set_image v2
   result=$(narrate_rolling "$gen0" 300)
   sleep 15 # let k6 run against the new pods for a moment before stopping it
@@ -453,10 +453,10 @@ demo_gitops_revert() {
 # --- autoscale helpers -------------------------------------------------------
 
 hpa_line() {
-  kubectl -n "$NS" get hpa app -o json 2>/dev/null | jq -r '
+  kubectl -n "$NS" get hpa orders-gateway -o json 2>/dev/null | jq -r '
     "replicas \(.status.currentReplicas // "?") -> \(.status.desiredReplicas // "?") (min \(.spec.minReplicas), max \(.spec.maxReplicas))  CPU \(([.status.currentMetrics[]? | select(.type == "Resource") | .resource.current.averageUtilization][0]) // "?")% of requests (target \(.spec.metrics[0].resource.target.averageUtilization)%)"'
 }
-hpa_replicas() { kubectl -n "$NS" get hpa app -o jsonpath='{.status.currentReplicas}' 2>/dev/null || echo 0; }
+hpa_replicas() { kubectl -n "$NS" get hpa orders-gateway -o jsonpath='{.status.currentReplicas}' 2>/dev/null || echo 0; }
 
 # Prints the HPA whenever it changes until <test> on the current replica
 # count passes or the timeout runs out. Sets HPA_RESULT to "reached" or
@@ -489,9 +489,9 @@ demo_autoscale() {
   delete_app
   create_app orders-gateway-prod v1
   wait_healthy v1 600
-  min=$(kubectl -n "$NS" get hpa app -o jsonpath='{.spec.minReplicas}')
-  max=$(kubectl -n "$NS" get hpa app -o jsonpath='{.spec.maxReplicas}')
-  ok "HPA $NS/app scales the Deployment between $min and $max pods on CPU"
+  min=$(kubectl -n "$NS" get hpa orders-gateway -o jsonpath='{.spec.minReplicas}')
+  max=$(kubectl -n "$NS" get hpa orders-gateway -o jsonpath='{.spec.maxReplicas}')
+  ok "HPA $NS/orders-gateway scales the Deployment between $min and $max pods on CPU"
   start_load "$rate"
   where_to_watch
   echo "    HPA                 ./platform shell -c 'kubectl -n $NS get hpa -w'"
