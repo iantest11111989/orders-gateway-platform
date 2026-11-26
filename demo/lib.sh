@@ -15,6 +15,9 @@
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$ROOT/scripts/lib.sh"
+# One output stream, so commands, their output and the narration stay in
+# order even when piped (docker keeps stdout and stderr apart without a tty).
+exec 2>&1
 
 APP=orders-gateway-demo NS=demo URL=http://localhost:8084
 K6_LOG=/tmp/demo-k6.log
@@ -120,7 +123,7 @@ create_app() { # create_app <source app> <image tag> [helm-param=value ...]
   note "the Application it builds:"
   yq -P <<<"$manifest" | indent
   show "kubectl apply -f -   # the Application above"
-  kubectl apply -f - <<<"$manifest" 2>&1 | indent
+  kubectl apply -f - <<<"$manifest" 2>&1 | sed '/prefer a domain-qualified finalizer/d' | indent
   ok "Argo CD Application argocd/$APP (namespace $NS, $URL)"
 }
 
@@ -220,7 +223,8 @@ k6_summary() {
   kill -INT "$K6_PID" 2>/dev/null || true
   wait "$K6_PID" 2>/dev/null || true
   note "k6's summary ($K6_LOG):"
-  grep -v -E '^\s*$' "$K6_LOG" | indent || true
+  grep -v -E '^\s*$|test run was aborted' "$K6_LOG" | indent || true
+  note "checks: k6's per-request checks (status 200); orders_slo_good: the SLO's definition (not 5xx, /echo and /version under 250 ms)"
   # e.g. "orders_slo_good......: 99.91% 4021 out of 4025"
   slo=$(grep -m1 -E 'orders_slo_good\.+:' "$K6_LOG" | sed -E 's/^[^:]*:[[:space:]]*//' || true)
   ok "k6 sent traffic the whole time; requests meeting the SLO: ${slo:-see $K6_LOG}"

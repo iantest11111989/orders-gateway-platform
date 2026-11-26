@@ -45,7 +45,7 @@ kill_one() {
   deadline=$(( $(date +%s) + 300 ))
   while :; do
     n=$(pods "$ns" "$sel" | awk -v u="$uid" '$1 != u && $3 == "True"' | grep -c . || true)
-    [ "$n" != "$last" ] && { printf '  %s  ready %s pods: %s of %s\n' "$(date +%H:%M:%S)" "$what" "$n" "$want" >&2; last=$n; }
+    [ "$n" != "$last" ] && { printf '  %s  ready: %s of %s\n' "$(date +%H:%M:%S)" "$n" "$want" >&2; last=$n; }
     [ "$n" -ge "$want" ] && break
     [ "$(date +%s)" -lt "$deadline" ] || die "only $n of $want $what pods ready after 300 s"
     sleep 2

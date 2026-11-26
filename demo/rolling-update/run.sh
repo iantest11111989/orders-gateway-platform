@@ -22,7 +22,7 @@ demo_rolling_update() {
   result=$(narrate_rolling "$gen0" 300)
   run kubectl -n "$NS" rollout history deployment/orders-gateway
   run kubectl -n "$NS" get pods -l app.kubernetes.io/name=orders-gateway -o wide
-  run curl -s "$URL/version"
+  run curl -s -w '\n' "$URL/version"
   sleep 15 # let k6 run against the new pods for a moment before stopping it
   k6_summary
   [ "$result" = finished ] || die "the rolling update didn't finish (result: $result)"
