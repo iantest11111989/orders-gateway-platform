@@ -2,10 +2,10 @@ name: CI · platform
 
 on:
   pull_request:
-    paths: ["platform", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "gitops/**", "charts/**", "environments/**", "alerts/**", ".github/workflows/**", ".shellcheckrc"]
+    paths: ["platform", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "gitops/**", "charts/**", "environments/**", "alerts/**", "policies/**", ".github/workflows/**", ".shellcheckrc"]
   push:
     branches: [main]
-    paths: ["platform", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "gitops/**", "charts/**", "environments/**", "alerts/**", ".github/workflows/**", ".shellcheckrc"]
+    paths: ["platform", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "gitops/**", "charts/**", "environments/**", "alerts/**", "policies/**", ".github/workflows/**", ".shellcheckrc"]
   # The promotion PRs (cd-app.yml, job promote-prs) are opened with GITHUB_TOKEN,
   # which starts no pull_request workflows; that job dispatches this one on
   # the PR's branch instead, and the results show on the PR's head commit.
@@ -37,6 +37,44 @@ jobs:
         run: |
           docker run --rm -v "$PWD":/repo -w /repo \
             rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
+
+  # Everything Argo CD would apply, checked in about a minute without a
+  # cluster: a broken values file or manifest fails here, not 10 minutes into
+  # the E2E job.
+  validate:
+    name: "Validate manifests (helm lint, kubeconform, policies)"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: "Render (helm lint, helm template, kustomize)"
+        run: ./platform shell scripts/validate-manifests.sh
+      # CRD schemas from datreeio/CRDs-catalog, pinned to a commit so an
+      # upstream change can't turn CI red (bump it by hand with the CRDs).
+      - name: "Schemas (kubeconform, strict: Kubernetes and CRDs)"
+        run: |
+          docker run --rm -v "$PWD/out/rendered:/r:ro" \
+            ghcr.io/yannh/kubeconform:v0.7.0@sha256:85dbef6b4b312b99133decc9c6fc9495e9fc5f92293d4ff3b7e1b30f5611823c \
+            -strict -summary -output text \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/04af58d740718c4dc719441bf39fb284c784f4a8/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            /r
+      # Our admission policies against the rendered app in every environment.
+      # Two are left to CI · policies (kyverno test) and the E2E job: the
+      # label pair, because the CLI validates without first applying
+      # default-labels' mutation, and the signature policy, which needs real
+      # signatures (and crashes this CLI on rendered input).
+      - name: "Policies (kyverno apply)"
+        run: |
+          docker run --rm -v "$PWD:/w:ro" -w /w \
+            ghcr.io/kyverno/kyverno-cli:v1.20.0@sha256:bd2b8b7c9d550ecf04e0bacaf351adce2f82ce67fd3f291075edcee7f8ab4ab4 \
+            apply policies/disallow-latest-tag.yaml policies/disallow-latest-tag-platform.yaml \
+              policies/require-non-root-readonly.yaml policies/require-probes.yaml \
+              policies/require-resources.yaml policies/restrict-image-registries.yaml \
+            --resource out/policy-input/apps.yaml >"$RUNNER_TEMP/kyverno.txt" 2>&1 || { cat "$RUNNER_TEMP/kyverno.txt"; exit 1; }
+          grep -E "^(Applying|pass:)" "$RUNNER_TEMP/kyverno.txt"
+          grep -qE "^pass: [1-9][0-9]*, fail: 0, warn: 0, error: 0" "$RUNNER_TEMP/kyverno.txt"
 
   toolbox:
     name: "Build toolbox (amd64 + arm64)"

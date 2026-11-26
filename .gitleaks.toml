@@ -1,0 +1,12 @@
+# gitleaks (CI · security): its default rules, plus two known, intended
+# findings. Everything else in the history must be clean.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "The DEMO ONLY Sealed Secrets key, committed on purpose (decision 0002; scripts/check-no-plain-secrets.sh allowlists it the same way)"
+paths = ['''^gitops/manifests/sealed-secrets/demo-key\.yaml$''']
+
+[[allowlists]]
+description = "SealedSecrets: encrypted for the cluster's controller, so their ciphertext only looks like a key (decision 0018)"
+paths = ['''\.sealed\.yaml$''']

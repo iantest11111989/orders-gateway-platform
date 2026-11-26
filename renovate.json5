@@ -75,9 +75,20 @@
       // The Kyverno CLI the policies workflow runs `kyverno test` with.
       customType: 'regex',
       description: 'Kyverno CLI image in the policies workflow',
-      managerFilePatterns: ['/^\\.github/workflows/policies\\.yml$/'],
+      managerFilePatterns: ['/^\\.github/workflows/(policies|platform)\\.yml$/'],
       matchStrings: [
         '(?<depName>ghcr\\.io/kyverno/kyverno-cli):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]+)',
+      ],
+      datasourceTemplate: 'docker',
+    },
+    {
+      // Images CI runs with docker run, pinned by tag and digest: kubeconform
+      // (CI · platform, Validate manifests) and gitleaks (CI · security).
+      customType: 'regex',
+      description: 'kubeconform and gitleaks images in workflows',
+      managerFilePatterns: ['/^\\.github/workflows/(platform|security)\\.yml$/'],
+      matchStrings: [
+        '(?<depName>ghcr\\.io/(?:yannh/kubeconform|gitleaks/gitleaks)):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]+)',
       ],
       datasourceTemplate: 'docker',
     },
