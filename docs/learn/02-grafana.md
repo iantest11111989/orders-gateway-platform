@@ -1,96 +1,86 @@
 # 2. Grafana: build a panel, then compare it to the dashboard
 
-**Time:** about 15 minutes. **You need:** a running stack and [exercise 1](01-prometheus.md), which covers the queries this exercise puts on screen.
+Time: about 15 minutes. You need a running stack and [exercise 1](01-prometheus.md).
 
-By the end you will have built a small dashboard yourself: a time series panel, a stat panel with thresholds, and an environment drop-down. You'll also know how the provided `orders-gateway` dashboard is put together and how dashboards are kept in Git.
+You'll build a small dashboard with a time series panel, a stat panel and an environment drop-down, then compare it with the provided one.
 
-## 0. Log in and start some traffic
+## 0. Start some traffic
 
 1. Open <http://localhost:3000> and log in as `admin` / `admin12345`.
-2. In a second terminal, send traffic to dev for 15 minutes:
+2. In a second terminal:
 
    ```sh
    ./platform shell
-   k6 run --quiet -e BASE_URL=http://localhost:8082 -e RATE=5 -e DURATION=15m app/k6/load.js
+   k6 run --quiet -e BASE_URL=http://localhost:8082 -e RATE=5 -e DURATION=15m apps/orders-gateway/k6/load.js
    ```
 
-## 1. Tour the provided dashboard (3 min)
+## 1. Tour the provided dashboard
 
-Open **Dashboards → orders-gateway** (or <http://localhost:3000/d/orders-gateway>).
+Open Dashboards, then orders-gateway (<http://localhost:3000/d/orders-gateway>).
 
-- The **environment** drop-down at the top picks the namespace. Switch it to `dev`: that's where your k6 traffic goes.
-- Hover the **(i)** next to any panel title. Every panel says what it measures and why (CI refuses a panel without one).
-- The rows go from "is the service OK?" (SLO, error budget, alerts) to "why not?" (traffic, latency, pods, logs). That's the order you'd read it in during an incident.
-- Look at **Pods by version**. It's the same `app_info` metric you queried in exercise 1, counted per version. The blue marks on the time axis (**Version changes**) come from it too.
+- Set environment to `dev`, where your traffic goes.
+- Hover the (i) by a panel title. Every panel has a description; CI fails a dashboard without them.
+- The rows go from "is it OK?" (SLO, budget, alerts) to "why not?" (traffic, latency, pods, logs). That's the order you read it in an incident.
+- Pods by version uses `app_info` from exercise 1. So do the blue Version changes markers.
 
-## 2. Build a time series panel (5 min)
+## 2. A time series panel
 
-1. **Dashboards → New → New dashboard → Add visualization**, and pick the **Prometheus** data source.
-2. In the query editor switch from **Builder** to **Code**, and enter:
+1. Go to Dashboards, New, New dashboard, Add visualization. Pick Prometheus.
+2. Switch the editor from Builder to Code and enter:
 
    ```promql
-   sum by (route) (rate(http_requests_total{namespace="dev", route=~"/work|/echo|/version"}[$__rate_interval]))
+   sum by (route) (rate(http_requests_total{namespace="dev", service="orders-gateway"}[$__rate_interval]))
    ```
 
-   `$__rate_interval` is a Grafana variable. It picks a `rate()` window that fits the zoom level and the scrape interval, so you don't have to change `[5m]` by hand when you zoom out to a day.
-3. Under the query, open **Options** and set **Legend** to **Custom**: `{{route}}`. The lines are now called `/work`, `/echo` and `/version`, not the full label set.
-4. In the panel options on the right:
-   - **Title:** `Requests per second by route`
-   - **Description:** write one sentence that says what it shows (for example, "Requests per second to each of the app's routes in dev, all statuses").
-   - **Standard options → Unit:** `requests/sec (rps)`
-5. **Back to dashboard**, then save it (the disk icon) as `My first dashboard`.
+   `$__rate_interval` picks a window that fits the zoom level, so you don't edit `[5m]` when you zoom out.
+3. Under Options, set Legend to Custom: `{{route}}`.
+4. On the right, set Title `Requests per second by route`, a one-sentence Description, and Unit `requests/sec (rps)`.
+5. Save the dashboard as `My first dashboard`.
 
-You should see `/work` at about 3 req/s, `/echo` at about 1.5 and `/version` at about 0.5, plus the trickle's share on `/work` and `/echo` (see [the README here](README.md)).
+You should see about 3 req/s on `/work`, 1.5 on `/echo` and 0.5 on `/version`, plus the [background traffic](README.md#about-the-numbers).
 
-## 3. A stat panel with thresholds (3 min)
+## 3. A stat panel with thresholds
 
-Add another visualization, choose **Stat** (top right), and enter:
+1. Add a visualization, choose Stat, and enter the latency SLI from exercise 1:
 
-```promql
-sum(rate(http_request_duration_seconds_bucket{namespace="dev", route=~"/echo|/version", le="0.25"}[$__rate_interval]))
-/
-sum(rate(http_request_duration_seconds_count{namespace="dev", route=~"/echo|/version"}[$__rate_interval]))
-```
+   ```promql
+   sum(rate(http_request_duration_seconds_bucket{namespace="dev", route=~"/echo|/version", le="0.25"}[$__rate_interval]))
+   /
+   sum(rate(http_request_duration_seconds_count{namespace="dev", route=~"/echo|/version"}[$__rate_interval]))
+   ```
 
-That's the share of `/echo` and `/version` requests faster than 250 ms, the latency SLI from exercise 1. Then:
+2. Set Unit `Percent (0.0-1.0)` and Decimals `2`.
+3. Under Thresholds, make the base red and add `0.995` as green. 99.5% is the SLO.
+4. Title it `Under 250 ms` and add a description.
 
-- **Unit:** `Percent (0.0-1.0)`. **Decimals:** `2`.
-- **Thresholds:** set the base colour to **red** and add a step at `0.995` coloured **green**. 99.5% is the SLO.
-- **Title:** `Under 250 ms`, plus a description.
+## 4. An environment drop-down
 
-The panel is green while the app meets the latency SLO. In exercise 4 you'll make it go red on purpose.
+1. Open Settings, Variables, Add variable.
+2. Type Query, Name `namespace`, Label `environment`, data source Prometheus.
+3. Query type Label values, Label `namespace`, Metric `app_info`. The preview lists dev, staging and prod (and `demo` if a demo ran recently).
+4. In both panels, replace `namespace="dev"` with `namespace="$namespace"`.
 
-## 4. Add an environment drop-down (2 min)
+The drop-down now switches both panels, as on the provided dashboard.
 
-Hard-coding `dev` means one dashboard per environment. Use a variable instead:
+## 5. Compare with the provided dashboard
 
-1. **Edit → Settings → Variables → Add variable**.
-2. **Type:** Query. **Name:** `namespace`. **Label:** `environment`. **Data source:** Prometheus.
-3. **Query type:** Label values. **Label:** `namespace`. **Metric:** `app_info`. The preview lists `dev`, `prod` and `staging`, plus any namespace a demo used in the last 24 hours (such as `demo`): Prometheus still has those series.
-4. Back on the dashboard, edit both panels and replace `namespace="dev"` with `namespace="$namespace"`.
+On the provided dashboard, open the menu of Requests per second, by route and status and choose Edit. Look, don't save.
 
-Now the drop-down switches both panels between environments, the same way the provided dashboard works.
+- It sums `by (method, route, status)`, so failures and 404s show too.
+- /echo and /version: share under 250 ms uses `1 - slo:orders_latency_errors:ratio_rate5m`, the recording rule from `alerts/`. The dashboard and the alerts compute the SLI the same way.
 
-## 5. Compare with the provided dashboard (2 min)
+Leave without saving (Discard).
 
-Open the provided `orders-gateway` dashboard and, on **Requests per second, by route and status**, choose **⋮ → Edit** (look, don't save). Compare it with your panel:
+## 6. Where dashboards live
 
-- It sums `by (method, route, status)`, so you also see failures and the caller's mistakes (`GET /echo` is a 404).
-- It needs no filter for probes and scrapes: the app doesn't count `/healthz`, `/readyz` or `/metrics`, and the scrape drops unknown paths.
-- **/echo and /version: share under 250 ms** uses `1 - slo:orders_latency_errors:ratio_rate5m`. That's the recording rule from `alerts/`, so the dashboard and the alerts compute the SLI the same way, and Prometheus does the work once.
+Grafana here has no persistent storage, so dashboards saved in the UI are lost when its pod restarts. The provided ones are JSON files in [`dashboards/`](../../dashboards/), loaded through Argo CD.
 
-Leave without saving. If Grafana asks, **Discard**.
-
-## 6. Where dashboards really live
-
-Grafana here has no persistent storage: **dashboards you save in the UI are gone when the Grafana pod restarts.** The provided dashboards come from Git. Each is a JSON file in [`dashboards/`](../../dashboards/), turned into a ConfigMap that Argo CD applies and Grafana's sidecar loads.
-
-To keep yours, use **Export → Export as JSON** on your dashboard, save it as `dashboards/my-first.json`, and follow the steps in [`dashboards/README.md`](../../dashboards/README.md). `scripts/dashboards.sh check` would then refuse it if you skipped a description.
+To keep yours, use Export, Export as JSON, save it in `dashboards/`, and follow [`dashboards/README.md`](../../dashboards/README.md).
 
 ## Check yourself
 
-- Why `$__rate_interval` instead of a fixed `[5m]`?
-- Your stat panel is green at 99.7% but the provided **Latency budget left** shows 40%. How can both be true? (Hint: different time windows.)
-- A teammate fixed a panel in the Grafana UI yesterday and today it's back to the old version. What happened, and what should they do instead?
+- Why `$__rate_interval` instead of `[5m]`?
+- Your stat panel shows 99.7%, but Latency budget left shows 40%. How can both be true? (Hint: time windows.)
+- A teammate fixed a panel in the UI yesterday; today it's back. Why, and what should they do?
 
 Next: [3. Loki](03-loki.md).

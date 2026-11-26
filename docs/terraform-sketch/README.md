@@ -1,6 +1,6 @@
 # Terraform sketch: the platform on EKS
 
-**A sketch, never applied or validated.** It sketches what changes between the local kind cluster and a real cloud deployment: the shape and the choices, not a tested module.
+**A sketch, never applied or validated.** It sketches what changes between the local kind cluster and a real cloud deployment: the shape and the choices, not a tested module. It predates parts of the fuller plan in [`../production-on-aws.md`](../production-on-aws.md), which swaps Prometheus, Loki and Grafana for Datadog, IRSA for Pod Identity, and the fixed node groups for Karpenter.
 
 What Terraform does here, and what it deliberately doesn't:
 

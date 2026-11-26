@@ -1,26 +1,34 @@
 # helm/orders-gateway
 
-Helm chart for `orders-gateway` (the app in `apps/orders-gateway/`). Every object is named after the Helm release, which Argo CD sets to the app's name (`orders-gateway`); its Ingresses route `ingress.hosts` (e.g. `orders-gateway.localhost`) and, with `ingress.default: true`, plain `localhost:<port>`. Each environment installs it with `cd/orders-gateway/values.yaml` plus its own file from `cd/orders-gateway/`, through an Argo CD Application (`bootstrap/apps/templates/orders-gateway-<env>.yaml`).
+The Helm chart for [`apps/orders-gateway/`](../../apps/orders-gateway/README.md). Every object is named after the Helm release, which Argo CD sets to the app's name. Each environment installs it with `cd/orders-gateway/values.yaml` plus its own env file, through the ApplicationSet in `bootstrap/apps/templates/apps.yaml`.
 
-| Template | Always | What |
+## Templates
+
+| Template | When | What |
 | --- | --- | --- |
-| `deployment.yaml` | yes | The workload. Startup, liveness and readiness probes; non-root, read-only root filesystem, all capabilities dropped, RuntimeDefault seccomp; no service account token; 30 s grace for the app's 5 s drain + 20 s shutdown; zero-downtime rolling update. |
-| `configmap.yaml` | yes | App settings as environment variables (`config.*`). `FAULT_*` only when set. |
-| `service.yaml`, `serviceaccount.yaml` | yes | ClusterIP on port 80; an identity without an API token. |
-| `ingress.yaml` | `ingress.enabled` | Two Ingresses (class `traefik`) on the environment's Traefik entrypoint (`ingress.entrypoint`: prod :8080, dev :8082, staging :8083, demo :8084), plus a Middleware: `/admin/*` goes through a deny-all `IPAllowList` (`app-admin-deny`) and gets a 403. |
-| `servicemonitor.yaml` | `serviceMonitor.enabled` | `/metrics` for Prometheus. The SLO rules are cluster-wide per namespace (`alerts/`), so there's no PrometheusRule here. |
-| `networkpolicy.yaml` | `networkPolicy.enabled` | Ingress only from Traefik and Prometheus; egress only DNS. |
-| `hpa.yaml` | `autoscaling.enabled` | CPU-based HorizontalPodAutoscaler (metrics-server). |
-| `pdb.yaml` | `podDisruptionBudget.enabled` | At most one pod down during voluntary disruptions. |
-| (in the Deployment) | `topologySpread.enabled` | Spread across zones and nodes. |
+| `deployment.yaml` | always | The workload, with startup, liveness and readiness probes. Non-root, read-only root filesystem, no capabilities, RuntimeDefault seccomp, no service account token. |
+| `configmap.yaml` | always | App settings as environment variables (`config.*`). `FAULT_*` only when set. |
+| `service.yaml`, `serviceaccount.yaml` | always | A ClusterIP Service on port 80, and an identity with no API token. |
+| `ingress.yaml` | `ingress.enabled` | Ingresses (class `traefik`) for `ingress.hosts` and, with `ingress.default`, plain `localhost`, on the environment's port. `/admin/*` gets a 403. |
+| `servicemonitor.yaml` | `serviceMonitor.enabled` | Lets Prometheus scrape `/metrics`. The SLO rules live in `alerts/`. |
+| `networkpolicy.yaml` | `networkPolicy.enabled` | Traffic in only from Traefik and Prometheus; out only to DNS. |
+| `hpa.yaml` | `autoscaling.enabled` | Scales on CPU, at 70% of the 100m request. |
+| `pdb.yaml` | `podDisruptionBudget.enabled` | At most one pod down during a drain. |
+| in the Deployment | `topologySpread.enabled` | Spreads pods across zones and nodes. |
 
-## Releases
+## Releases and shutdown
 
-A new image is a rolling update of the Deployment: one extra pod comes up (`maxSurge: 1`), and an old one stops only once the new one is ready (`maxUnavailable: 0`), so capacity never drops. Pods get a 5 s `preStop` pause so Traefik stops sending them traffic before they shut down. To undo a release, put the previous image back in Git (`./platform rollback`, or a revert of the promotion commit) and Argo CD rolls back the same way.
+A new image is a rolling update. One extra pod starts (`maxSurge: 1`), and an old pod stops only when the new one is ready (`maxUnavailable: 0`), so capacity never drops.
+
+When a pod stops, `preStop` waits 5 s so Traefik stops sending it traffic first. The app then has up to 25 s to finish its requests. `terminationGracePeriodSeconds: 35` covers both, with a margin.
+
+The liveness probe is lenient (6 misses, 10 s apart), because a `/work` call blocks the event loop. There is a memory limit but no CPU limit, which would only throttle.
+
+To undo a release, put the previous version back in Git with `./pipeline rollback`.
 
 ## Image
 
-`image.tag` is required: a `sha-<12>` tag that CI publishes from `main`, or a demo tag (`v1`, `v2`). Set `image.digest` (`sha256:...`) to pin exactly what runs: the pod then uses `repository@digest`, and the tag stays as the version label and `APP_VERSION`.
+`image.tag` is required. The env files set it to the version they run. `image.digest` (`sha256:...`) pins exactly what runs: the pod then uses `repository@digest`, and the tag stays as the version label. `./pipeline cd` writes the digest.
 
 ## Test
 

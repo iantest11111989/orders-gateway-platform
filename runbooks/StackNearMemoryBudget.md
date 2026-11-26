@@ -1,24 +1,26 @@
 # StackNearMemoryBudget
 
-**Severity: ticket.** The stack is close to its 12 GiB budget; the next spike will OOM-kill something.
+Severity: ticket. Fix today, before the next spike OOM-kills something.
 
-## What it means
+Memory across the three kind nodes has been above 90% of the 12 GiB budget for 10 minutes. Each node is capped at 4 GiB. A full node OOM-kills pods, and in the worst case kubelet or containerd.
 
-Memory across the three kind nodes (pods plus kubelet and containerd, from cAdvisor's root cgroup on each node) has been above **90% of 12 GiB** for 10 minutes. Each node container is capped at 4 GiB by `./platform up`. A node at its cap OOM-kills pods, and in the worst case kubelet or containerd. Normally the stack uses about 60% (see the README's resource budget).
+## Check
 
-## How to check
+1. Find what grew:
+   ```sh
+   ./platform budget --watch 60
+   ./platform kubectl top pods -A --sort-by=memory | head -15
+   ```
+2. The Grafana Budget dashboard shows memory by namespace over time.
 
-```sh
-./platform budget --watch 60        # measured use per node and per namespace, and any OOM kills
-./platform kubectl top pods -A --sort-by=memory | head -15
-```
+## Fix
 
-The **Budget** dashboard in Grafana shows the same per namespace over time, so you can see what grew.
+- A demo or load test left running: `./platform demo clean`, or stop the k6 process.
+- A component that keeps growing: check its limits in `system/<component>/values.yaml`. Prometheus with a high-cardinality label is the usual one (`docs/learn/01-prometheus.md`, section 4).
+- Docker has less than 12 GiB: run `./platform doctor`. Under Colima: `colima start --cpu 6 --memory 12`.
 
-## Likely causes and fixes
+Change limits in Git, not with `kubectl edit`.
 
-- **A demo or load test left running:** `./platform demo clean`, or stop the k6 process.
-- **A component growing without limit** (a leak, or a cache: Prometheus series, Loki chunks). Find it in the per-namespace view and check its limits in `system/<component>/values.yaml`. Prometheus with many new series is the usual suspect: look for a label with unbounded values (exercise 1 in `docs/learn/`).
-- **Docker has less than 12 GiB:** `./platform doctor`. Under Colima: `colima start --cpu 6 --memory 12`.
+## Done when
 
-Change limits in Git, not with `kubectl edit`: Argo CD would put them back.
+`./platform budget` shows memory back under 90% and the alert clears.
