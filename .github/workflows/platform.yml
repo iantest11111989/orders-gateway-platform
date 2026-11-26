@@ -2,6 +2,8 @@ name: CI · platform
 
 on:
   pull_request:
+    # labeled: adding the run-e2e label starts the fresh-install test.
+    types: [opened, synchronize, reopened, labeled]
     paths: ["platform", "docker-compose.yml", "scripts/**", "toolbox/**", "cluster/**", "gitops/**", "charts/**", "environments/**", "alerts/**", "policies/**", ".github/workflows/**", ".shellcheckrc"]
   push:
     branches: [main]
@@ -164,6 +166,10 @@ jobs:
 
   cluster:
     name: "E2E · Fresh install"
+    # About 20 minutes, so pull requests run it only with the run-e2e label.
+    # It always runs on main, on the promotion PRs (workflow_dispatch), and
+    # every night (nightly.yml).
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-e2e')
     runs-on: ubuntu-24.04
     # No REPO_URL: Argo CD syncs from the in-stack Git server, which the
     # bootstrap fills with this job's checkout, exactly what a

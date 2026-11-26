@@ -255,6 +255,7 @@ instack_remote() {
     die "can't read the in-stack Git server's key (Secret git/git-admin); run ./platform up"
   chmod 600 "$GIT_KEYDIR/key"
   log="$GIT_KEYDIR/pf.log"
+  : >"$log" # exists before sed reads it (the backgrounded redirect is late)
   kubectl -n git port-forward svc/git :23231 >"$log" 2>&1 &
   GIT_PF=$!
   for _ in $(seq 1 30); do
