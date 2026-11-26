@@ -1,15 +1,6 @@
-# Alloy values (chart grafana/alloy): a DaemonSet that ships every pod's logs
-# to Loki. Each Alloy pod only tails pods on its own node, through the
-# Kubernetes API (loki.source.kubernetes), so it needs no host paths and runs
-# as a non-root user under Pod Security "restricted".
-#
-# Loki labels are kept to four (low cardinality):
-#   namespace  the pod's namespace
-#   app        app.kubernetes.io/name, else app, else k8s-app, else component
-#   env        the pod's env label (dev/staging/prod), else "platform"
-#   pod        the pod name
-# Everything else (level, route, request_id, ...) is parsed at query time
-# with `| json`.
+# Alloy DaemonSet shipping pod logs to Loki. It tails its node's pods through
+# the API (loki.source.kubernetes): no host paths, runs as non-root.
+# Loki labels are kept to namespace, app, env and pod; parse the rest with `| json`.
 
 alloy:
   configMap:
@@ -109,7 +100,6 @@ alloy:
         fieldRef:
           fieldPath: spec.nodeName
 
-  # No host log directories: logs come through the API.
   mounts:
     varlog: false
     dockercontainers: false
@@ -143,21 +133,18 @@ controller:
     runAsGroup: 65534
     fsGroup: 65534
     seccompProfile: {type: RuntimeDefault}
-  # Run on the control-plane node too, to collect etcd, API server and
-  # scheduler logs.
+  # Also on the control plane, for etcd, API server and scheduler logs.
   tolerations:
     - key: node-role.kubernetes.io/control-plane
       operator: Exists
       effect: NoSchedule
-  # Writable scratch space for Alloy's positions and WAL (root FS is read-only).
+  # Positions and WAL (root FS is read-only).
   volumes:
     extra:
       - name: storage
         emptyDir: {sizeLimit: 256Mi}
 
-# Least privilege: the chart's default role can read every Secret and
-# ConfigMap in the cluster. Log tailing only needs pods, their logs and
-# namespaces. (The chart's read-only node rules stay as they are.)
+# The chart's default role can read every Secret and ConfigMap; tailing needs less.
 rbac:
   create: true
   rules:

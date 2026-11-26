@@ -1,6 +1,5 @@
-# The app image must carry a keyless cosign signature from this repo's app
-# workflow on main, so only reviewed code can run. Enforced (Deny).
-# Other images (third-party charts) aren't matched.
+# The app image must carry a keyless cosign signature from this repo's
+# workflow on main. Enforced; other images aren't matched.
 apiVersion: policies.kyverno.io/v1
 kind: ImageValidatingPolicy
 metadata:
@@ -12,13 +11,13 @@ metadata:
       app workflow on main (keyless cosign, GitHub OIDC).
 spec:
   validationActions: [Deny]
-  # One Kyverno replica: a Kyverno outage must not block every orders pod.
+  # One Kyverno replica: an outage must not block every orders pod.
   failurePolicy: Ignore
   evaluation:
     background:
       enabled: false
   webhookConfiguration:
-    # Verification fetches the signature from GHCR and Sigstore's trust root.
+    # Fetches the signature from GHCR and Sigstore's trust root.
     timeoutSeconds: 15
   matchConstraints:
     resourceRules:
@@ -29,7 +28,7 @@ spec:
   matchImageReferences:
     - glob: ghcr.io/iantest11111989/orders-gateway*
   validationConfigurations:
-    # The environments already deploy by digest, so there's no tag to pin.
+    # The environments already deploy by digest.
     mutateDigest: false
     verifyDigest: false
     required: false
@@ -37,11 +36,8 @@ spec:
     - name: cosign
       cosign:
         keyless:
-          # The images on GHCR were signed by the repo's former CD workflow
-          # (cd-app.yml, earlier app.yml) on main. CI/CD is local now
-          # (./pipeline builds unsigned localhost/ images, which this policy
-          # doesn't match); production signs in CI the same way
-          # (docs/ci-cd-in-production.md). One identity matching both names.
+          # The GHCR images were signed by the former cd-app.yml / app.yml on
+          # main; local ./pipeline images (localhost/) aren't matched.
           identities:
             - issuer: https://token.actions.githubusercontent.com
               subjectRegExp: ^https://github\.com/iantest11111989/orders-gateway-platform/\.github/workflows/(cd-app|app)\.yml@refs/heads/main$

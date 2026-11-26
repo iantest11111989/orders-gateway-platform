@@ -1,12 +1,11 @@
-# promtool unit tests for alerts/platform-security.yaml.
-# Run: scripts/test-alerts.sh (CI runs it on every pull request).
+# promtool tests for alerts/platform-security.yaml (scripts/test-alerts.sh).
 rule_files:
   - ../../.build/alerts/platform-security.rules.yaml
 
 evaluation_interval: 30s
 
 tests:
-  # Kyverno stops answering scrapes at minute 10; it pages 5 minutes later.
+  # Kyverno stops answering at minute 10; pages 5 minutes later.
   - name: Kyverno down
     interval: 1m
     input_series:

@@ -1,5 +1,4 @@
-# A SKETCH, never applied: what `docker compose up` would become on AWS (EKS).
-# It shows the shape and the choices, not a tested module. See README.md here.
+# A SKETCH, never applied: what `docker compose up` would become on EKS.
 
 terraform {
   required_version = ">= 1.9"
@@ -7,7 +6,7 @@ terraform {
     aws    = { source = "hashicorp/aws", version = "~> 6.0" }
     helm   = { source = "hashicorp/helm", version = "~> 3.0" }
   }
-  # State in S3 with locking, one state per cluster (prod apart from the rest).
+  # One state per cluster.
   backend "s3" {
     bucket       = "platform-demo-terraform-state"
     key          = "clusters/prod/terraform.tfstate"
@@ -24,8 +23,7 @@ provider "aws" {
 data "aws_availability_zones" "available" { state = "available" }
 locals { azs = slice(data.aws_availability_zones.available.names, 0, 3) }
 
-# Network: three zones (kind's two "zones" become real ones), private
-# subnets for nodes, public ones only for the load balancer.
+# Three real zones; nodes in private subnets, public ones only for the LB.
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "~> 6.0"
@@ -43,8 +41,7 @@ module "vpc" {
   public_subnet_tags  = { "kubernetes.io/role/elb" = 1 }
 }
 
-# The cluster. Replaces kind; the API server is private, reached through
-# the VPN or SSO, never 127.0.0.1.
+# Replaces kind; the API server is private.
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 21.0"
@@ -57,7 +54,6 @@ module "eks" {
   endpoint_public_access = false
   enable_irsa            = true # pod identities for the controllers below
 
-  # Who may administer the cluster: an SSO role, not a shared admin.
   access_entries = {
     platform = {
       principal_arn = var.platform_admin_role_arn
@@ -79,8 +75,7 @@ module "eks" {
   }
 
   eks_managed_node_groups = {
-    # Platform components (Argo CD, Prometheus, Loki, Kyverno...): kind's
-    # control-plane node did this job.
+    # Platform components (Argo CD, Prometheus, Loki, Kyverno...).
     platform = {
       instance_types = ["m7g.large"]
       ami_type       = "AL2023_ARM_64_STANDARD"
@@ -92,8 +87,7 @@ module "eks" {
         platform = { key = "role", value = "platform", effect = "NO_SCHEDULE" }
       }
     }
-    # The app. The HPA (3-6 pods) works inside these; Karpenter or the
-    # cluster autoscaler adds nodes when it runs out.
+    # The app; Karpenter or the cluster autoscaler adds nodes past the HPA.
     apps = {
       instance_types = ["m7g.large", "m6g.large"]
       ami_type       = "AL2023_ARM_64_STANDARD"
@@ -105,10 +99,8 @@ module "eks" {
   }
 }
 
-# Pod identities for the controllers that need AWS: DNS records (ExternalDNS),
-# the load balancer (AWS Load Balancer Controller), secrets (External Secrets).
-# No cert-manager: ACM certificates on the load balancer
-# (docs/production-on-aws.md §3.6).
+# IRSA for ExternalDNS, the AWS Load Balancer Controller and External Secrets.
+# No cert-manager: ACM certificates on the load balancer.
 module "irsa" {
   source   = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts"
   version  = "~> 6.0"
@@ -133,17 +125,15 @@ module "irsa" {
   external_secrets_secrets_manager_arns   = ["arn:aws:secretsmanager:${var.region}:*:secret:platform-demo/${var.env}/*"]
 }
 
-# Images: the same signed images CI pushes to GHCR today, mirrored to ECR
-# (pull-through cache) so a GHCR outage doesn't stop a scale-up.
+# ECR pull-through cache of GHCR, so a GHCR outage doesn't stop a scale-up.
 resource "aws_ecr_pull_through_cache_rule" "ghcr" {
   ecr_repository_prefix = "ghcr"
   upstream_registry_url = "ghcr.io"
   credential_arn        = var.ghcr_credential_arn
 }
 
-# Terraform's job ends where Argo CD's begins: install Argo CD and hand it
-# the same root Application `./platform up` uses, pointed at GitHub. Every
-# other component stays in bootstrap/ and system/, exactly as it is in kind.
+# Terraform stops at Argo CD and the root Application; everything else stays
+# in bootstrap/ and system/ as in kind.
 provider "helm" {
   kubernetes = {
     host                   = module.eks.cluster_endpoint
@@ -181,8 +171,7 @@ resource "helm_release" "root" {
           repoURL        = var.repo_url
           targetRevision = "main"
           path           = "bootstrap/apps"
-          # Today's values; a real port adds an EKS layer (system/*/eks.yaml)
-          # for the load balancer and storage classes.
+          # A real port would add EKS values (load balancer, storage classes).
           helm = { valuesObject = { repo = { url = var.repo_url, revision = "main" } } }
         }
         destination = { server = "https://kubernetes.default.svc", namespace = "argocd" }

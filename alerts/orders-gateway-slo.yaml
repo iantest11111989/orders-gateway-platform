@@ -1,32 +1,10 @@
-# SLO rules for orders-gateway (apps/orders-gateway/server.js).
-#
-# SLO: 99.5% over 30 days, as two SLIs, each with its own 0.5% budget:
-#
-#   availability  bad   = 5xx responses on /work and /echo
-#                 valid = their responses except 4xx (the caller's mistake,
-#                 for example GET /echo: neither good nor bad for us)
-#   latency       bad   = /echo and /version requests slower than 250 ms
-#                 (the app's histogram buckets are .1, .25, .5: no 0.3)
-#
-# Why latency leaves out /work: its latency is chosen by the caller
-# (/work?ms= burns up to 2 s of CPU), and the histogram has only a route
-# label, so /work?ms=10 and /work?ms=2000 share one series. An SLO on it
-# would measure the caller, not us. /work's speed shows on the dashboard
-# and in the autoscaler; its failures are in the availability SLI.
-#
-# Alerts use multi-window, multi-burn-rate rules (Google SRE workbook, ch. 5):
-#   fast burn  14.4x over 1 h (and 5 m), pages      -> 2% of the 30-day budget in 1 h
-#   slow burn   6x   over 6 h (and 30 m), ticket    -> 5% of the 30-day budget in 6 h
-# The short window makes the alert stop soon after the problem is fixed.
-#
-# Only orders-gateway's series count (service="orders-gateway": other apps,
-# like the hello-world demo's, share the namespaces and the metric names).
-# Everything is aggregated by namespace and service, so dev, staging and prod
-# each get their own SLI series and alerts, and the alerts carry the
-# namespace and service labels the promotion gate reads (alerts/README.md). The recording rule names are kept from
-# the first version (slo:orders_*) so the dashboards don't change.
-#
-# Tests: alerts/tests/orders-gateway-slo.test.yaml (promtool, run in CI).
+# SLO rules for orders-gateway: 99.5% over 30 days for availability (5xx on
+# /work and /echo; 4xx excluded) and latency (/echo and /version over 250 ms).
+# /work is left out of latency: the caller picks its duration (?ms=).
+# Multi-window burn-rate alerts: fast 14.4x over 1h/5m (page), slow 6x over
+# 6h/30m (ticket). Filtered to service="orders-gateway" (demo apps share the
+# metric names) and grouped by namespace, service for the promotion gate.
+# Tests: alerts/tests/orders-gateway-slo.test.yaml.
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -36,13 +14,10 @@ metadata:
     app.kubernetes.io/component: slo
 spec:
   groups:
-    # ---- SLIs: fraction of bad events over each alert window ----
     - name: orders-gateway-slo-sli
       interval: 30s
       rules:
-        # Availability: share of valid /work and /echo requests that returned 5xx.
-        # The "or 0 * ..." keeps the ratio at 0 (not "no data") in a namespace
-        # that has never returned a 5xx, so there is no 5xx series at all.
+        # Availability. "or 0 * ..." yields 0, not no data, when there's no 5xx series.
         - record: slo:orders_availability_errors:ratio_rate5m
           expr: |
             (
@@ -110,9 +85,7 @@ spec:
               sum by (namespace, service) (rate(http_request_duration_seconds_count{service="orders-gateway", route=~"/echo|/version"}[6h]))
             )
 
-    # ---- Burn-rate alerts ----
-    # 0.005 is the error budget (1 - 0.995). Burn rate 1 spends exactly the
-    # budget in 30 days; 14.4 spends it in about 2 days, 6 in 5 days.
+    # ---- Burn-rate alerts (budget 0.005 = 1 - 0.995) ----
     - name: orders-gateway-slo-alerts
       rules:
         - alert: OrdersGatewayAvailabilityFastBurn

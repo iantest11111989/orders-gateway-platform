@@ -1,9 +1,6 @@
-# Prometheus Operator CRDs (ServiceMonitor, PodMonitor, PrometheusRule, ...)
-# in their own Application at wave -10, so everything that renders these
-# kinds (Argo CD's ServiceMonitors at wave 0, the observability stack at
-# wave 20, alerts/) finds them installed. kube-prometheus-stack runs with
-# crds.enabled: false. Keep the chart's operator version (appVersion) equal to
-# kube-prometheus-stack's.
+# Prometheus Operator CRDs at wave -10, before anything that uses them
+# (kube-prometheus-stack has crds.enabled: false). Keep the operator version
+# equal to kube-prometheus-stack's.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -26,8 +23,6 @@ spec:
     automated:
       prune: true
       selfHeal: true
-    # Auto-sync does not retry a failed sync of the same revision on its own;
-    # this covers transient failures such as a CRD not yet Established.
     retry:
       limit: 5
       backoff: {duration: 5s, factor: 2, maxDuration: 1m}

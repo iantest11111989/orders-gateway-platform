@@ -1,16 +1,7 @@
 #!/usr/bin/env bash
-# ./platform verify: checks that the running stack works, and says which
-# check failed:
-#   1. every Argo CD Application is Synced and Healthy
-#   2. every Prometheus scrape target is up
-#   3. Loki has logs from every namespace that runs pods
-#   4. the host ports, all plain HTTP through Traefik: prod :8080, dev :8082,
-#      staging :8083 (/admin/* refused on each), Grafana :3000,
-#      Prometheus :9090, Alertmanager :9093, Argo CD :8081
-#   5. Kyverno rejects a bad manifest at admission (a server-side dry run of
-#      a :latest pod in dev must be denied by disallow-latest-tag)
-# Prometheus, Loki and Kyverno are reached through the API server's service
-# proxy, so nothing needs a port-forward. Runs in the toolbox.
+# ./platform verify: checks the running stack (Argo CD apps, scrape targets,
+# Loki, alert delivery, host ports, Kyverno admission) and names what failed.
+# Uses the API server's service proxy, so no port-forwards. Runs in the toolbox.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
@@ -20,11 +11,8 @@ miss() { fail "$*"; failed=$((failed + 1)); }
 proxy() { kubectl get --raw "/api/v1/namespaces/$1/services/$2/proxy$3"; }
 
 step "Argo CD: every Application Synced and Healthy"
-# Demo copies (label demo=true, ./platform demo) aren't part of the stack:
-# one left with --keep may be mid-demo. Note them, don't fail on them.
-# The fourth column says whether the app syncs on its own: the apps' staging
-# and prod sync by hand, so OutOfSync there is a promotion waiting for its
-# Sync click, not a failure (a warning; ArgoCDManualSyncPending after 1 h).
+# Demo copies (demo=true) may be mid-demo: note them, don't fail. Manual-sync
+# apps OutOfSync but Healthy are a promotion awaiting its Sync click: a warning.
 apps=$(kubectl -n argocd get applications.argoproj.io -l 'demo!=true' \
   -o jsonpath='{range .items[*]}{.metadata.name} {.status.sync.status} {.status.health.status} {.spec.syncPolicy.automated}{"\n"}{end}' |
   awk '{print $1, $2, $3, ($4 == "" ? "manual" : "auto")}')
@@ -47,13 +35,11 @@ if res=$(proxy monitoring kube-prometheus-stack-prometheus:9090 '/api/v1/query?q
   real=0 ignored=0
   while read -r job ns pod instance; do
     [ -n "$job" ] || continue
-    # A pod that is gone or terminating (an old replica still draining, e.g.
-    # a proxy pod after a rollout, with a long grace period) isn't a
-    # problem with the running stack: note it, don't fail on it.
+    # A target on a pod that's gone or terminating (draining after a rollout)
+    # isn't a fault in the running stack.
     if [ "$pod" != "-" ]; then
       if ! since=$(kubectl -n "$ns" get pod "$pod" -o jsonpath='{.metadata.deletionTimestamp}' 2>&1); then
-        # Only a definite NotFound counts as gone; any other error (API,
-        # RBAC) leaves the target counted as down.
+        # Only a definite NotFound counts as gone; other errors count as down.
         if [[ $since == *NotFound* || $since == *"not found"* ]]; then
           warn "target down: $job $ns/$pod: the pod is gone (ignored)"; ignored=$((ignored + 1)); continue
         fi
@@ -84,9 +70,7 @@ else
 fi
 
 step "Alerts reach the local receiver (Watchdog heartbeat in Loki)"
-# Alertmanager sends the always-firing Watchdog to alert-receiver every
-# 5 minutes, which logs it: one line proves Prometheus ->
-# Alertmanager -> receiver -> Loki works end to end.
+# The always-firing Watchdog in Loki proves the whole alert path works.
 q=$(jq -rn '"{namespace=\"monitoring\", app=\"alert-receiver\"} |= \"Watchdog\"" | @uri')
 n=$(proxy logging loki:3100 "/loki/api/v1/query_range?query=$q&since=1h&limit=20" 2>/dev/null |
   jq '[.data.result[]?.values[]] | length' 2>/dev/null || echo 0)
@@ -94,9 +78,8 @@ if [ "${n:-0}" -gt 0 ]; then pass "Watchdog notifications delivered ($n in the l
 else miss "no Watchdog notification in Loki from monitoring/alert-receiver in the last hour"; fi
 
 step "The host ports (plain HTTP, through Traefik)"
-# Runs with the host's network (the toolbox, and Compose's ready service), so
-# localhost is the host's.
-# curl prints 000 itself when it can't connect; don't add a second one.
+# Runs on the host network, so localhost is the host's. curl prints 000 itself
+# when it can't connect.
 code() { curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$@" || true; }
 for env_port in prod:8080 dev:8082 staging:8083; do
   env=${env_port%%:*} port=${env_port##*:}
@@ -107,8 +90,7 @@ for env_port in prod:8080 dev:8082 staging:8083; do
   if [ "$c" = 403 ]; then pass "$env: /admin/* is refused at the edge (POST /admin/fault: 403)"
   else miss "$env: POST http://localhost:$port/admin/fault answered $c, not 403: /admin must not be reachable from outside"; fi
 done
-# Disguised paths: the app (Node) resolves them to /admin/fault, so the edge
-# must refuse them too (non-2xx). --path-as-is sends them unaltered.
+# Paths Node resolves to /admin/fault must be refused at the edge too.
 for p in /x/../admin/fault //admin/fault /admin%2Ffault /%61dmin/fault /admin/./fault; do
   c=$(code --path-as-is -X POST -d '{}' "http://localhost:8080$p")
   case "$c" in
@@ -126,7 +108,6 @@ done <<'EOF2'
 9093 /-/ready Alertmanager
 8081 /api/version Argo CD
 EOF2
-# The demo login, admin / admin12345, on each UI that has one.
 c=$(code -u admin:admin12345 http://localhost:3000/api/user)
 if [ "$c" = 200 ]; then pass "Grafana login admin / admin12345 works"
 else miss "Grafana login admin / admin12345 answered $c"; fi
@@ -135,10 +116,8 @@ if [ "$c" = 200 ]; then pass "Argo CD login admin / admin12345 works"
 else miss "Argo CD login admin / admin12345 answered $c"; fi
 
 step "Kyverno rejects a bad manifest at admission"
-# Server-side dry run: nothing is created. dev enforces Pod Security
-# "restricted", which runs before Kyverno's webhook and stops at the first
-# rejection, so the pod meets it (and the Audit policies): the :latest tag
-# is the only thing wrong with it.
+# Server-side dry run. Pod Security runs before Kyverno and stops at the first
+# rejection, so the pod is otherwise compliant: only :latest is wrong.
 latest_pod='{
   "apiVersion": "v1",
   "spec": {

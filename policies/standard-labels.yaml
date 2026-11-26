@@ -1,11 +1,6 @@
-# Workloads carry app, env and team labels, so logs, metrics and cost can be
-# grouped by them. In the app namespaces (dev, staging, prod, demo) Kyverno first adds safe
-# defaults to pods that lack them (MutatingPolicy below):
-#   app:  copied from app.kubernetes.io/name, when that is set
-#   env:  the namespace (dev, staging, prod or demo)
-#   team: "orders"
-# then checks the result (ValidatingPolicy, Audit). It mutates Pods only,
-# never Deployments, so Argo CD sees no drift.
+# app, env and team labels on pods in the app namespaces: Kyverno adds
+# defaults where missing, then audits. Pods only, never Deployments, so Argo
+# CD sees no drift.
 apiVersion: policies.kyverno.io/v1
 kind: MutatingPolicy
 metadata:
@@ -16,7 +11,7 @@ metadata:
       Adds app, env and team labels to pods in the app namespaces when
       they're missing. Existing labels are never changed.
 spec:
-  # A Kyverno outage must not block pod creation; pods then just miss defaults.
+  # A Kyverno outage must not block pod creation.
   failurePolicy: Ignore
   evaluation:
     mutateExisting:
@@ -56,7 +51,6 @@ metadata:
       (after default-labels has added what it can).
 spec:
   validationActions: [Audit]
-  # While policies only audit, a Kyverno outage must not block pod creation.
   failurePolicy: Ignore
   evaluation:
     background:

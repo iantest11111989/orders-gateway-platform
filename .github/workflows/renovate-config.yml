@@ -1,7 +1,6 @@
 name: CI · renovate config
 
-# Validates renovate.json5. The other workflows are path-filtered and don't
-# cover it, so without this a config change would have no check at all.
+# Validates renovate.json5, which no other (path-filtered) workflow covers.
 on:
   pull_request:
     paths: ["renovate.json5", ".github/workflows/renovate-config.yml"]

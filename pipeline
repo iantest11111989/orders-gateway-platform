@@ -1,30 +1,21 @@
 #!/bin/sh
-# ./pipeline: this repo's CI/CD, run locally. Each <app> has its code in
-# apps/<app>/, its chart in helm/<app>/ and what each environment runs in
-# cd/<app>/. Releases live in the cluster's in-stack registry.
+# ./pipeline: this repo's CI/CD, run locally. An <app> has apps/<app>/,
+# helm/<app>/ and cd/<app>/; releases live in the in-stack registry.
 #
 #   ./pipeline ci <app> [--version V]
-#         test, build, scan (Trivy: HIGH/CRITICAL with a fix fails) and
-#         publish. With --version (semver, e.g. 1.2.0): image <app>:V and
-#         chart <app> V, a release; a published version is never
-#         overwritten. Without: a dev-only build, image <app>:local-<time>,
-#         which only dev can run. Remembers the build for `cd`.
+#         test, build, scan (Trivy: fixable HIGH/CRITICAL fails) and publish.
+#         --version (semver) publishes image and chart V, never overwritten;
+#         without it, a dev-only build <app>:local-<time>.
 #   ./pipeline cd <app> <env> [--version V] [--force] [--sync]
 #         point cd/<app>/<env>.yaml at V (default: the last `ci` build), push
-#         the checkout to the in-stack Git server and wait for Argo CD to
-#         roll <env> out. Promotion goes in order: staging takes only a
-#         version dev has run, prod one staging has run, and only while the
-#         previous environment is healthy (scripts/promotion-gate.sh).
-#         --force skips both checks, for emergencies. dev syncs by
-#         itself and cd waits for the rollout; staging and prod don't: cd
-#         pushes the change and you click Sync in Argo CD
-#         (http://localhost:8081), or --sync syncs and waits.
+#         it to the in-stack Git server and wait for the rollout. Promotion
+#         goes in order (dev, staging, prod) and needs the previous env
+#         healthy; --force skips both. staging and prod sync by hand: click
+#         Sync at http://localhost:8081, or pass --sync.
 #   ./pipeline rollback <app> <env> [--sync]
 #         back to what <env> ran before its last change. Always allowed.
 #
-# <env> is dev, staging or prod; there's no default. The cluster must be up
-# (./platform up). All CI/CD here is local; GitHub only runs checks on pull
-# requests. docs/ci-cd-in-production.md describes how production would do it.
+# <env> is dev, staging or prod. Needs ./platform up.
 set -eu
 
 cd "$(dirname "$0")"
@@ -33,7 +24,7 @@ REPO_ROOT=$(pwd)
 . scripts/lib/host.sh
 
 usage() {
-  sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 

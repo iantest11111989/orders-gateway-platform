@@ -1,34 +1,18 @@
 #!/usr/bin/env bash
-# The deploy half of ./pipeline cd / rollback: change what an environment
-# runs by Git change, then wait for Argo CD to roll it out.
-#
+# The deploy half of ./pipeline cd / rollback: edit cd/$APP/ENV.yaml, push it
+# to the in-stack Git server, and wait for Argo CD to roll it out.
 #   deploy --env ENV --version V [--force] [--sync]
-#         a published version (image and chart in the in-stack registry).
-#         staging takes only a version dev has run, prod only one staging
-#         has run (the env files' history on the in-stack Git server), and
-#         the promotion gate (scripts/promotion-gate.sh) must pass. --force
-#         skips both, for emergencies.
-#   deploy --env dev --tag T
-#         a dev-only build (localhost:30500/$APP:T, already pushed): no
-#         version, so Argo CD renders helm/$APP as it is in Git.
-#   rollback --env ENV [--sync]
-#         put back the version (or build) ENV ran before its last change,
-#         read from the in-stack Git history. Always allowed.
-#
-# Where the Application auto-syncs (dev), each waits for the rollout. Where
-# it doesn't (staging, prod), each pushes the change and stops: you click
-# Sync in Argo CD. --sync starts the sync and waits for the rollout instead.
-# Each edits cd/$APP/ENV.yaml in this checkout: the change is a normal file
-# change you can see, commit or revert. Not `kubectl rollout undo` or
-# `kubectl set image`: Argo CD's self-heal would put Git's version back
-# within seconds.
-# Argo CD follows the in-stack Git server (./platform up). Runs in the toolbox.
+#         staging/prod take only a version the previous env has run, and the
+#         promotion gate must pass; --force skips both.
+#   deploy --env dev --tag T     a dev-only build (no version)
+#   rollback --env ENV [--sync]  the release ENV ran before its current one
+# staging and prod don't auto-sync: without --sync this stops after the push.
+# Not `kubectl set image`: Argo CD's self-heal would revert it. Runs in the toolbox.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 IN_STACK=http://git.git.svc.cluster.local:23232/platform.git
 APP=${APP:-orders-gateway}
-# The app's Deployment in each environment's namespace: named after the app.
 DEPLOYMENT=${DEPLOYMENT:-$APP}
 REPO=localhost:30500/$APP
 
@@ -54,8 +38,7 @@ in_stack_only() {
   [ "$repo" = "$IN_STACK" ] || die "Argo CD syncs from ${repo:-?}, not the in-stack Git server: start the cluster with ./platform up"
 }
 
-# The in-stack repository, cloned to $tmp/r (its history is what each
-# environment actually ran).
+# Clone the in-stack repo: its history is what each environment actually ran.
 clone_in_stack() {
   [ -d "$tmp/r" ] && return 0
   kubectl -n git port-forward svc/git :23232 >"$tmp/pf" 2>&1 & pf=$!
@@ -67,11 +50,9 @@ clone_in_stack() {
 tmp=$(mktemp -d); pf=''
 trap '[ -z "$pf" ] || kill "$pf" 2>/dev/null || true; rm -rf "$tmp"' EXIT
 
-# What an env file deploys, as one comparable value: the version and the
-# image block (key order, quoting and an empty digest vs none don't count).
+# A comparable release value (ignores key order, quoting, empty digest).
 release_of() { yq -o json -I0 '{"version": .version, "image": .image}' | jq -cS '.image |= with_entries(select(.value != "" and .value != null)) | with_entries(select(.value != null))'; }
 
-# Every version an environment's file has pinned, in the in-stack history.
 versions_run_in() { # versions_run_in <env>
   clone_in_stack
   local c
@@ -80,12 +61,9 @@ versions_run_in() { # versions_run_in <env>
   done | grep -v '^$' | sort -u
 }
 
-# Change only the version line and the image lines of the values file,
-# leaving every other line, blank line and comment as it was. A yq rewrite
-# reformats the whole file. An empty version removes its line; a missing one
-# goes in just before `image:`. An empty repository removes its line (the
-# app's values.yaml default applies); an empty digest is written as "".
-# Rewriting through cat keeps the file owned by you (the toolbox is root).
+# Edit only the version and image lines, keeping the file's comments and
+# layout (yq would reformat it). Rewriting through cat keeps the file's owner
+# (the toolbox runs as root).
 set_release() { # set_release <version> <repository> <tag> <digest>
   V="$1" REPO="$2" TAG="$3" DIGEST="${4:-\"\"}" awk '
     /^[^[:space:]#]/ { inimage = ($0 ~ /^image:[[:space:]]*$/) }
@@ -113,7 +91,6 @@ show() { # what the environment serves now
     jq -r '.data.result[0].value[1] // empty | tonumber * 100 | "  5xx share, last 5 min: \(. * 100 | round / 100)%"' >&2 || true
 }
 
-# On a timeout: what Argo CD says about the environment's Application.
 app_status() {
   kubectl -n argocd get applications.argoproj.io "$APP-$env" -o json 2>/dev/null |
     jq -r '"  Argo CD \(.metadata.name): sync \(.status.sync.status // "?"), health \(.status.health.status // "?")",
@@ -121,10 +98,7 @@ app_status() {
            (.status.operationState.message // empty | "    last sync: \(.)")' >&2 || true
 }
 
-# An Application with auto-sync (dev) rolls the change out by itself: watch
-# it. One without (staging, prod) waits for someone to click Sync in Argo
-# CD: say so and stop here, or with --sync start the sync and watch it.
-# Either way, once Argo CD has read the new commit.
+# Returns 0 for a manual-sync app once Argo CD has read the new commit.
 manual_sync() {
   local app="$APP-$env" deadline=$(( $(date +%s) + 60 ))
   [ -z "$(kubectl -n argocd get applications.argoproj.io "$app" -o jsonpath='{.spec.syncPolicy.automated}' 2>/dev/null)" ] || return 1
@@ -154,9 +128,7 @@ roll_out() { # roll_out <image>: push the checkout, then wait for the Deployment
     sleep 3
   done
   kubectl -n "$env" rollout status "deploy/$DEPLOYMENT" --timeout=300s
-  # The sync isn't over when the new pods are: Argo CD then removes what Git
-  # no longer has (PruneLast). Wait for that, so the next promotion's gate
-  # sees this environment Synced.
+  # Then wait for pruning (PruneLast) so the next promotion's gate sees Synced.
   local st deadline2=$(( $(date +%s) + 300 ))
   while :; do
     st=$(kubectl -n argocd get applications.argoproj.io "$APP-$env" -o jsonpath='{.status.sync.status} {.status.operationState.phase}' 2>/dev/null || true)
@@ -213,9 +185,8 @@ case "$cmd" in
     in_stack_only
     step "Finding $env's previous release in the in-stack Git history"
     clone_in_stack
-    # The release before the current one *first* appeared: so a second
-    # rollback goes further back instead of toggling to the one just rolled
-    # back from (v0, v1, v2, rollback -> v1, rollback -> v0).
+    # Go back from where the current release *first* appeared, so repeated
+    # rollbacks walk further back instead of toggling.
     cur=$(release_of <"$values")
     rels=()
     for c in $(git -C "$tmp/r" log --reverse --format=%H -- "cd/$APP/$env.yaml"); do

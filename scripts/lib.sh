@@ -1,20 +1,17 @@
 #!/usr/bin/env bash
-# Variables here are used by the scripts that source this file.
-# shellcheck disable=SC2034
 # Shared helpers for the scripts ./platform runs inside the toolbox.
+# shellcheck disable=SC2034
 set -euo pipefail
 
 CLUSTER_NAME=platform-demo
 KIND_CONFIG=cluster/kind.yaml
-# Budget for the whole stack.
 BUDGET_CPUS=6
 BUDGET_MEM_GB=12
-# Per kind node container cap: 3 nodes x 2 CPU / 4 GiB = the budget.
+# Per-node cap: 3 nodes x 2 CPU / 4 GiB = the 6 CPU / 12 GiB budget.
 NODE_CPUS=2
 NODE_MEM_MI=4096
 NODE_MEM="${NODE_MEM_MI}m"
-# Kept free inside each node for kubelet eviction, so the kubelet evicts pods
-# before the kernel's cgroup OOM killer fires.
+# Kubelet eviction headroom, so pods are evicted before the cgroup OOM killer fires.
 EVICTION_MEM_MI=200
 
 if [ -t 1 ]; then
@@ -37,14 +34,9 @@ node_containers() {
   docker ps -a --filter "label=io.x-k8s.kind.cluster=$CLUSTER_NAME" --format '{{.Names}}' | sort
 }
 
-# The apps' Applications (<app>-dev, -staging, -prod) used to be plain
-# Applications in the app-of-apps; the ApplicationSet apps generates them
-# now. If the root pruned an old one, its resources finalizer would delete
-# that environment's workloads. Prune=false makes it a handover: the root
-# leaves the old Application alone, and the ApplicationSet adopts it (same
-# name; it rewrites the metadata, so the root stops tracking it) along with
-# its workloads. Does nothing on a new cluster or once the ApplicationSet
-# owns them.
+# Per-env Applications moved from the app-of-apps to the ApplicationSet. On an
+# older cluster, mark them Prune=false so the root doesn't delete them (and
+# their workloads via the finalizer) before the ApplicationSet adopts them.
 hand_over_app_applications() {
   local dir app owner
   for dir in "$(dirname "${BASH_SOURCE[0]}")"/../cd/*/; do
@@ -59,12 +51,8 @@ hand_over_app_applications() {
   done
 }
 
-# Start a sync of an Argo CD Application, as its Sync button does: with
-# prune, the Application's own sync options (CreateNamespace=true, ...;
-# an operation written by hand doesn't pick them up by itself) and the same
-# retries as the automated syncs. Writes the operation field: no argocd
-# login needed. For the staging and prod Applications, which don't sync by
-# themselves.
+# Sync like the UI button: prune, the app's own syncOptions (a hand-written
+# operation doesn't pick them up) and the automated retries. No argocd login.
 sync_app() { # sync_app <application> [who]
   local opts
   opts=$(kubectl -n argocd get applications.argoproj.io "$1" -o json | jq -c '.spec.syncPolicy.syncOptions // []')

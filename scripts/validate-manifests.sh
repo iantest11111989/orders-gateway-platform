@@ -1,15 +1,7 @@
 #!/usr/bin/env bash
-# Renders everything Argo CD applies, so CI can validate it in seconds,
-# without a cluster (CI · infra, "Validate manifests"):
-#   - helm lint, then helm template of helm/orders-gateway for dev, staging
-#     and prod with their values files
-#   - the app-of-apps chart (bootstrap/apps)
-#   - the plain manifests under system/<component>/ (its manifests/ folder
-#     when it also has a values.yaml; Kustomize where there's a
-#     kustomization.yaml, the YAML files as they are otherwise)
-# into out/rendered/*.yaml. kubeconform then checks them against the
-# Kubernetes and CRD schemas, and kyverno against our policies. Runs in the
-# toolbox: ./platform shell scripts/validate-manifests.sh
+# Renders everything Argo CD applies (app chart per env, bootstrap/apps,
+# system/*) into out/rendered/ for kubeconform and kyverno in CI, without a
+# cluster. Runs in the toolbox: ./platform shell scripts/validate-manifests.sh
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -21,13 +13,12 @@ step "Helm: lint and render the app chart per environment"
 for env in dev staging prod; do
   helm lint helm/orders-gateway -f cd/orders-gateway/values.yaml -f "cd/orders-gateway/$env.yaml" --namespace "$env" --quiet >/dev/null ||
     die "helm lint failed for $env"
-  # helm template leaves metadata.namespace unset; Argo CD applies into the
-  # Application's namespace, so set it (the policies match on namespace).
+  # helm template leaves metadata.namespace unset; the policies match on it.
   helm template orders-gateway helm/orders-gateway -f cd/orders-gateway/values.yaml -f "cd/orders-gateway/$env.yaml" --namespace "$env" |
     NS="$env" yq '(select(.metadata.namespace == null) | .metadata.namespace) = strenv(NS)' >"$OUT/app-$env.yaml"
   ok "$env: $(grep -c '^kind:' "$OUT/app-$env.yaml") objects"
 done
-# One file for kyverno apply (its CLI takes one --resource reliably).
+# One file: the kyverno CLI takes one --resource reliably.
 mkdir -p out/policy-input
 cat "$OUT"/app-dev.yaml "$OUT"/app-staging.yaml "$OUT"/app-prod.yaml >out/policy-input/apps.yaml
 

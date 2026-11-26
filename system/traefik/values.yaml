@@ -1,16 +1,12 @@
-# Traefik: the one way in from the host. Plain HTTP, one entrypoint per
-# host port (kind maps each host port to the NodePort below):
-#   8080 prod (the app's public endpoint)  8082 dev  8083 staging  8084 demo
-#   3000 Grafana  9090 Prometheus  9093 Alertmanager  8081 Argo CD
-# Routing is standard Kubernetes Ingress (ingressClassName: traefik), bound to
-# an entrypoint with the traefik.ingress.kubernetes.io/router.entrypoints
-# annotation. Container ports avoid 8080, which Traefik keeps for itself.
+# Traefik: the one way in from the host, one plain-HTTP entrypoint per host
+# port (8080 prod, 8082 dev, 8083 staging, 8084 demo, UIs on their usual
+# ports). Ingresses pick one with the router.entrypoints annotation.
+# Container ports avoid 8080, which Traefik keeps for itself.
 deployment:
   replicas: 2
 podDisruptionBudget:
   enabled: true
   maxUnavailable: 1
-# One replica per node where possible, and across the two zones.
 topologySpreadConstraints:
   - maxSkew: 1
     topologyKey: topology.kubernetes.io/zone
@@ -33,8 +29,8 @@ providers:
     enabled: true # for the Middleware that blocks /admin
   kubernetesIngress:
     enabled: true
-    # NodePort Service: no load balancer to publish, so report 127.0.0.1 on
-    # each Ingress (Argo CD counts an Ingress Healthy once it has an address).
+    # No load balancer: report 127.0.0.1, since Argo CD counts an Ingress
+    # Healthy only once it has an address.
     publishedService:
       enabled: false
     ingressEndpoint:

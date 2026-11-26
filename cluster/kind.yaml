@@ -1,26 +1,20 @@
-# kind cluster for platform-demo: 1 control plane + 2 workers.
-# Created by `./platform up`.
+# kind cluster: 1 control plane + 2 workers, created by `./platform up`.
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: platform-demo
 networking:
   # API server only on loopback; the toolbox shares the host network.
   apiServerAddress: 127.0.0.1
-  # kindnet enforces NetworkPolicy (kind >= v0.24), so no extra CNI is needed.
-  # kind's default pod range, set explicitly: the NetworkPolicies in
-  # system/network-policies/ treat everything outside it as "the
-  # nodes". Keep the two in step; changing it needs a new cluster.
+  # kindnet enforces NetworkPolicy. system/network-policies/ treats everything
+  # outside this range as "the nodes": keep them in step (needs a new cluster).
   podSubnet: 10.244.0.0/16
 nodes:
   - role: control-plane
     image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
     labels:
       topology.kubernetes.io/zone: zone-a
-    # Host ports -> Traefik's NodePorts (system/traefik/values.yaml), plain
-    # HTTP, bound to 127.0.0.1 so the stack is not exposed to the LAN:
-    # 8080 prod, 8082 dev, 8083 staging, 8084 demo, 8081 Argo CD,
-    # 3000 Grafana, 9090 Prometheus, 9093 Alertmanager.
-    # Changing these needs a new cluster (./platform down && ./platform up).
+    # Host ports -> Traefik NodePorts, bound to 127.0.0.1 so nothing is exposed
+    # to the LAN. Changing them needs a new cluster.
     extraPortMappings:
       - {containerPort: 30808, hostPort: 8080, listenAddress: 127.0.0.1, protocol: TCP}
       - {containerPort: 30882, hostPort: 8082, listenAddress: 127.0.0.1, protocol: TCP}
@@ -31,8 +25,7 @@ nodes:
       - {containerPort: 30909, hostPort: 9090, listenAddress: 127.0.0.1, protocol: TCP}
       - {containerPort: 30993, hostPort: 9093, listenAddress: 127.0.0.1, protocol: TCP}
     kubeadmConfigPatches:
-      # Expose control-plane metrics on all interfaces so Prometheus can
-      # scrape them from inside the cluster.
+      # Control-plane metrics on all interfaces so Prometheus can scrape them.
       - |
         kind: ClusterConfiguration
         controllerManager:

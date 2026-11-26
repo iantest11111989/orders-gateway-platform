@@ -1,23 +1,18 @@
 #!/usr/bin/env bash
-# Installs Argo CD once with Helm, applies the root Application, then waits
-# until every Application is Synced and Healthy (a manual-sync app: Healthy
-# and synced once; this gives a new one its first sync). Called by up.sh; safe to
-# re-run (Argo CD manages itself after the first install).
+# Installs Argo CD once with Helm, applies the root Application, and waits for
+# every Application to be Synced and Healthy. Called by up.sh; safe to re-run.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
 ARGOCD_CHART_VERSION=$(yq '.spec.sources[0].targetRevision' bootstrap/apps/templates/argocd.yaml)
-# The in-stack Git server, which git-sync.sh fills with this checkout.
 REPO_URL=http://git.git.svc.cluster.local:23232/platform.git
 REVISION=main
 APPS_TIMEOUT=${APPS_TIMEOUT:-600}
 
 if kubectl -n argocd get deploy argocd-server >/dev/null 2>&1; then
   step "Argo CD already installed; it manages itself from Git"
-  # A repository added to its values since (configs.repositories, e.g. the
-  # in-stack registry) would arrive only when Argo CD syncs itself, after the
-  # apps may need it; a failed chart pull is then cached for a while. Apply
-  # them now, as the chart would (Secret argocd-repo-<key>).
+  # Repositories added to values since would only arrive when Argo CD syncs
+  # itself, after apps may need them (and a failed pull is cached): apply now.
   yq -o json '.configs.repositories // {}' system/argocd/values.yaml | jq -c 'to_entries[]' |
     while read -r repo; do
       jq '{apiVersion: "v1", kind: "Secret",
@@ -48,19 +43,12 @@ ok "root applied"
 step "Waiting for every Application to be Synced and Healthy (up to ${APPS_TIMEOUT}s)"
 start=$(date +%s)
 deadline=$(( start + APPS_TIMEOUT ))
-# Seconds after the root was applied when each Application first appeared and
-# first became Synced+Healthy, so slow sync waves show up in the output.
+# Seconds since the root was applied, so slow sync waves show in the output.
 declare -A seen_at healthy_at drift_since drift_logged slow_since slow_logged first_syncs
 timing() { echo "(appeared +${seen_at[$1]:-?}s, healthy +${healthy_at[$1]:-never}s)"; }
-# The root app's sync waves wait only for each child's health, so an app that
-# is Healthy but stays OutOfSync doesn't hold up later waves, but it does hold
-# up this wait (until Argo CD's next refresh, ~3 min). Name the drifting
-# resources once, so a slow `up` points at what needs an ignoreDifferences.
-# An app that stays Progressing or Missing, or whose sync operation stays
-# Running, for a minute is the other way to hold up `up`. Print its sync
-# operation (the message names what it waits for, such as a CRD or a PostSync
-# Job) and the not-ready pods in its namespace (Argo CD 3 no longer keeps
-# per-resource health in the Application status). Once per app.
+# Report once per app what holds up this wait: Healthy-but-OutOfSync drift
+# (sync waves don't wait on it, this loop does; points at a missing
+# ignoreDifferences), or a minute Progressing/Missing/sync Running.
 slow_report() {
   local ns
   warn "$1: $2 for ${3}s; sync operation, then pods not ready in its namespace:"
@@ -74,13 +62,10 @@ drift_report() {
   warn "$1: Healthy but not Synced for ${2}s; OutOfSync resources:"
   kubectl -n argocd get applications.argoproj.io "$1" -o jsonpath='{range .status.resources[?(@.status=="OutOfSync")]}    {.group}/{.kind} {.namespace}/{.name}{"\n"}{end}' 2>/dev/null || true
 }
-# staging and prod don't sync by themselves (someone clicks Sync, or
-# ./pipeline cd --sync). One that has never synced, as on a new cluster, gets
-# its first sync here (again if that one failed, up to 3 times). After that, Synced isn't required of them: a change
-# may be waiting for its click, so ready means Healthy and synced once.
+# Manual-sync apps (staging, prod) get their first sync here (up to 3 tries);
+# after that they only need to be Healthy and synced once.
 while :; do
-  # name sync health operation-phase, one line per Application; a manual app
-  # that has synced before reads as Synced.
+  # name sync health phase; a manual app that has synced before reads as Synced.
   status=$(kubectl -n argocd get applications.argoproj.io -o json 2>/dev/null |
     jq -r '.items[] | (.spec.syncPolicy.automated == null) as $manual
       | if $manual and .operation == null and ((.status.history // []) | length) == 0
@@ -101,7 +86,6 @@ while :; do
     [ -n "$name" ] || continue
     [ -n "${seen_at[$name]:-}" ] || seen_at[$name]=$now
     if [ "$sync" = Synced ] && [ "$health" = Healthy ] && [ -z "${healthy_at[$name]:-}" ]; then healthy_at[$name]=$now; fi
-    # Skip apps still in a sync (root works through its waves this way).
     if [ "$health" = Healthy ] && [ "$sync" != Synced ] && [ "${phase:-}" != Running ]; then
       [ -n "${drift_since[$name]:-}" ] || drift_since[$name]=$now
       if [ -z "${drift_logged[$name]:-}" ] && [ $(( now - drift_since[$name] )) -ge 30 ]; then
@@ -111,8 +95,7 @@ while :; do
     else
       unset 'drift_since[$name]'
     fi
-    # A sync operation still Running with healthy resources is a hook (e.g.
-    # a PostSync Job) the app waits for; it counts as slow too.
+    # A sync still Running on healthy resources is a hook (PostSync Job): slow too.
     if [ "$health" = Progressing ] || [ "$health" = Missing ] || [ "${phase:-}" = Running ]; then
       [ -n "${slow_since[$name]:-}" ] || slow_since[$name]=$now
       if [ -z "${slow_logged[$name]:-}" ] && [ $(( now - slow_since[$name] )) -ge 60 ]; then

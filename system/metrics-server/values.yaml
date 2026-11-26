@@ -1,9 +1,5 @@
-# metrics-server Helm values (chart kubernetes-sigs/metrics-server).
-# Application: bootstrap/apps/templates/metrics-server.yaml.
 
-# kind's kubelets serve self-signed certificates that don't name the node's
-# IP, so metrics-server can't verify them. DEMO ONLY: production clusters
-# have kubelet serving certificates signed by the cluster CA.
+# DEMO ONLY: kind's kubelet certs don't name the node IP, so skip verification.
 args:
   - --kubelet-insecure-tls
 
@@ -11,7 +7,6 @@ resources:
   requests: {cpu: 20m, memory: 48Mi}
   limits: {memory: 128Mi}
 
-# Its own health metrics, scraped by Prometheus.
 serviceMonitor:
   enabled: true
 metrics:

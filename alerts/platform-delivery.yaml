@@ -1,11 +1,6 @@
-# Alerts for the delivery side of the platform: Argo CD and the
-# 6 CPU / 12 GiB budget.
-#
-# Severities match the routing (page | ticket), like the SLO alerts in
-# orders-gateway-slo.yaml. The chart's defaults already cover TargetDown,
-# Watchdog and KubePodCrashLooping, with upstream runbooks.
-#
-# Tests: alerts/tests/platform-delivery.test.yaml (promtool, run in CI).
+# Delivery alerts: Argo CD and the 6 CPU / 12 GiB budget. The chart already
+# covers TargetDown, Watchdog and KubePodCrashLooping.
+# Tests: alerts/tests/platform-delivery.test.yaml.
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -17,11 +12,8 @@ spec:
   groups:
     - name: platform-delivery
       rules:
-        # Auto-sync apps only. Self-heal puts a manual change back within
-        # seconds, so an app that stays OutOfSync means Argo CD can't apply
-        # what's in Git. The apps' staging and prod sync by hand (someone
-        # clicks Sync after ./pipeline cd), so for them OutOfSync is normal
-        # for a while: see ArgoCDManualSyncPending.
+        # Auto-sync apps only: self-heal reverts manual changes, so staying
+        # OutOfSync means Argo CD can't apply Git. Manual-sync apps: see below.
         - alert: ArgoCDAppOutOfSync
           expr: max by (name) (argocd_app_info{sync_status="OutOfSync", autosync_enabled!="false"}) == 1
           for: 15m
@@ -34,9 +26,7 @@ spec:
               been able to sync it. Changes merged for it aren't reaching the cluster.
             runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/ArgoCDAppOutOfSync.md
 
-        # A manual-sync app (staging, prod) left OutOfSync: a promotion was
-        # pushed to Git but nobody clicked Sync, so the environment still
-        # runs the old version. A reminder, not an outage.
+        # A promotion pushed but never synced: a reminder, not an outage.
         - alert: ArgoCDManualSyncPending
           expr: max by (name) (argocd_app_info{sync_status="OutOfSync", autosync_enabled="false"}) == 1
           for: 1h
@@ -50,8 +40,7 @@ spec:
               revert the change in Git.
             runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/ArgoCDManualSyncPending.md
 
-        # Degraded: something it deployed is failing (pods crashing, a
-        # Deployment that can't get ready). Missing: a resource Git expects doesn't exist.
+        # Missing: a resource Git expects doesn't exist.
         - alert: ArgoCDAppUnhealthy
           expr: max by (name, health_status) (argocd_app_info{health_status=~"Degraded|Missing"}) == 1
           for: 10m
@@ -63,11 +52,8 @@ spec:
               {{ $labels.name }} has been {{ $labels.health_status }} for 10 minutes.
             runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/runbooks/ArgoCDAppUnhealthy.md
 
-        # The whole stack against its 12 GiB budget. cAdvisor's root cgroup on
-        # each kind node is the node container itself (pods plus kubelet and
-        # containerd), so the sum matches `./platform budget` (7067 vs 7055 MiB
-        # on the local cluster, 2026-11-25). At 90% a node is close to its 4 GiB cap and
-        # will start OOM-killing.
+        # Each kind node's root cgroup is the whole node container, so this sum
+        # matches `./platform budget`. At 90% nodes near their 4 GiB cap and OOM.
         - alert: StackNearMemoryBudget
           expr: sum(container_memory_working_set_bytes{id="/"}) / (12 * 2^30) > 0.9
           for: 10m

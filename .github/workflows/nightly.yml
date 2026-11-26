@@ -1,10 +1,7 @@
 name: Scheduled · nightly E2E
 
-# The full end-to-end test: on fresh GitHub-hosted runners with only Docker,
-# `./platform up`, `verify`, the autoscale demo with `budget` measuring
-# alongside, gitops-revert, then `down`. It proves anyone can start the repo
-# from scratch, on x86-64 and on arm64. Separate from real deploys: the
-# cluster lives only for this job and syncs from main.
+# Nightly from-scratch run on fresh x86-64 and arm64 runners: up, verify, the
+# autoscale demo under `budget`, gitops-revert, down.
 on:
   schedule:
     - cron: "17 4 * * *" # daily, 04:17 UTC
@@ -44,8 +41,7 @@ jobs:
             sleep 30
           done
           exit 1
-      # The 6 CPU / 12 GiB budget has to hold during the demos too: measure the
-      # peak while autoscale runs (a copy of prod at 6 pods plus k6).
+      # The budget must hold during the demos too.
       - name: ./platform demo autoscale, with ./platform budget --watch alongside
         run: |
           ./platform budget --watch 720 >budget.log 2>&1 &
@@ -63,8 +59,6 @@ jobs:
           } >>"$GITHUB_STEP_SUMMARY"
           [ "$demo" -eq 0 ] || { echo "::error::demo autoscale failed (exit $demo)"; exit "$demo"; }
           exit "$status"
-      # Default (in-stack) mode: a bad config commit and its git revert, on a
-      # demo branch of the in-stack Git server.
       - name: ./platform demo gitops-revert
         run: ./platform demo gitops-revert
       - name: Diagnostics (on failure)

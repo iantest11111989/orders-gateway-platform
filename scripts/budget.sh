@@ -1,17 +1,9 @@
 #!/usr/bin/env bash
-# ./platform budget [--watch SECONDS]: proves the stack fits its
-# 6 CPU / 12 GiB budget, measured, not estimated.
-#   1. The kind node containers' hard caps (docker update in up.sh) add up
-#      to no more than 6 CPU / 12 GiB, so the cluster can't use more.
-#   2. What the nodes actually use now (docker stats), per node and in total.
-#   3. Which namespaces use it (metrics-server, `kubectl top`).
-#   4. No container was OOM-killed: a cap that's too small shows up there.
-# With --watch SECONDS it samples every 5 s for that long and reports the
-# peak, e.g. while a demo runs in another terminal. Runs in the toolbox.
-# Memory is docker stats' usage, which leaves out the reclaimable file cache.
-# The cgroup's memory.peak does not: on a fresh CI cluster image pulls fill
-# every node's cache to its cap (99-100%) with nothing under pressure, so the
-# OOM check below is the pressure signal, not memory.peak.
+# ./platform budget [--watch SECONDS]: measures the stack against its
+# 6 CPU / 12 GiB budget: node caps, usage now (and peak with --watch), usage
+# by namespace, and OOM kills. Runs in the toolbox.
+# OOM kills are the pressure signal, not memory.peak: that includes file
+# cache, which image pulls fill to the cap without real pressure.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
@@ -29,7 +21,6 @@ mapfile -t nodes < <(node_containers)
 [ "${#nodes[@]}" -gt 0 ] || die "no node containers for cluster '$CLUSTER_NAME'"
 failed=0
 
-# docker stats prints memory like 1.5GiB / 4GiB; turn the used part into MiB.
 to_mi() {
   awk -v v="$1" 'BEGIN {
     n = v + 0; u = v; sub(/^[0-9.]+/, "", u)
@@ -94,18 +85,12 @@ else
 fi
 
 step "Out-of-memory kills (a cap that's too small shows up here)"
-# Containers and init containers of current pods (a pod that was replaced
-# since isn't seen here; its OOM kill shows in Prometheus as
-# kube_pod_container_status_last_terminated_reason while it lasted).
+# Current pods only; a replaced pod's OOM shows in Prometheus instead.
 oom=$(kubectl get pods -A -o jsonpath='{range .items[*]}{range .status.initContainerStatuses[*]}{.lastState.terminated.reason}{" "}{end}{range .status.containerStatuses[*]}{.lastState.terminated.reason}{" "}{end}{"|"}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' 2>/dev/null |
   awk -F'|' '$1 ~ /OOMKilled/ {print $2}')
-# A node container at its cap can lose kubelet or containerd itself, with
-# nothing in any pod's status. The `oom` field of memory.events.local counts
-# OOMs triggered by the node cgroup's own limit (cgroup v2), whichever process
-# in it was killed. Not docker inspect's OOMKilled, which a pod's OOM kill
-# inside the node also sets, and not .local's oom_kill, which only counts
-# processes directly in the node's root cgroup (kubelet and pods are in
-# child slices).
+# Node-level OOMs (kubelet/containerd at the node cap) appear in no pod status:
+# count memory.events.local's `oom`, not oom_kill (root cgroup only) or
+# docker's OOMKilled (also set by pod OOMs).
 for n in "${nodes[@]}"; do
   hits=$(docker exec "$n" sh -c 'awk "\$1 == \"oom\" {print \$2}" /sys/fs/cgroup/memory.events.local 2>/dev/null')
   [ -n "$hits" ] && [ "$hits" -gt 0 ] && oom+=$'\n'"node container $n hit its memory cap ($hits OOM events)"

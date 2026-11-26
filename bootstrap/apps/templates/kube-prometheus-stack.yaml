@@ -1,11 +1,6 @@
-# Metrics and alerting: Prometheus, Alertmanager, Grafana, the Prometheus
-# Operator, kube-state-metrics and node-exporter, in namespace monitoring.
-# Values: system/kube-prometheus-stack/values.yaml.
-#
-# Pod Security: "privileged" here, because node-exporter needs the host's
-# network, PID namespace and filesystem to report node metrics. That is the
-# only exception; every other pod in this namespace is restricted-compliant
-# (enforced by Kyverno).
+# Prometheus, Alertmanager, Grafana and exporters (values in system/).
+# Pod Security "privileged" only for node-exporter (host network, PID, FS);
+# every other pod here is restricted-compliant.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -29,7 +24,7 @@ spec:
     - repoURL: {{ .Values.repo.url }}
       targetRevision: {{ .Values.repo.revision }}
       ref: values
-    # SealedSecrets for this namespace (Grafana's admin login).
+    # SealedSecrets (Grafana's admin login).
     - repoURL: {{ .Values.repo.url }}
       targetRevision: {{ .Values.repo.revision }}
       path: system/kube-prometheus-stack/manifests
@@ -40,8 +35,7 @@ spec:
     automated:
       prune: true
       selfHeal: true
-    # Auto-sync does not retry a failed sync of the same revision on its own;
-    # this covers transient failures such as a CRD not yet Established.
+    # Auto-sync doesn't retry a failed sync of the same revision on its own.
     retry:
       limit: 5
       backoff: {duration: 5s, factor: 2, maxDuration: 1m}

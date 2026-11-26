@@ -1,23 +1,17 @@
-# orders-gateway in this platform: what every environment shares. Argo CD
-# passes the chart's defaults (helm/orders-gateway/values.yaml), then this
-# file, then the environment's own file (dev.yaml, staging.yaml, prod.yaml),
-# the later ones winning. The env files hold only what differs: the image
-# (a promotion changes that and nothing else), replicas and the entrypoint.
+# What every environment shares, layered over the chart defaults; the env
+# files hold only what differs (image, replicas, entrypoint).
 
 image:
-  # The in-stack registry (system/registry/); ./pipeline publishes here.
+  # The in-stack registry ./pipeline publishes to.
   repository: localhost:30500/orders-gateway
 
-# Traefik serves every environment (system/traefik/values.yaml).
 ingress:
   className: traefik
-  # http://orders-gateway.localhost:<port>, and plain http://localhost:<port>
-  # (prod 8080, dev 8082, staging 8083).
+  # orders-gateway.localhost:<port>, and plain localhost:<port>.
   hosts: [orders-gateway.localhost]
   default: true
 
-# staging and prod keep a pod up through node drains and spread over nodes
-# and zones; dev, with one pod, turns both off.
+# dev (one pod) turns these off.
 podDisruptionBudget:
   enabled: true
 topologySpread:

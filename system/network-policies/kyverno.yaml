@@ -1,7 +1,5 @@
-# Baseline for kyverno: deny ingress by default; allow its own pods and the
-# nodes (kubelet, API server webhooks and service proxy). "The nodes" is an
-# ipBlock, everything outside the pod range 10.244.0.0/16: on kindnet a
-# deny-all would also drop the control-plane node's traffic to pods.
+# Baseline for kyverno: deny ingress except from its own pods and the nodes.
+# On kindnet a deny-all would also drop the control plane's traffic to pods.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -33,8 +31,7 @@ spec:
   policyTypes: [Ingress]
   ingress:
     - from:
-        # Everything outside the pod network (kind's default 10.244.0.0/16):
-        # on kind that's the nodes and the API server on the control plane.
+        # Outside the pod network: the nodes and the API server.
         - ipBlock: {cidr: 0.0.0.0/0, except: [10.244.0.0/16]}
 ---
 # Prometheus scrapes the admission controller.

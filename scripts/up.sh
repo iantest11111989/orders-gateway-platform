@@ -13,17 +13,15 @@ mkdir -p "$(dirname "$KUBECONFIG")"
 if cluster_exists; then
   step "Cluster '$CLUSTER_NAME' already exists; reusing it"
   kind export kubeconfig --name "$CLUSTER_NAME" >/dev/null
-  # kind applies extraPortMappings only when it creates a cluster: one made
-  # before the host ports for prod, the UIs and Argo CD existed lacks them.
+  # kind applies extraPortMappings only at creation.
   for np in 30808 30881; do
     if [ -z "$(docker port "$CLUSTER_NAME-control-plane" "$np/tcp" 2>/dev/null)" ]; then
       die "this cluster was created before the host ports 8080/3000/9090/9093/8081 existed; recreate it: ./platform down && ./platform up"
     fi
   done
 else
-  # The kubelet sees the whole Docker host (the Colima VM, or the Linux
-  # machine), not the per-node cap below. Reserve the difference so each
-  # node's allocatable fits inside its cap and the scheduler can't overcommit.
+  # The kubelet sees the whole Docker host, not the per-node cap: reserve the
+  # difference so allocatable fits the cap and the scheduler can't overcommit.
   read -r host_mem host_cpus < <(docker info --format '{{.MemTotal}} {{.NCPU}}')
   host_mem_mi=$((host_mem / 1024 / 1024))
   reserved_mem_mi=$((host_mem_mi - NODE_MEM_MI + 256))
@@ -44,9 +42,7 @@ else
   rm -f "$config"
 fi
 
-# kind has no resource limits of its own, so cap each node container. Under
-# Colima the VM is already capped at the budget; on Linux this keeps the stack
-# within 6 CPU / 12 GiB.
+# kind sets no resource limits of its own.
 step "Capping node containers at ${NODE_CPUS} CPU / ${NODE_MEM} each"
 for n in $(node_containers); do
   docker update --cpus "$NODE_CPUS" --memory "$NODE_MEM" --memory-swap "$NODE_MEM" "$n" >/dev/null
@@ -74,9 +70,7 @@ if [ "$over" -ne 0 ]; then
   die "nodes advertise more than their cap, so pods could be OOM-killed. This cluster was created before reservations were added; recreate it: ./platform down && ./platform up"
 fi
 
-# CI only (PRELOAD_IMAGES, set by .github/workflows/e2e.yml): import the
-# cached images before Argo CD starts pulling, so a cold start doesn't hinge
-# on every registry answering. Best effort; scripts/images.sh explains.
+# CI only (e2e.yml): import cached images before Argo CD starts pulling.
 if [ -n "${PRELOAD_IMAGES:-}" ]; then
   step "Loading the image cache ($PRELOAD_IMAGES)"
   bash "$(dirname "$0")/images.sh" load "$PRELOAD_IMAGES" || warn "image cache not loaded; images will be pulled"
@@ -86,11 +80,9 @@ step "Waiting for system pods"
 kubectl -n kube-system wait --for=condition=Ready pods --all --timeout=180s >/dev/null
 ok "kube-system healthy"
 
-# Before Argo CD installs the Sealed Secrets controller, so it finds this key
-# on first start instead of generating its own. DEMO ONLY key.
-# Only when it's missing: once Argo CD manages it (the sealed-secrets app), a
-# second `kubectl apply` would merge away Argo CD's tracking annotation and
-# leave the app OutOfSync, which stalled a re-run of `up` in CI.
+# DEMO ONLY key, loaded before the controller starts so it doesn't generate
+# its own. Only when missing: re-applying would strip Argo CD's tracking
+# annotation and leave the app OutOfSync.
 step "Loading the Sealed Secrets demo key"
 if kubectl -n kube-system get secret sealed-secrets-demo-key >/dev/null 2>&1; then
   ok "kube-system/sealed-secrets-demo-key already there (Argo CD manages it)"
@@ -99,14 +91,10 @@ else
   ok "kube-system/sealed-secrets-demo-key"
 fi
 
-# The registry the apps' images and charts come from, with every version the
-# env files pin (a fresh cluster builds them here).
 bash "$(dirname "$0")/registry.sh" install
 bash "$(dirname "$0")/registry.sh" seed
 hand_over_app_applications
 
-# Argo CD syncs from the in-stack Git server: the cluster runs this checkout.
-# CI/CD is local (./pipeline); GitHub only runs checks on pull requests.
 bash "$(dirname "$0")/git-sync.sh"
 ok "Argo CD syncs from the in-stack Git server (this checkout)"
 

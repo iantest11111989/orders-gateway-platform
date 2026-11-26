@@ -1,24 +1,10 @@
 #!/usr/bin/env bash
-# scripts/registry.sh: the in-stack registry (system/registry/), where each
-# app's published versions live: image <app>:<version> and Helm chart
-# charts/<app> <version> (OCI). Pods use the images as
-# localhost:30500/<app>:<tag>; Argo CD reads the charts from
-# registry.registry.svc.cluster.local:5000/charts.
-#
-#   install                    apply system/registry and wait for it
-#   published <app> <version>  exit 0 if the image or the chart exists
-#   digest <app> <tag>         print the image's digest (sha256:...)
-#   push-image <app> <tag>     push the local image localhost:30500/<app>:<tag>
-#   publish <app> <version>    push image <app>:<version> and the chart
-#                              helm/<app> as <version>; refuses a version
-#                              that's already published (never overwritten)
-#   seed                       publish every version cd/<app>/*.yaml pins
-#                              that the registry lacks, built from this
-#                              checkout (a fresh cluster's first versions)
-#
-# Pushes go through `kubectl port-forward` to 127.0.0.1, which Docker and
-# Helm reach over plain HTTP. Called by up.sh and ./pipeline; runs in the
-# toolbox (needs the Docker socket).
+# scripts/registry.sh: the in-stack registry (system/registry/) holding each
+# app's published image and OCI chart. Pods pull localhost:30500/<app>:<tag>.
+#   install | published <app> <v> | digest <app> <tag> | push-image <app> <tag>
+#   publish <app> <v>  (never overwrites a version)
+#   seed               build and publish versions cd/*/ pins but the registry lacks
+# Pushes go over a port-forward on 127.0.0.1 (plain HTTP). Runs in the toolbox.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -33,7 +19,6 @@ tmp=$(mktemp -d)
 pf=''
 trap '[ -z "$pf" ] || kill "$pf" 2>/dev/null || true; rm -rf "$tmp"' EXIT
 
-# Sets REG=127.0.0.1:<port>, forwarded to the registry's Service.
 forward() {
   [ -n "$pf" ] && return 0
   kubectl -n registry get svc registry >/dev/null 2>&1 ||
@@ -56,7 +41,6 @@ forward() {
   die "the registry doesn't answer on $REG"
 }
 
-# HEAD of a manifest: prints the digest, or nothing if it doesn't exist.
 manifest_digest() { # manifest_digest <repository> <reference>
   curl -fsS -I \
     -H 'Accept: application/vnd.oci.image.index.v1+json' \
@@ -115,9 +99,8 @@ case "${1:-}" in
   push-image) check_app "${2:?usage: registry.sh push-image <app> <tag>}"; push_image "$2" "${3:?tag}" ;;
   publish) publish "${2:?usage: registry.sh publish <app> <version>}" "${3:?version}" ;;
   seed)
-    # Every version an env file pins, for each app. A fresh cluster's
-    # registry is empty, so these are built here from the checkout: a quick
-    # bootstrap build (no tests, no scan), not a release.
+    # A fresh cluster's registry is empty: quick bootstrap builds (no tests,
+    # no scan) of every version an env file pins.
     step "Versions the env files pin (cd/<app>/*.yaml)"
     for dir in "$ROOT"/cd/*/; do
       app=$(basename "$dir")
