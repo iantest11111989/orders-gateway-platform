@@ -37,7 +37,7 @@ start=$(date +%s)
 deadline=$(( start + APPS_TIMEOUT ))
 # Seconds after the root was applied when each Application first appeared and
 # first became Synced+Healthy, so slow sync waves show up in the output.
-declare -A seen_at healthy_at drift_since drift_logged slow_since slow_logged
+declare -A seen_at healthy_at drift_since drift_logged slow_since slow_logged first_syncs
 timing() { echo "(appeared +${seen_at[$1]:-?}s, healthy +${healthy_at[$1]:-never}s)"; }
 # The root app's sync waves wait only for each child's health, so an app that
 # is Healthy but stays OutOfSync doesn't hold up later waves, but it does hold
@@ -63,7 +63,7 @@ drift_report() {
 }
 # staging and prod don't sync by themselves (someone clicks Sync, or
 # ./pipeline cd --sync). One that has never synced, as on a new cluster, gets
-# its first sync here (again, if that one failed). After that, Synced isn't required of them: a change
+# its first sync here (again if that one failed, up to 3 times). After that, Synced isn't required of them: a change
 # may be waiting for its click, so ready means Healthy and synced once.
 while :; do
   # name sync health operation-phase, one line per Application; a manual app
@@ -75,7 +75,12 @@ while :; do
         then "SYNC \(.metadata.name)" else empty end,
         "\(.metadata.name) \(if $manual and .status.operationState.phase == "Succeeded" then "Synced" else (.status.sync.status // "") end) \(.status.health.status // "") \(.status.operationState.phase // "")"' || true)
   while read -r name; do
-    [ -z "$name" ] || { sync_app "$name" bootstrap && ok "$name: first sync started (staging and prod sync on demand)"; }
+    [ -n "$name" ] || continue
+    first_syncs[$name]=$(( ${first_syncs[$name]:-0} + 1 ))
+    if [ "${first_syncs[$name]}" -gt 3 ]; then
+      die "$name: its first sync failed 3 times: $(kubectl -n argocd get applications.argoproj.io "$name" -o jsonpath='{.status.operationState.message}' 2>/dev/null)"
+    fi
+    sync_app "$name" bootstrap && ok "$name: first sync started (staging and prod sync on demand)"
   done < <(sed -n 's/^SYNC //p' <<<"$status")
   status=$(grep -v '^SYNC ' <<<"$status" || true)
   now=$(( $(date +%s) - start ))
