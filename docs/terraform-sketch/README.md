@@ -25,8 +25,8 @@ How it maps to the local stack:
 | Demo CA, `*.localtest.me` | Let's Encrypt via DNS-01 (cert-manager with its IAM role), ExternalDNS writing Route 53 |
 | Sealed Secrets with a demo key in Git | External Secrets reading AWS Secrets Manager (`ogp/<env>/*`) |
 | `local-path` storage | EBS volumes (gp3) for Prometheus, Loki and Grafana |
-| In-stack Git server (soft-serve) | GitHub, with the patch promoter and PR approvals for prod |
+| In-stack Git server (soft-serve) | GitHub, with promotion PRs and approvals for prod (and, in the AWS design, a patch promoter) |
 | `kind load` for `./platform ship` | Only CI-built, signed images from GHCR (through ECR); `localhost/` is not admitted |
 | `admin` / `admin12345` | SSO for Argo CD, Grafana and the cluster (access entries) |
 
-Not here, and needed before this is real: remote state bootstrap (the S3 bucket itself), Karpenter or the cluster autoscaler, a GitHub App for the promoter instead of a token, Prometheus long-term storage (Thanos or Amazon Managed Prometheus), and a `terraform plan` in CI with the plan posted on the PR.
+Not here, and needed before this is real: remote state bootstrap (the S3 bucket itself), Karpenter or the cluster autoscaler, a GitHub App for promotion automation, Prometheus long-term storage (Thanos or Amazon Managed Prometheus), and a `terraform plan` in CI with the plan posted on the PR.

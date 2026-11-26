@@ -5,7 +5,7 @@ name: CI · app
 
 on:
   pull_request:
-    paths: ["app/**", "!app/k6/**", "!app/**/*.md", "app/k6/load.js", "app/k6/perf-gate.js", "scripts/smoke-test-image.sh", ".github/workflows/ci-app.yml", ".github/workflows/cd-app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh", "scripts/promotion-kind.sh"]
+    paths: ["app/**", "!app/k6/**", "!app/**/*.md", "app/k6/load.js", "app/k6/perf-gate.js", "scripts/smoke-test-image.sh", ".github/workflows/ci-app.yml", ".github/workflows/cd-app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh"]
 
 # Least privilege: jobs read the repo, and only the `image` job (the signing
 # rehearsal) may request an OIDC token. Nothing here writes packages or the

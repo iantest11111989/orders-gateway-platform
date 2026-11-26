@@ -31,8 +31,8 @@ mkdir -p out/policy-input
 cat "$OUT"/app-dev.yaml "$OUT"/app-staging.yaml "$OUT"/app-prod.yaml >out/policy-input/apps.yaml
 
 step "The app-of-apps (gitops/apps), in both modes"
-# The in-stack Git server (default) and GitHub mode: some templates (the
-# promoter) render differently when repo.url is on github.com.
+# The in-stack Git server (default) and GitHub mode: both must render
+# (repo.url feeds every Application's source).
 for mode in in-stack:http://git.git.svc.cluster.local:23232/platform.git github:https://github.com/example/repo.git; do
   name=${mode%%:*} url=${mode#*:}
   helm lint gitops/apps --set repo.url="$url" --set repo.revision=main --quiet >/dev/null ||

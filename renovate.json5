@@ -22,11 +22,11 @@
   // native auto-merge would merge at once, since main has no required checks.
   platformAutomerge: false,
 
-  // Plain manifests with an image (the python image of the patch promoter
+  // Plain manifests with an image (the trickle's curl image
   // and the alert receiver). The kubernetes
   // manager has no default file patterns.
   kubernetes: {
-    managerFilePatterns: ['/^gitops/manifests/promoter/.+\\.yaml$/', '/^gitops/manifests/monitoring/alert-receiver\\.yaml$/'],
+    managerFilePatterns: ['/^gitops/manifests/trickle/.+\\.yaml$/', '/^gitops/manifests/monitoring/alert-receiver\\.yaml$/'],
   },
 
   customManagers: [

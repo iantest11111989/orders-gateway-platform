@@ -21,7 +21,7 @@
 #
 # Everything is aggregated by namespace, so dev, staging and prod each get
 # their own SLI series and alerts. The recording rule names are kept from
-# the first version (slo:orders_*) so dashboards and the promoter don't change.
+# the first version (slo:orders_*) so the dashboards don't change.
 #
 # Tests: alerts/tests/orders-gateway-slo.test.yaml (promtool, run in CI).
 apiVersion: monitoring.coreos.com/v1

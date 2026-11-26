@@ -174,7 +174,6 @@ Start with `./platform doctor` (Docker, CPU, memory, disk, ports) and `./platfor
 | The browser warns about the certificate | The demo CA isn't trusted | `./platform urls` shows how to trust it |
 | A pod in `dev`, `staging`, `prod` or `demo` is refused by `disallow-latest-tag` or `verify-image-signatures` | Working as intended | Use a tagged, signed image |
 | An app is `OutOfSync` after a manual change | Self-heal puts it back from Git | Change Git, not the cluster |
-| The promoter logs `dry run (no token)` after a rebuild | `./platform down` deleted its GitHub token | `./platform promoter-token load` (on macOS, `./platform up` restores it if you saved it with `./platform promoter-token save`) |
 | `docker compose up -d --wait` waits forever, `ready` unhealthy | The cluster was deleted while an old `ready` kept running | `docker compose down && docker compose up -d --wait` |
 | A demo was interrupted | Its copy is left in `demo` | `./platform demo clean` |
 | Under Colima, a path in `/tmp` isn't found | Colima only shares your home folder | Keep the checkout under `~` |
@@ -216,9 +215,9 @@ The app is a single Node event loop with a 3-second warm-up, a `/readyz` that tu
 
 **Secrets.** No plain secrets in the repo: they're SealedSecrets, encrypted for the cluster's Sealed Secrets controller. Its key is a **demo key committed to Git** so every clone can decrypt; a real setup keeps the key out of Git or uses External Secrets. CI fails on any plain `Secret` or private key apart from that demo key. `admin12345` is a published demo login, not a secret.
 
-**GitOps.** By default Argo CD reconciles the cluster from the Git server inside it, with self-heal and prune, and every change (`ship` and `rollback` included) is a commit. In GitHub mode, staging and prod move by pull request, and the **patch promoter**, a CronJob, merges a promotion PR once the previous environment has run it for an hour with the SLO held and no alerts. Feature releases still wait for the owner's approval. The promoter also reports what Argo CD has synced as GitHub **Deployments**, so the repo's **Environments** panel shows which version each environment runs.
+**GitOps.** By default Argo CD reconciles the cluster from the Git server inside it, with self-heal and prune, and every change (`ship` and `rollback` included) is a commit. In GitHub mode, staging and prod move by pull request: CI opens one per environment for each new image, and the owner merges it.
 
-**The pipeline.** GitHub Actions does CI; Argo CD and the promoter, inside the cluster, do CD. Every arrow into an environment is a Git commit.
+**The pipeline.** GitHub Actions does CI; Argo CD, inside the cluster, does CD. Every arrow into an environment is a Git commit.
 
 ```mermaid
 flowchart LR
@@ -227,12 +226,9 @@ flowchart LR
   build --> devc["4 · commit image to<br/>environments/dev"]
   devc --> devs(["Argo CD syncs dev"])
   build --> prs["5 · promotion PRs<br/>for staging and prod"]
-  devs --> soak1{"soak 1 h on dev:<br/>SLO held, no alerts"}
-  prs --> soak1
-  soak1 -->|"promoter merges<br/>(patch release)"| stc["environments/staging"]
+  prs -->|"owner merges"| stc["environments/staging"]
   stc --> sts(["Argo CD syncs staging"])
-  sts --> soak2{"soak 1 h on staging"}
-  soak2 -->|"promoter merges a patch;<br/>a feature waits for the owner"| prc["environments/prod"]
+  prs -->|"owner merges, after staging"| prc["environments/prod"]
   prc --> prs2(["Argo CD syncs prod"])
   localship["Locally: ./platform ship / rollback"] -->|"commit to the cluster's Git server"| prs2
 ```
@@ -242,7 +238,7 @@ flowchart LR
 | **CI · app** (`ci-app.yml`) | pull requests touching the app | 1 · test, lint → 2 · build (amd64 + arm64), scan, rehearse signing → 3 · smoke-test the image as Kubernetes runs it (non-root, read-only: warm-up, endpoints, metrics, a clean SIGTERM drain) → 4 · a 60 s k6 performance gate held to the SLOs |
 | **CD · app** (`cd-app.yml`) | merges to `main` touching the app | 1 · test, lint → 2 · build and push to GHCR → 3 · sign (cosign keyless, SBOM), scan → 4 · deploy dev → 5 · open staging and prod promotion PRs |
 | **CI · platform** | pull requests and `main` | shellcheck and actionlint · manifest validation (the chart for every environment, every manifest, checked against Kubernetes and CRD schemas and our policies) · toolbox build · **E2E · Fresh install**: `docker compose up -d --wait` on a fresh runner, restart, re-run, verify, ship and roll back under traffic, budget |
-| **CI · alerts / policies / promoter** | pull requests and `main` | alert unit tests, runbook links and dashboard checks; `kyverno test`; the promoter's unit tests |
+| **CI · alerts / policies** | pull requests and `main` | alert unit tests, runbook links and dashboard checks; `kyverno test` |
 | **CI · security** | pull requests, `main`, weekly | CodeQL; gitleaks over the whole history |
 | **CI · secrets / renovate config** | pull requests and `main` | no plain secrets; Renovate's config is valid |
 | **Scheduled** | daily | full start-up, verify, the autoscale and gitops-revert demos on fresh x86-64 and arm64 runners; a re-scan of the running images |
@@ -295,6 +291,14 @@ The full plan for running this on AWS (accounts, EKS, IAM, ECR, Argo CD across c
 | Prometheus keeps 24 h | 30+ days, so the real 30-day error budget can be computed | Disk and memory |
 | One replica of Argo CD, Kyverno, Prometheus, Loki; Kyverno fails open | HA everywhere; Kyverno fails closed | Memory |
 | Alerts to a local receiver | PagerDuty for pages, chat for tickets | No accounts needed |
+
+## What production adds
+
+The local platform keeps promotion manual on purpose. [docs/production-on-aws.md](docs/production-on-aws.md) designs what a real setup adds on top:
+
+- **A patch promoter.** A scheduled job merges a *patch* promotion PR on its own once the previous environment has run that exact image for an hour, its SLO met, no alerts firing and its Application Synced and Healthy. Features still wait for a person. A `promotion/PAUSED` file stops it, for freezes and spent error budgets.
+- **Patch or feature, decided by CI.** When CI opens a promotion PR it reads the commits in the range: a `Promotion-Kind: patch|feature` trailer, or conventional commits (`fix:` vs `feat:`). Only patches can merge automatically.
+- **Where each environment stands.** Argo CD reports every sync to GitHub as a Deployment, so the repo's Environments panel shows what dev, staging and prod run and since when.
 
 ## Limitations
 

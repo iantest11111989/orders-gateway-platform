@@ -1,0 +1,81 @@
+# A light, steady stream of requests to dev, staging and prod, through the
+# gateway like a real client, so the dashboards and SLOs show live traffic
+# without anyone sending any. Each round, about twice a second: GET
+# /work?ms=10 and POST /echo to every environment (about 4 requests a second
+# each). One curl process per round; it reuses one connection per host.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trickle
+  namespace: trickle
+  labels: {app.kubernetes.io/name: trickle, app.kubernetes.io/part-of: orders-gateway-platform}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: trickle}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: trickle, app: trickle}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: trickle
+          image: docker.io/curlimages/curl:8.17.0@sha256:935d9100e9ba842cdb060de42472c7ca90cfe9a7c96e4dacb55e79e560b3ff40
+          env:
+            - {name: HOSTS, value: "orders.dev.localtest.me orders.staging.localtest.me orders.localtest.me"}
+            - {name: GATEWAY, value: "envoy-platform.envoy-gateway-system"}
+            - {name: INTERVAL, value: "0.5"}
+          command: [sh, -c]
+          args:
+            - |
+              # TLS to the gateway Service with each environment's hostname as
+              # SNI (--connect-to), like a client resolving the real name.
+              # -k: the platform's own demo CA.
+              set -u
+              echo "trickle: GET /work?ms=10 and POST /echo to $HOSTS every ${INTERVAL}s, via $GATEWAY"
+              rounds=0 errors=0
+              while true; do
+                set -- -sk --max-time 5 --connect-to "::$GATEWAY:443" -o /dev/null -w '%{http_code}\n'
+                first=1
+                for h in $HOSTS; do
+                  [ "$first" = 1 ] || set -- "$@" --next -sk --max-time 5 --connect-to "::$GATEWAY:443" -o /dev/null -w '%{http_code}\n'
+                  first=0
+                  set -- "$@" "https://$h/work?ms=10" \
+                    --next -sk --max-time 5 --connect-to "::$GATEWAY:443" -o /dev/null -w '%{http_code}\n' \
+                    -H 'Content-Type: application/json' -d '{"from":"trickle"}' "https://$h/echo"
+                done
+                bad=$(curl "$@" 2>/dev/null | grep -cv '^200$')
+                rounds=$((rounds + 1)) errors=$((errors + bad))
+                # A summary every 600 rounds (about 5 minutes), not a line per request.
+                if [ "$rounds" -ge 600 ]; then
+                  echo "trickle: $rounds rounds, $errors requests not 200"
+                  rounds=0 errors=0
+                fi
+                touch /tmp/alive
+                sleep "$INTERVAL"
+              done
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 32Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          # Alive while the loop keeps touching /tmp/alive.
+          livenessProbe:
+            exec: {command: [sh, -c, "find /tmp/alive -mmin -1 | grep -q ."]}
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            exec: {command: [test, -f, /tmp/alive]}
+            periodSeconds: 10
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {sizeLimit: 1Mi}
