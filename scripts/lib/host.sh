@@ -31,7 +31,7 @@ ensure_toolbox() {
   fi
   [ -z "${TOOLBOX_IMAGE:-}" ] || die "toolbox image $img not found"
   echo "Building the toolbox image locally (one time, about a minute)..." >&2
-  docker build -q -t "$img" toolbox >/dev/null || die "toolbox build failed"
+  docker build -q -t "$img" "$REPO_ROOT/stack/docker" >/dev/null || die "toolbox build failed"
 }
 
 run_toolbox() {
