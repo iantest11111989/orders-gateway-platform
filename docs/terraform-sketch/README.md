@@ -6,7 +6,7 @@ What Terraform does here, and what it deliberately doesn't:
 
 | Terraform owns | Argo CD keeps owning (unchanged from `stack/bootstrap/` and `stack/`) |
 | --- | --- |
-| VPC across 3 zones, private subnets, NAT | Every platform component: Traefik, Kyverno, the Datadog Agent, ... |
+| VPC across 3 zones, private subnets, NAT | Every platform component: the AWS Load Balancer Controller, Kyverno, the Datadog Agent, ... |
 | EKS: private API endpoint, SSO access entries, add-ons (VPC CNI with network policy) | The app in dev, staging and prod, from `apps/orders-gateway/cd/*.yaml` |
 | Two node groups: `platform` (tainted) and `apps` | Promotion by Git change, self-heal and prune |
 | IAM roles for service accounts: ExternalDNS, the AWS Load Balancer Controller, External Secrets | |
@@ -22,7 +22,7 @@ How it maps to the local stack:
 | --- | --- |
 | kind: 1 control plane + 2 workers, two fake zones | EKS's managed control plane, nodes in 3 real zones |
 | One cluster, three namespaces | One cluster per environment (`env` is dev, staging or prod), each with its own Argo CD |
-| Traefik on NodePorts mapped to `127.0.0.1`, plain HTTP | Traefik behind an ALB (WAF) from the AWS Load Balancer Controller, 3 replicas across zones |
+| Traefik on NodePorts mapped to `127.0.0.1`, plain HTTP | No Traefik: the AWS Load Balancer Controller makes an ALB (with WAF) per Ingress, sending traffic straight to the pods ([`../production.md`](../production.md#traffic-in-the-aws-load-balancer-controller)) |
 | No TLS, a port per environment | ACM certificates on the load balancer, which terminates TLS; ExternalDNS writing Route 53 |
 | Sealed Secrets with a demo key in Git | External Secrets reading AWS Secrets Manager (`platform-demo/<env>/*`) |
 | Prometheus (24 h), Loki, Grafana, alerts to a local receiver | The Datadog Agent on every node (metrics and logs), 30-day SLOs, pages to PagerDuty |
