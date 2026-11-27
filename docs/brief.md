@@ -128,5 +128,5 @@ Each demo fails if fewer than 99.5% of requests meet the SLO.
 1. Publish signed releases from CI on merge to main, and make promotion a pull request ([production.md](production.md#shipping-and-rolling-back)).
 2. Canary releases with Argo Rollouts, gated on the new version's SLOs.
 3. Add OpenTelemetry tracing when the app can change, with Tempo or a vendor, linked from log lines.
-4. Long-term metrics (Thanos or Mimir) for a real 30-day error budget.
+4. Move monitoring to Datadog for a real 30-day error budget and paging ([production.md](production.md)).
 5. Run Kyverno and Argo CD with 3 replicas, and make Kyverno fail closed for the app namespaces.

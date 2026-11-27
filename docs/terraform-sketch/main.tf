@@ -3,8 +3,9 @@
 terraform {
   required_version = ">= 1.9"
   required_providers {
-    aws    = { source = "hashicorp/aws", version = "~> 6.0" }
-    helm   = { source = "hashicorp/helm", version = "~> 3.0" }
+    aws     = { source = "hashicorp/aws", version = "~> 6.0" }
+    helm    = { source = "hashicorp/helm", version = "~> 3.0" }
+    datadog = { source = "DataDog/datadog", version = "~> 3.0" }
   }
   # One state per cluster.
   backend "s3" {
@@ -70,12 +71,11 @@ module "eks" {
     vpc-cni                = {} # with network policy enforcement on
     coredns                = {}
     kube-proxy             = {}
-    aws-ebs-csi-driver     = {} # Prometheus, Loki and Grafana get real volumes
     eks-pod-identity-agent = {}
   }
 
   eks_managed_node_groups = {
-    # Platform components (Argo CD, Prometheus, Loki, Kyverno...).
+    # Platform components (Argo CD, Traefik, Kyverno, the Datadog cluster agent...).
     platform = {
       instance_types = ["m7g.large"]
       ami_type       = "AL2023_ARM_64_STANDARD"
@@ -99,11 +99,12 @@ module "eks" {
   }
 }
 
-# IRSA for ExternalDNS, the AWS Load Balancer Controller and External Secrets.
+# IRSA for ExternalDNS, the AWS Load Balancer Controller and External Secrets
+# (which also hands the Datadog Agent its API key).
 # No cert-manager: ACM certificates on the load balancer.
 module "irsa" {
-  source   = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts"
-  version  = "~> 6.0"
+  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts"
+  version = "~> 6.0"
   for_each = {
     external-dns     = { namespace = "external-dns", sa = "external-dns", attach = "external_dns" }
     aws-lb           = { namespace = "kube-system", sa = "aws-load-balancer-controller", attach = "load_balancer_controller" }
@@ -118,11 +119,11 @@ module "irsa" {
     }
   }
 
-  attach_external_dns_policy              = each.value.attach == "external_dns"
-  external_dns_hosted_zone_arns           = [var.route53_zone_arn]
-  attach_load_balancer_controller_policy  = each.value.attach == "load_balancer_controller"
-  attach_external_secrets_policy          = each.value.attach == "external_secrets"
-  external_secrets_secrets_manager_arns   = ["arn:aws:secretsmanager:${var.region}:*:secret:platform-demo/${var.env}/*"]
+  attach_external_dns_policy             = each.value.attach == "external_dns"
+  external_dns_hosted_zone_arns          = [var.route53_zone_arn]
+  attach_load_balancer_controller_policy = each.value.attach == "load_balancer_controller"
+  attach_external_secrets_policy         = each.value.attach == "external_secrets"
+  external_secrets_secrets_manager_arns  = ["arn:aws:secretsmanager:${var.region}:*:secret:platform-demo/${var.env}/*"]
 }
 
 # ECR pull-through cache of GHCR, so a GHCR outage doesn't stop a scale-up.
@@ -179,4 +180,50 @@ resource "helm_release" "root" {
       }
     }
   })]
+}
+
+# Monitoring is Datadog: Argo CD installs the Datadog Agent (a Helm chart, like
+# every other component); Terraform owns the Datadog side. The Agent's API key
+# lives in Secrets Manager; the value is set by hand, never in Terraform state.
+resource "aws_secretsmanager_secret" "datadog_api_key" {
+  name = "platform-demo/${var.env}/datadog-api-key"
+}
+
+# Reads DD_API_KEY and DD_APP_KEY from the environment.
+provider "datadog" {
+  api_url = var.datadog_api_url
+}
+
+# The same availability SLO as stack/observability/alerts/: 99.5% of /work and
+# /echo succeed, over 30 days (Prometheus here keeps only 24 hours). The Agent
+# scrapes the app's same /metrics endpoint, under the orders_gateway prefix.
+# The latency SLO and the slow-burn monitor follow the same pattern.
+resource "datadog_service_level_objective" "availability" {
+  name = "orders-gateway ${var.env}: availability"
+  type = "metric"
+  query {
+    numerator   = "sum:orders_gateway.http_requests_total{env:${var.env},route IN (/work,/echo),!status:5*}.as_count()"
+    denominator = "sum:orders_gateway.http_requests_total{env:${var.env},route IN (/work,/echo)}.as_count()"
+  }
+  thresholds {
+    timeframe = "30d"
+    target    = 99.5
+  }
+  tags = ["service:orders-gateway", "env:${var.env}"]
+}
+
+# Fast burn, as OrdersGatewayAvailabilityFastBurn locally: the budget would be
+# gone in about 2 days. Pages through PagerDuty, with the same runbook.
+resource "datadog_monitor" "availability_fast_burn" {
+  name    = "orders-gateway ${var.env}: error budget burning fast"
+  type    = "slo alert"
+  query   = "burn_rate(\"${datadog_service_level_objective.availability.id}\").over(\"30d\").long_window(\"1h\").short_window(\"5m\") > 14.4"
+  message = <<-EOT
+    orders-gateway in ${var.env} is failing requests fast enough to use its
+    30-day error budget in about 2 days.
+    Runbook: https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/OrdersGatewayAvailabilityFastBurn.md
+    @pagerduty-orders-gateway-${var.env}
+  EOT
+  monitor_thresholds { critical = 14.4 }
+  tags = ["service:orders-gateway", "env:${var.env}"]
 }

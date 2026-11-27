@@ -28,3 +28,9 @@ variable "repo_url" {
 }
 
 variable "argocd_apps_chart_version" { type = string }
+
+variable "datadog_api_url" {
+  description = "The Datadog site's API, e.g. https://api.datadoghq.eu/ for EU data."
+  type        = string
+  default     = "https://api.datadoghq.eu/"
+}
