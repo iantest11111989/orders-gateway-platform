@@ -166,7 +166,7 @@ The repo began as a take-home DevOps test ("the brief"), and each demo runs one 
 | Checks | Demo | What it shows | Time |
 | --- | --- | --- | --- |
 | The fixed contract | `contract` | every row of the contract table, checked live: `ready`, kubeconfig, the Deployments, each endpoint on :8080, `/admin/*` refused, logins, restart policies, volumes | <1 min |
-| Ship and roll back | `hello-world` | a second app through `./pipeline`: CI, dev → staging → prod, a refused out-of-order promotion, a rollback. Left running (`./platform demo hello-world clean` tears it down) | ~6 min |
+| Ship and roll back | `hello-world` | a second app through `./pipeline`: CI, dev → staging → prod, a refused out-of-order promotion, a rollback, then a minute of traffic to see in Grafana. Left running (`./platform demo hello-world clean` tears it down) | ~7 min |
 | Rolling releases under traffic | `rolling-update` | v1 → v2 one pod at a time under load, with no errors | ~2 min |
 | Pods killed | `chaos` | a pod deleted and a worker drained; the disruption budget keeps it serving | ~3 min |
 | Platform components killed | `platform-chaos` | Traefik, CoreDNS, Argo CD, Prometheus and Kyverno pods deleted under load, one at a time | ~3 min |

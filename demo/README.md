@@ -12,7 +12,7 @@ Each demo is a folder here, run with `./platform demo <name>`. Each one runs a c
 | [`platform-chaos`](platform-chaos/run.sh) | in a copy of prod under load: deletes a Traefik pod, a CoreDNS pod, the Argo CD repo server and application controller, Prometheus and the Kyverno admission controller, one at a time; shows each come back and what the app needed from it; fails if fewer than 99.5% of requests meet the SLO | ~3 min |
 | [`autoscale`](autoscale/run.sh) | in a copy of prod: k6 sends a fixed 20 requests/s (`AUTOSCALE_RATE`), mostly CPU-heavy `/work`; the HPA scales 3 → 6 pods, then back to 3 about 5 minutes after the load stops | ~8 min |
 | [`policy`](policy/run.sh) | Kyverno refuses an unsigned image and a `:latest` image, printing which policy refused each and why; a signed image is admitted | <1 min |
-| [`hello-world`](hello-world/) | a second app through the whole CI/CD, next to orders-gateway in dev, staging and prod: `./pipeline ci --version`, `cd` dev → staging → prod, a refused out-of-order promotion, a rollback, then its metrics and logs. It stays running to play with; `./platform demo hello-world clean` tears it down | ~6 min |
+| [`hello-world`](hello-world/) | a second app through the whole CI/CD, next to orders-gateway in dev, staging and prod: `./pipeline ci --version`, `cd` dev → staging → prod, a refused out-of-order promotion, a rollback, then a minute of traffic and its metrics and logs side by side in Grafana. It stays running to play with; `./platform demo hello-world clean` tears it down | ~7 min |
 
 `./platform demo clean` deletes what a demo left (after an interrupted run, or `--keep`) and tears `hello-world` down.
 

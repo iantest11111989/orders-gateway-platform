@@ -12,9 +12,8 @@
 #   4. A second version W: prod first is refused (staging hasn't run it),
 #      then W goes through in order.
 #   5. Rollback: ./pipeline rollback hello-world prod, back to V.
-#   6. Observe: hello-world answers at http://hello-world.localhost:<port>,
-#      its metrics are in Prometheus (service="hello-world") and its logs in
-#      Loki ({app="hello-world"}), next to orders-gateway's.
+#   6. Load and observe: a minute of k6 traffic to prod (load.js), then a
+#      Grafana link with its requests (Prometheus) beside its logs (Loki).
 #
 # Teardown (./platform demo hello-world clean, or ./platform demo clean): the
 # three folders are removed and the checkout pushed again, so Argo CD deletes
@@ -198,10 +197,18 @@ say "Always allowed, no gate: back to what prod ran before ($V)."
 run ./pipeline rollback "$APP" prod --sync
 serves "$V" 8080
 
-# --- 6. Observe --------------------------------------------------------------
-step "6 · Observe hello-world next to orders-gateway"
-show "curl -s -H 'Host: $APP.localhost' http://127.0.0.1:8080/   # 20 times, so Prometheus has requests to show"
-for _ in $(seq 1 20); do curl -s -o /dev/null -H "Host: $APP.localhost" http://127.0.0.1:8080/; done
+# --- 6. Load, then observe ---------------------------------------------------
+step "6 · A minute of traffic to hello-world in prod, then see it in Grafana"
+say "k6 sends 20 requests a second for one minute, so the graphs and logs"
+say "have something to show."
+show "k6 run demo/hello-world/load.js"
+if k6out=$(TOOLBOX_EXEC='' run_toolbox k6 run --quiet --no-color demo/hello-world/load.js 2>&1); then
+  printf '%s\n' "$k6out" | grep -E '^ *(checks_succeeded|http_reqs|http_req_failed|http_req_duration)\.\.' | sed 's/^ */    /'
+  ok "a minute of traffic, under 1% failed"
+else
+  printf '%s\n' "$k6out" | sed 's/^/    /'
+  die "the load test failed (more than 1% of requests failed): see k6's output above"
+fi
 q='sum by (namespace) (http_requests_total{service="hello-world"})'
 show "kubectl get --raw '/api/v1/namespaces/monitoring/services/kube-prometheus-stack-prometheus:9090/proxy/api/v1/query?query=$q'"
 # In the toolbox (it has jq): the namespaces with hello-world requests, up to 2 min.
@@ -214,14 +221,18 @@ found=$(TOOLBOX_EXEC='' run_toolbox bash -c '
     sleep 5
   done' _ "$q" || true)
 if [ -n "$found" ]; then ok "Prometheus has hello-world's requests in: $found"; else say "! no hello-world series in Prometheus yet (scrapes run every 30 s)"; fi
-say "Look for yourself:"
-say "  The app       http://hello-world.localhost:8080 (prod), :8082 (dev), :8083 (staging)"
-say "  Argo CD       http://localhost:8081: hello-world-dev, -staging, -prod"
-say "  Prometheus    http://localhost:9090: $q"
-say "  Loki          Grafana (http://localhost:3000) → Explore → Loki:"
-say "                {namespace=\"prod\", app=\"hello-world\"} | json"
-say "  orders-gateway's SLO alerts count only orders-gateway: hello-world can't"
-say "  burn its error budget or block its promotions."
+# Grafana Explore, split in two: requests per second by status (Prometheus)
+# beside the logs (Loki), last 15 minutes. Log in with admin / admin12345.
+explore='http://localhost:3000/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22prometheus%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22prometheus%22%2C%22uid%22%3A%22prometheus%22%7D%2C%22expr%22%3A%22sum%20by%20%28status%29%20%28rate%28http_requests_total%7Bnamespace%3D%5C%22prod%5C%22%2C%20service%3D%5C%22hello-world%5C%22%7D%5B1m%5D%29%29%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-15m%22%2C%22to%22%3A%22now%22%7D%7D%2C%22b%22%3A%7B%22datasource%22%3A%22loki%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22loki%22%2C%22uid%22%3A%22loki%22%7D%2C%22expr%22%3A%22%7Bnamespace%3D%5C%22prod%5C%22%2C%20app%3D%5C%22hello-world%5C%22%7D%20%7C%20json%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-15m%22%2C%22to%22%3A%22now%22%7D%7D%7D'
+say "See it in Grafana (admin / admin12345): requests per second and the logs, side by side:"
+say "  $explore"
+say "Or type the queries yourself:"
+say "  Prometheus    sum by (status) (rate(http_requests_total{namespace=\"prod\", service=\"hello-world\"}[1m]))"
+say "  Loki          {namespace=\"prod\", app=\"hello-world\"} | json"
+say "Also: the app at http://hello-world.localhost:8080 (prod), :8082 (dev), :8083 (staging);"
+say "Argo CD at http://localhost:8081 (hello-world-dev, -staging, -prod)."
+say "orders-gateway's SLO alerts count only orders-gateway: hello-world can't"
+say "burn its error budget or block its promotions."
 step "Done: hello-world went through CI, dev → staging → prod, a refused promotion and a rollback"
 say "It stays running: try ./pipeline cd hello-world dev --version $W, scale it,"
 say "break it, watch it in Grafana."
