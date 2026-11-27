@@ -10,8 +10,8 @@
 #                         alerts, host ports and policies
 #   ./platform budget [--watch SECONDS]  measured CPU/memory vs the 6 CPU / 12 GiB
 #                         budget (peak over SECONDS with --watch)
-#   ./platform demo <name>  narrated demos, one per folder in demo/ (see
-#                         demo/README.md); clean removes what they left
+#   ./platform demo <name> [env]  narrated demos on a real environment (prod
+#                         by default), one per folder in demo/ (see demo/README.md)
 #   ./platform shell [script]  open a shell (or run a script) in the toolbox
 #   ./platform kubectl …  run kubectl in the toolbox
 #
@@ -98,18 +98,19 @@ case "$cmd" in
     die "./platform $cmd is now ./pipeline: ./pipeline ci <app> [--version V], ./pipeline cd <app> <env>, ./pipeline rollback <app> <env>" ;;
   demo)
     check_docker
-    # hello-world drives ./pipeline, so it runs here on the host; the other
-    # demos run in the toolbox. clean also tears hello-world down.
+    # hello-world and release drive ./pipeline, so they run here on the host;
+    # the other demos run in the toolbox. clean also tears hello-world down.
     # Each demo is demo/<name>/run.sh.
     d=${1:-}; [ $# -eq 0 ] || shift
     case "$d" in
       hello-world) exec bash demo/hello-world/run.sh "$@" ;;
+      release) exec bash demo/release/run.sh "$@" ;;
       clean)
         bash demo/hello-world/run.sh clean
         run_toolbox bash demo/clean.sh ;;
       *)
         [ -n "$d" ] && [ -f "demo/$d/run.sh" ] ||
-          die "usage: ./platform demo <name> [--keep]; demos: $(for r in demo/*/run.sh; do r=${r%/run.sh}; printf '%s ' "${r#demo/}"; done)clean"
+          die "usage: ./platform demo <name> [dev|staging|prod]; demos: $(for r in demo/*/run.sh; do r=${r%/run.sh}; printf '%s ' "${r#demo/}"; done)clean"
         run_toolbox bash "demo/$d/run.sh" "$@" ;;
     esac ;;
   doctor|urls|verify|budget)

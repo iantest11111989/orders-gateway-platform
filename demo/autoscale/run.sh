@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# ./platform demo autoscale [--keep]: in a copy of prod, a fixed k6 rate
+# ./platform demo autoscale [staging|prod]: a fixed k6 rate
 # (AUTOSCALE_RATE, default 20/s, 60% of it GET /work burning 10-50 ms of CPU
-# each) pushes CPU past the HPA's 70% target; it scales from 3 to 6 pods, then
-# back to 3 once k6 stops.
+# each) pushes CPU past the HPA's 70% target; it scales up to its maximum (prod
+# 3 to 6 pods, staging 2 to 4), then back once k6 stops. Prod by default.
 # Runs in the toolbox; shared helpers in demo/lib.sh.
 # shellcheck source=demo/lib.sh
 source "$(dirname "$0")/../lib.sh"
@@ -36,18 +36,16 @@ narrate_hpa() { # narrate_hpa <test: ge N | le N> <timeout s>
 
 demo_autoscale() {
   local rate=${AUTOSCALE_RATE:-20} min max
-  step "Demo: autoscale in a copy of prod"
+  step "Demo: autoscale in $ENV ($URL)"
   echo "  k6 sends a fixed $rate requests/s (constant arrival rate, so the load"
   echo "  is capped and doesn't grow with the cluster). 60% of it is GET /work,"
   echo "  which burns 10-50 ms of CPU on the app's single event loop: about 0.36"
-  echo "  cores across 3 pods, each requesting 100m. The HPA aims for 70% of the"
+  echo "  cores, while each pod requests 100m. The HPA aims for 70% of the"
   echo "  request: when the average goes over, it adds pods up to 6. When k6 stops,"
-  echo "  CPU drops and after the HPA's 5-minute scale-down window it goes back to"
-  echo "  3. Takes about 8 minutes."
-  # Always a fresh copy, from prod's current values.
-  delete_app
-  create_app orders-gateway-prod v1
-  wait_healthy v1 600
+  echo "  CPU drops and after the HPA's 5-minute scale-down window it goes back"
+  echo "  down. Takes about 8 minutes."
+  needs hpa "an HPA"
+  wait_healthy 600
   run kubectl -n "$NS" get hpa orders-gateway
   min=$(get kubectl -n "$NS" get hpa orders-gateway -o jsonpath='{.spec.minReplicas}')
   max=$(get kubectl -n "$NS" get hpa orders-gateway -o jsonpath='{.spec.maxReplicas}')
@@ -57,6 +55,10 @@ demo_autoscale() {
   start_load "$rate"
   where_to_watch
   echo "    HPA                 ./platform shell -c 'kubectl -n $NS get hpa -w'"
+  check "Grafana, orders-gateway dashboard (environment $NS), for the whole demo" "$(dash_url orders-gateway "$NS")" \
+    "CPU per pod (share of its request): climbs past 70%, the HPA's target; that's what triggers a scale-up" \
+    "Pods by version: the pod count steps up to $max, then back down to $min about 5 minutes after the load stops" \
+    "Requests per second, by route and status: steady at about $rate/s, all 2xx, while pods are added"
 
   step "Scaling up under load"
   PEAK=0
@@ -73,6 +75,8 @@ demo_autoscale() {
   narrate_hpa le "$min" 600
   [ "$HPA_RESULT" = reached ] || die "the HPA didn't scale back to $min pods within 10 minutes (now $(hpa_replicas))"
   ok "back to $min pods: $min -> $PEAK -> $min, driven only by CPU"
+  check "the HPA's own record of what it did" "" \
+    "./platform kubectl -n $NS describe hpa orders-gateway: the Events list each rescale and why (cpu above target / All metrics below target)"
   if awk -v p="${SLO_PCT:-0}" 'BEGIN { exit !(p >= 99.5) }'; then
     ok "${SLO_PCT}% of requests met the SLO (>= 99.5%) while it scaled"
   else

@@ -51,7 +51,7 @@ Status: **done** means built and checked by a demo, `./platform verify` or CI. *
 | --- | --- | --- |
 | Environments differ through values files, not copies | done | One shared `apps/orders-gateway/cd/values.yaml`, plus a short `dev.yaml`, `staging.yaml` and `prod.yaml` |
 | No manual steps; re-running is safe | done | `docker compose up -d --wait` again is safe, and so is `./platform up` |
-| One documented way to ship a new version, followed while traffic flows | done | [README: Ship a version](../README.md#ship-a-version). `./pipeline ci` tests, builds, scans and publishes. `./pipeline cd` deploys it through Git. The `rolling-update` demo and the E2E check that no request fails during a release |
+| One documented way to ship a new version, followed while traffic flows | done | [README: Ship a version](../README.md#ship-a-version). `./pipeline ci` tests, builds, scans and publishes. `./pipeline cd` deploys it through Git. The `release` demo and the E2E check that no request fails during a release |
 | One documented way to roll back | done | `./pipeline rollback orders-gateway <env>`. The E2E rolls prod back under traffic |
 | No plaintext secrets; something sensible for local, and why | done | The Grafana login is a SealedSecret, encrypted in Git, so it can be committed safely. Argo CD's is a bcrypt hash in its values, because Argo CD installs before the Sealed Secrets controller exists. The one exception is the Sealed Secrets private key itself, committed on purpose so a fresh clone can decrypt them. It is labelled demo-only, CI blocks any other plain Secret, and in production it would be replaced by a secret manager ([production.md](production.md)) |
 
@@ -86,13 +86,13 @@ Status: **done** means built and checked by a demo, `./platform verify` or CI. *
 
 | The brief asks | Status | Where |
 | --- | --- | --- |
-| Traffic that rises sharply | done | `autoscale` demo: the HPA goes from 3 to 6 pods and back. A load test on :8080 reached about 1300 requests/s with no errors |
-| Rolling releases | done | `rolling-update` demo: v1 to v2 under load, no failed requests |
+| Traffic that rises sharply | done | `autoscale` demo, on prod: the HPA goes from 3 to 6 pods and back. A load test on :8080 reached about 1300 requests/s with no errors |
+| Rolling releases | done | `release` demo: a new version to prod under load, one pod at a time, no failed requests |
 | Pods killed | done | `chaos` demo: a pod deleted and a worker drained. The disruption budget keeps it serving |
 | Platform components killed | done | `platform-chaos` demo: Traefik, CoreDNS, Argo CD, Prometheus and Kyverno pods deleted under load, one at a time |
 | Document what you did and why | done | [README: Demos](../README.md#demos), [the chart README](../apps/orders-gateway/chart/README.md) |
 
-Each demo fails if fewer than 99.5% of requests meet the SLO.
+Every demo runs on the real prod at :8080 (or another environment you name), and fails if fewer than 99.5% of requests meet the SLO.
 
 ## 6. Documentation [core]
 

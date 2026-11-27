@@ -10,7 +10,6 @@ step "orders-gateway (/admin/* is refused on every port)"
 echo "  http://localhost:8080      prod"
 echo "  http://localhost:8082      dev"
 echo "  http://localhost:8083      staging"
-echo "  http://localhost:8084      demo (while ./platform demo runs)"
 
 step "Argo CD"
 echo "  http://localhost:8081"

@@ -28,23 +28,23 @@ The rule: change Git, not the cluster.
 
 The Deployment uses `maxSurge: 1` and `maxUnavailable: 0`: it adds one new pod, and removes an old one only when the new one is Ready.
 
-1. In one terminal, run `./platform demo rolling-update`. It makes a 3-pod copy of dev in namespace `demo` and moves it from v1 to v2 under traffic.
+1. In one terminal, run `./platform demo release`. It ships a new version through dev and staging to prod, under traffic, and stops at each Sync point.
 2. In a second terminal, watch the ReplicaSets:
 
    ```sh
    ./platform shell
-   kubectl -n demo get rs -l app.kubernetes.io/name=orders-gateway -w
+   kubectl -n prod get rs -l app.kubernetes.io/name=orders-gateway -w
    ```
 
-   The new one goes 1, 2, 3 while the old one goes 3, 2, 1, 0. Ready pods never drop below 3.
+   When prod syncs, the new one goes 1, 2, 3 while the old one goes 3, 2, 1, 0. Ready pods never drop below 3.
 3. See the history:
 
    ```sh
-   kubectl -n demo rollout history deploy/orders-gateway
+   kubectl -n prod rollout history deploy/orders-gateway
    ```
 
    Each revision is a ReplicaSet. `kubectl rollout undo` would be reverted by Argo CD, which is why `./pipeline rollback` changes Git.
-4. In Grafana's orders-gateway dashboard (environment `demo`), Pods by version shows v1 handing over to v2, and the 5xx panel stays at 0.
+4. In Grafana's orders-gateway dashboard (environment `prod`), Pods by version shows the old version handing over to the new one, and the 5xx panel stays at 0.
 
 ## 3. Kyverno: what may run
 

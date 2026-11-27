@@ -19,7 +19,6 @@ nodes:
       - {containerPort: 30808, hostPort: 8080, listenAddress: 127.0.0.1, protocol: TCP}
       - {containerPort: 30882, hostPort: 8082, listenAddress: 127.0.0.1, protocol: TCP}
       - {containerPort: 30883, hostPort: 8083, listenAddress: 127.0.0.1, protocol: TCP}
-      - {containerPort: 30884, hostPort: 8084, listenAddress: 127.0.0.1, protocol: TCP}
       - {containerPort: 30881, hostPort: 8081, listenAddress: 127.0.0.1, protocol: TCP}
       - {containerPort: 30300, hostPort: 3000, listenAddress: 127.0.0.1, protocol: TCP}
       - {containerPort: 30909, hostPort: 9090, listenAddress: 127.0.0.1, protocol: TCP}

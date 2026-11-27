@@ -68,7 +68,6 @@ spec:
         - {port: 18081, protocol: TCP} # Argo CD
         - {port: 18082, protocol: TCP} # dev
         - {port: 18083, protocol: TCP} # staging
-        - {port: 18084, protocol: TCP} # demo
         - {port: 13000, protocol: TCP} # Grafana
         - {port: 19090, protocol: TCP} # Prometheus
         - {port: 19093, protocol: TCP} # Alertmanager

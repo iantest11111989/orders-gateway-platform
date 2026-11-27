@@ -32,7 +32,7 @@ resources:
   limits: {memory: 128Mi}
 
 # The way in: an Ingress on one Traefik entrypoint, which is one host port
-# (stack/networking/traefik/values.yaml): prod 8080, dev 8082, staging 8083, demo 8084.
+# (stack/networking/traefik/values.yaml): prod 8080, dev 8082, staging 8083.
 # Every request on that port reaches this environment; there's no hostname.
 # /admin/* (the runtime fault switch, no auth) gets a 403 there.
 ingress:

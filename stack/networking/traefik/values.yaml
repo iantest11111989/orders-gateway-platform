@@ -1,5 +1,5 @@
 # Traefik: the one way in from the host, one plain-HTTP entrypoint per host
-# port (8080 prod, 8082 dev, 8083 staging, 8084 demo, UIs on their usual
+# port (8080 prod, 8082 dev, 8083 staging, UIs on their usual
 # ports). Ingresses pick one with the router.entrypoints annotation.
 # Container ports avoid 8080, which Traefik keeps for itself.
 deployment:
@@ -69,12 +69,6 @@ ports:
     port: 18083
     exposedPort: 8083
     nodePort: 30883
-    expose: {default: true}
-    protocol: TCP
-  demo:
-    port: 18084
-    exposedPort: 8084
-    nodePort: 30884
     expose: {default: true}
     protocol: TCP
   grafana:

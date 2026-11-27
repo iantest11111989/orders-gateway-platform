@@ -13,32 +13,32 @@ The 0.5% allowed to fail is the error budget. The burn rate is how fast you spen
 
 `OrdersGatewayAvailabilityFastBurn` fires when the burn rate is over 14.4 (7.2% failing) over both the last 1 hour and the last 5 minutes, for 2 minutes. The rules are in [`stack/observability/alerts/orders-gateway-slo.yaml`](../../stack/observability/alerts/orders-gateway-slo.yaml).
 
-## 0. Make a copy to break
+## 0. Pick an environment to break
 
-Never break the real environments. Make a copy of dev in namespace `demo`:
-
-```sh
-./platform demo rolling-update --keep
-```
-
-After about 2 minutes, Argo CD Application `orders-gateway-demo` runs at <http://localhost:8084>. Open Grafana's orders-gateway dashboard and set environment to `demo`.
+Use dev: it syncs by itself, and breaking it costs nothing real. Open Grafana's orders-gateway dashboard and set environment to `dev`.
 
 ## 1. Break it
 
-1. Set the fault rate on the copy. 20% of `/work` and `/echo` requests will return 500:
+1. Set the fault rate in Git, so 20% of `/work` and `/echo` requests return 500. Add this to the end of `apps/orders-gateway/cd/dev.yaml`:
+
+   ```yaml
+   config:
+     faultErrorRate: 0.2
+   ```
+
+   Then push the checkout to the Git server Argo CD reads:
+
+   ```sh
+   ./platform shell scripts/git-sync.sh
+   ```
+
+   dev has auto-sync on, so Argo CD applies it and the pods restart. Don't `kubectl edit` the Deployment: Argo CD would undo it.
+
+2. Send traffic:
 
    ```sh
    ./platform shell
-   kubectl -n argocd patch applications.argoproj.io orders-gateway-demo --type json \
-     -p '[{"op":"add","path":"/spec/source/helm/parameters/-","value":{"name":"config.faultErrorRate","value":"0.2"}}]'
-   ```
-
-   Argo CD syncs it and the pods restart. In the real environments you'd change `config.faultErrorRate` in `apps/orders-gateway/cd/<env>.yaml` instead. Don't `kubectl edit` the Deployment: Argo CD would undo it.
-
-2. Send traffic from the same shell:
-
-   ```sh
-   k6 run --quiet -e BASE_URL=http://localhost:8084 -e RATE=5 -e DURATION=30m apps/orders-gateway/app/k6/load.js
+   k6 run --quiet -e BASE_URL=http://localhost:8082 -e RATE=5 -e DURATION=30m apps/orders-gateway/app/k6/load.js
    ```
 
    k6 warns that `orders_slo_good` is crossed. That's expected.
@@ -49,7 +49,7 @@ On the dashboard:
 
 - /work and /echo: share failing with 5xx climbs to about 20%.
 - Burn rate, availability (1 h) climbs toward 40 (20% ÷ 0.5%).
-- Availability budget left (last 24 h) drops below 0 within minutes. The copy is new, so there's little good traffic to set against the failures.
+- Availability budget left (last 24 h) drops fast, and can go below 0: dev has little other traffic to set against the failures.
 - Firing SLO alerts shows the alert pending after about a minute, then firing a few minutes later.
 
 The alert uses two windows for a reason. The 5-minute window alone would page on short blips. The 1-hour window alone would keep paging long after a fix. Together, the alert fires fast and clears fast.
@@ -58,34 +58,33 @@ You can see the same alert in Prometheus (<http://localhost:9090/alerts>) and Al
 
 ## 3. Follow the runbook
 
-Open [`stack/observability/runbooks/OrdersGatewayAvailabilityFastBurn.md`](../../stack/observability/runbooks/OrdersGatewayAvailabilityFastBurn.md) and use `demo` as the namespace.
+Open [`stack/observability/runbooks/OrdersGatewayAvailabilityFastBurn.md`](../../stack/observability/runbooks/OrdersGatewayAvailabilityFastBurn.md) and use `dev` as the namespace.
 
 1. Where is it failing? In Prometheus:
 
    ```promql
-   sum by (pod) (rate(http_requests_total{namespace="demo", service="orders-gateway", status=~"5.."}[5m]))
+   sum by (pod) (rate(http_requests_total{namespace="dev", service="orders-gateway", status=~"5.."}[5m]))
    ```
 
    Every pod fails alike, so it isn't one bad pod.
 
-2. What do the logs say? In Loki: `{namespace="demo", app="orders-gateway"} | json | level="error"`. Each is a 500 with `duration_ms` near 0: the request failed before doing any work.
+2. What do the logs say? In Loki: `{namespace="dev", app="orders-gateway"} | json | level="error"`. Each is a 500 with `duration_ms` near 0: the request failed before doing any work.
 
 3. What changed?
 
    ```sh
-   kubectl -n demo get configmap orders-gateway -o yaml | grep FAULT
+   kubectl -n dev get configmap orders-gateway -o yaml | grep FAULT
    ```
 
    It shows `FAULT_ERROR_RATE: "0.2"`. That's the cause.
 
 ## 4. Fix it and watch it clear
 
-1. Remove the parameter. Keep k6 running:
+1. Undo the change in Git. Keep k6 running, and in a second terminal:
 
    ```sh
-   kubectl -n argocd get applications.argoproj.io orders-gateway-demo -o json |
-     jq '{spec: {source: {helm: {parameters: [.spec.source.helm.parameters[] | select(.name != "config.faultErrorRate")]}}}}' |
-     kubectl -n argocd patch applications.argoproj.io orders-gateway-demo --type merge --patch-file /dev/stdin
+   git checkout apps/orders-gateway/cd/dev.yaml
+   ./platform shell scripts/git-sync.sh
    ```
 
 2. Watch:
@@ -98,11 +97,7 @@ Against a real 30-day budget, 20% failing for 10 minutes costs about 1%. It stil
 
 ## 5. Clean up
 
-Stop k6 with Ctrl-C, leave the shell, and run:
-
-```sh
-./platform demo clean
-```
+Stop k6 with Ctrl-C and leave the shell. Nothing else to clean: dev is back to what Git says.
 
 ## Try next
 
