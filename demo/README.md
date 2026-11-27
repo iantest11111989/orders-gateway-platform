@@ -1,6 +1,6 @@
 # Demos
 
-Each demo is a folder here, run with `./platform demo <name>`. Each one runs a check the brief says the reviewers will make. It prints every command it runs, as `$ kubectl ...`, with its output indented below, explains what it's doing in `# ...` notes, and ends with a pass or a fail.
+Each demo is a folder here, run with `./platform demo <name>`. Each one runs a check from the take-home test the repo began as ("the brief"). It prints every command it runs, as `$ kubectl ...`, with its output indented below, explains what it's doing in `# ...` notes, and ends with a pass or a fail.
 
 | Demo | What happens | Time |
 | --- | --- | --- |

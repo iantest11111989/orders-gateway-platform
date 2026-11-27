@@ -28,7 +28,7 @@ The first start takes about 10 minutes, mostly pulling images. Compose's `ready`
 
 `docker compose stop` and `start` keep the cluster and its data. Running `up` again is safe.
 
-The `ready` container and the toolbox mount the Docker socket so kind can create its nodes. That is root-equivalent on the Docker host, so run this on a machine you control.
+The `ready` container and the toolbox mount the Docker socket so kind can create its nodes. That gives them full control of Docker, and so of the machine, so run this on a machine you control.
 
 ## URLs and logins
 
@@ -159,9 +159,9 @@ Start with `./platform doctor` and `./platform verify`.
 
 ## Demos
 
-Each demo runs one of the checks the brief says it will make. It prints every command it runs (`kubectl`, `curl`, `git`, `k6`, `./pipeline`) with its output, and ends with a pass or a fail. Run one with `./platform demo <name>`; each is a folder in [`demo/`](demo/README.md).
+The repo began as a take-home DevOps test ("the brief"), and each demo runs one of the checks it asked for. A demo prints every command it runs (`kubectl`, `curl`, `git`, `k6`, `./pipeline`) with its output, and ends with a pass or a fail. Run one with `./platform demo <name>`; each is a folder in [`demo/`](demo/README.md).
 
-| The brief asks | Demo | What it shows | Time |
+| Checks | Demo | What it shows | Time |
 | --- | --- | --- | --- |
 | The fixed contract | `contract` | every row of the contract table, checked live: `ready`, kubeconfig, the Deployments, each endpoint on :8080, `/admin/*` refused, logins, restart policies, volumes | <1 min |
 | Ship and roll back | `hello-world` | a second app through `./pipeline`: CI, dev → staging → prod, a refused out-of-order promotion, a rollback. Left running (`./platform demo hello-world clean` tears it down) | ~6 min |

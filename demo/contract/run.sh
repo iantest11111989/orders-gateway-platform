@@ -26,8 +26,9 @@ http() {
   [ "$code" = "$want" ]
 }
 
-step "Demo: the brief's fixed contract, checked on the running platform"
-echo "  Each row of the brief's contract table, checked with the command a"
+step "Demo: the fixed contract, checked on the running platform"
+echo "  The names, ports and endpoints the repo promises (the contract table in"
+echo "  the take-home brief it began as), each checked with the command a"
 echo "  reviewer would run. Read-only. Takes under a minute."
 
 # --- Readiness ----------------------------------------------------------------
