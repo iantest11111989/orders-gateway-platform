@@ -11,7 +11,13 @@ image:
   tag: 0.1.0
   digest: ""
 
-replicas: 2
+# Same autoscaling as prod, so a release is tested the way prod runs it.
+# A lower ceiling than prod's 6 keeps it inside the 6 CPU budget.
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 70
 
 ingress:
   entrypoint: staging
