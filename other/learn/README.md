@@ -1,4 +1,4 @@
-# docs/learn
+# Learn
 
 Short hands-on exercises, about 15 minutes each, run against your live stack.
 

@@ -60,7 +60,7 @@ Status: **done** means built and checked by a demo, `./platform verify` or CI. *
 | Requirement | Status | Where |
 | --- | --- | --- |
 | Argo CD or Flux, from a Git server the stack hosts | done | Argo CD reads from a small Git server inside the cluster ([`stack/delivery/git-server/`](../stack/delivery/git-server/)) |
-| Self-healing and pruning | done | Both on. Scale a Deployment by hand and Argo CD puts it back within seconds ([learn/05](learn/05-k8s-operations.md)) |
+| Self-healing and pruning | done | Both on. Scale a Deployment by hand and Argo CD puts it back within seconds ([learn/05](../other/learn/05-k8s-operations.md)) |
 | Promotion by Git change | done | `./pipeline cd` commits the version to the environment's file. The `gitops-revert` demo shows a bad commit healed by `git revert` |
 | Workflows valid on real GitHub: lint and test, build, scan | done | [`.github/workflows/`](../.github/workflows/), listed in [README: Tests and CI](../README.md#tests-and-ci) |
 | Push, and update of the desired state | **partly** | Done locally by `./pipeline`, not by GitHub Actions. That way anyone who clones the repo can run the whole flow against their own cluster without a CI account or registry. Pull requests run the build and a signing rehearsal but push nothing. How it would move to CI: [production.md: Shipping and rolling back](production.md#shipping-and-rolling-back) |
@@ -74,13 +74,13 @@ Status: **done** means built and checked by a demo, `./platform verify` or CI. *
 | Requirement | Status | Where |
 | --- | --- | --- |
 | Metrics: app, cluster, nodes | done | Prometheus scrapes the app, kube-state-metrics and node-exporter |
-| Logs searchable, JSON usable without extra work | done | Alloy ships every pod's output to Loki. `| json` gives the app's fields ([learn/03](learn/03-loki.md)) |
+| Logs searchable, JSON usable without extra work | done | Alloy ships every pod's output to Loki. `| json` gives the app's fields ([learn/03](../other/learn/03-loki.md)) |
 | A dashboard that answers "is it broken, where, since when" in 30 seconds, plus a cluster overview | done | **orders-gateway** (SLO and alerts first, then traffic, latency, pods by version, logs) and **platform-overview**, as code in [`stack/observability/dashboards/`](../stack/observability/dashboards/README.md) |
-| SLOs for availability and latency, multi-window burn-rate alerts | done | 99.5% of `/work` and `/echo` succeed; 99.5% of `/echo` and `/version` answer within 250 ms. Fast and slow burn alerts: [`stack/observability/alerts/`](../stack/observability/alerts/README.md). Explained in [learn/04](learn/04-slos.md) |
+| SLOs for availability and latency, multi-window burn-rate alerts | done | 99.5% of `/work` and `/echo` succeed; 99.5% of `/echo` and `/version` answer within 250 ms. Fast and slow burn alerts: [`stack/observability/alerts/`](../stack/observability/alerts/README.md). Explained in [learn/04](../other/learn/04-slos.md) |
 | Symptom-based, actionable alerts with runbooks | done | Each alert links to a runbook in [`stack/observability/runbooks/`](../stack/observability/runbooks/README.md). CI checks the links |
 | A quiet, healthy system has no alerts | done | Only Watchdog fires, on purpose, to prove alerts get through |
 | Alerts routed through Alertmanager to a local receiver, delivery observable | done | A small receiver logs each alert into Loki. The `alert` demo follows one from firing to resolved |
-| [stretch] Distributed tracing, log-to-metric and trace correlation | **partly** | No tracing backend. The app logs a `trace_id` from the `traceparent` header, so one request can be followed through the logs, and LogQL turns logs into metrics ([learn/03](learn/03-loki.md)) |
+| Distributed tracing, log-to-metric and trace correlation | **partly** | No tracing backend. The app logs a `trace_id` from the `traceparent` header, so one request can be followed through the logs, and LogQL turns logs into metrics ([learn/03](../other/learn/03-loki.md)) |
 
 ## 5. Operating it under stress
 
@@ -101,7 +101,7 @@ Every demo runs on the real prod at :8080 (or another environment you name), and
 | Architecture diagram and key decisions with trade-offs | done | [README: How it works](../README.md#how-it-works), [Key decisions](#key-decisions) below |
 | How do I ship? Roll back? Debug? | done | [README: Ship a version](../README.md#ship-a-version), [When something breaks](../README.md#when-something-breaks) |
 | What differs from a real cloud deployment, and what you'd change | done | [README: Local versus production](../README.md#local-versus-production), [production.md](production.md) |
-| [stretch] Sketch the Terraform | done | [terraform-sketch/](terraform-sketch/README.md), EKS, never applied |
+| Sketch the Terraform | done | [infra-sketch/](infra-sketch/README.md): VPC, subnets and EKS, never applied |
 | Honest limitations and what you'd do next | done | [Skipped, and why](#skipped-and-why) and [What next](#what-next) below |
 
 ## Key decisions

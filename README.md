@@ -210,9 +210,9 @@ This is a local practice setup, so some things differ from a real platform:
 
 - [docs/requirements.md](docs/requirements.md): the requirements point by point, with where each is met, the key decisions, what was skipped and why, and what next.
 - [docs/naming.md](docs/naming.md): why objects are named after their app.
-- [docs/learn/](docs/learn/README.md): hands-on exercises on the running stack, starting with [a tour of the repo](docs/learn/00-repo-tour.md).
+- [other/learn/](other/learn/README.md): hands-on exercises on the running stack, starting with [a tour of the repo](other/learn/00-repo-tour.md).
 - [docs/production.md](docs/production.md): what would change in a real cloud deployment, and how shipping and rollback would work there.
-- [docs/terraform-sketch/](docs/terraform-sketch/README.md): the EKS part in Terraform, never applied.
+- [docs/infra-sketch/](docs/infra-sketch/README.md): the cloud infrastructure (VPC, subnets, EKS) in Terraform, never applied.
 
 ## Repository layout
 
