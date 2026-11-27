@@ -157,6 +157,7 @@ Start with `./platform doctor` and `./platform verify`.
 | `docker compose up -d --wait` never finishes | Run `docker compose down && docker compose up -d --wait`. |
 | A demo was interrupted | Run `./platform demo clean`. |
 | Slow or evicted pods | Give Docker 6 CPU / 12 GB. |
+| Gaps in Loki, or log lines reading `failed to create fsnotify watcher: too many open files` | The Docker VM allows too few inotify instances (`doctor` warns below 512). Run `docker run --rm --privileged alpine sysctl -w fs.inotify.max_user_instances=512`; it lasts until Docker or Colima restarts. |
 
 ## Demos
 

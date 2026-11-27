@@ -50,6 +50,20 @@ else
   warn "Could not measure free disk for Docker; make sure about 20 GB is free."
 fi
 
+# kind needs inotify instances: the kubelet uses one for every log it follows,
+# and Alloy follows every pod's log. Too few and log lines go missing in Loki,
+# replaced by "failed to create fsnotify watcher: too many open files".
+# This runs in the toolbox, which shares the Docker host's kernel.
+inotify=$(cat /proc/sys/fs/inotify/max_user_instances 2>/dev/null || echo "")
+if [ -z "$inotify" ]; then
+  warn "Could not read fs.inotify.max_user_instances"
+elif [ "$inotify" -ge 512 ]; then
+  ok "inotify instances: $inotify"
+else
+  warn "fs.inotify.max_user_instances is $inotify; kind needs 512 or more, or logs go missing in Loki. To raise it until Docker restarts:"
+  warn "  docker run --rm --privileged alpine sysctl -w fs.inotify.max_user_instances=512"
+fi
+
 for port in 80 443 8080 3000 9090 9093 8081; do
   if ! nc -z -w 1 127.0.0.1 "$port" 2>/dev/null; then
     ok "Port $port is free"
