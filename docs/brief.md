@@ -35,12 +35,12 @@ Status: **done** means built and checked by a demo, `./platform verify` or CI. *
 
 | The brief asks | Status | Where |
 | --- | --- | --- |
-| A Helm chart or Kustomize, justified | done | A Helm chart: [`apps/orders-gateway/chart/`](../apps/orders-gateway/chart/README.md). Why Helm: [Key decisions](#key-decisions) |
+| A Helm chart or Kustomize, justified | done | A Helm chart: [`apps/orders-gateway/chart/`](../apps/orders-gateway/chart/README.md). Why Helm: [Key decisions](#key-decisions). Each setting tied to what `server.js` does: [the chart README](../apps/orders-gateway/chart/README.md#how-the-app-behaves-and-what-the-chart-does-about-it) |
 | Resources | done | 100m CPU request, no CPU limit (it would throttle the single event loop), 48Mi request and 128Mi limit for memory |
 | Probes | done | A startup probe covers the app's 3 s warm-up, then readiness on `/readyz`. Liveness is lenient because `/work` blocks the event loop |
 | Rollout and shutdown | done | `maxSurge: 1`, `maxUnavailable: 0`. A `preStop` sleep of 5 s lets Traefik stop sending traffic first, then the app has 25 s to drain on SIGTERM, within a 35 s grace period |
 | Disruption budgets | done | At most one pod down during a drain |
-| Autoscaling | done | HPA in prod, 3 to 6 pods at 70% CPU |
+| Autoscaling | done | HPA at 70% CPU: 3 to 6 pods in prod, 2 to 4 in staging, so a release meets autoscaling before prod |
 | Security context | done | Non-root, read-only root filesystem, no capabilities, RuntimeDefault seccomp, no service account token. The app namespaces enforce Pod Security `restricted`, and Kyverno adds a read-only root filesystem rule |
 | Network policy | done | Traffic in only from Traefik and Prometheus, out only to DNS |
 | Configuration and secrets | done | Settings are chart values that become a ConfigMap. Secrets are SealedSecrets (see section 2) |
@@ -109,7 +109,7 @@ Each demo fails if fewer than 99.5% of requests meet the SLO.
 - **kind**, not k3d, k3s or minikube. It runs upstream Kubernetes in Docker containers, needs nothing on the host but Docker, and gives real multi-node clusters: one control plane and two workers in different zones, so the disruption budget, zone spreading and node drains can be shown. The trade-off: it needs the Docker socket, which gives the bootstrap container full control of Docker.
 - **Helm**, not Kustomize. Every third-party component ships as a Helm chart, so one tool installs everything. The app's chart has real logic (HPA, disruption budget and network policy switched per environment, image digests), which is easier in Helm values than in overlays. The trade-off: templates are harder to read than plain manifests.
 - **Argo CD** installs the platform as well as the apps, from a Git server inside the cluster. Everything is declarative and self-healing, and the bootstrap only has to install Argo CD itself.
-- **Traefik** is the only way in, so `/admin/*` can be refused in one place, at the edge.
+- **Traefik** is the only way in, so `/admin/*` can be refused in one place, at the edge. In production the AWS Load Balancer Controller would replace it ([production.md](production.md#traffic-in-the-aws-load-balancer-controller)).
 - **Sealed Secrets** because it works offline with no external service, and encrypted secrets can live in Git.
 - **CI/CD runs locally** (`./pipeline`) so the whole ship-and-rollback flow can be practised against your own cluster. GitHub Actions only checks pull requests.
 - **One cluster with three namespaces**, to fit 6 CPU / 12 GB. In production each environment gets its own cluster.

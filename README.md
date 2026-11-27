@@ -122,7 +122,7 @@ flowchart LR
 - Kyverno checks pods as they are admitted. See [`stack/security/kyverno/policies/`](stack/security/kyverno/policies/README.md).
 - Secrets are SealedSecrets. The decryption key is committed so any clone works. That is for the demo only.
 
-The app's chart is built for zero-downtime releases and drains: probes, a graceful shutdown, a disruption budget, spreading across nodes and an HPA in prod. See [`apps/orders-gateway/chart/`](apps/orders-gateway/chart/README.md).
+The app's chart is built for zero-downtime releases and drains: probes, a graceful shutdown, a disruption budget, spreading across nodes and an HPA in staging and prod. [The chart's README](apps/orders-gateway/chart/README.md#how-the-app-behaves-and-what-the-chart-does-about-it) goes through what `server.js` does and which setting answers each behaviour.
 
 ## Observability
 

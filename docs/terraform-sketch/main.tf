@@ -75,7 +75,7 @@ module "eks" {
   }
 
   eks_managed_node_groups = {
-    # Platform components (Argo CD, Traefik, Kyverno, the Datadog cluster agent...).
+    # Platform components (Argo CD, the AWS Load Balancer Controller, Kyverno, the Datadog cluster agent...).
     platform = {
       instance_types = ["m7g.large"]
       ami_type       = "AL2023_ARM_64_STANDARD"
