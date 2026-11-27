@@ -4,6 +4,8 @@ A Kubernetes platform you can run on your own machine, for hands-on practice. On
 
 CI/CD runs locally too: `./pipeline` tests, builds and scans an app, then promotes it from dev to staging to prod through Git and Argo CD.
 
+It started as an answer to a take-home DevOps test. [docs/brief.md](docs/brief.md) goes through that test point by point.
+
 ## What you need
 
 Docker, and nothing else. Every other tool (kind, kubectl, helm, kubeseal, cosign, k6, the argocd CLI, jq, yq) is pinned in a [toolbox image](stack/toolbox/README.md) that `./platform` runs for you.
@@ -203,10 +205,11 @@ This is a local practice setup, so some things differ from a real platform:
 - The Sealed Secrets key is public. Anything sealed with it is public too.
 - Alerts go to a local receiver, not a pager.
 
-[docs/production.md](docs/production.md) covers what would change and why. See [docs/deviations-from-test.md](docs/deviations-from-test.md) for where the repo departs from the original brief.
+[docs/production.md](docs/production.md) covers what would change and why. [docs/brief.md](docs/brief.md) lists the key decisions (why kind, why Helm), what was skipped and why, and what next. See [docs/deviations-from-test.md](docs/deviations-from-test.md) for where the repo departs from the original brief.
 
 ## Further reading
 
+- [docs/brief.md](docs/brief.md): the original brief point by point, with where each point is answered, the key decisions, what was skipped and why, and what next.
 - [docs/learn/](docs/learn/README.md): hands-on exercises on the running stack, starting with [a tour of the repo](docs/learn/00-repo-tour.md).
 - [docs/production.md](docs/production.md): what would change in a real cloud deployment, and how shipping and rollback would work there.
 - [docs/terraform-sketch/](docs/terraform-sketch/README.md): the EKS part in Terraform, never applied.
