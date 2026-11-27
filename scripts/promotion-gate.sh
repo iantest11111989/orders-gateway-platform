@@ -25,6 +25,18 @@ showcmd "kubectl -n argocd get applications.argoproj.io $name -o jsonpath='{.sta
 if st=$(kubectl -n argocd get applications.argoproj.io "$name" \
     -o jsonpath='{.status.sync.status} {.status.health.status}' 2>/dev/null); then
   read -r sync health <<<"$st"
+  # Right after a rollout, an HPA reads Degraded for a minute or so, until
+  # metrics-server has data for the new pods. Give a Synced app 60 s to settle;
+  # anything still not Healthy after that refuses.
+  for _ in $(seq 1 12); do
+    if [ "$sync" != Synced ]; then break; fi
+    case $health in Degraded | Progressing) ;; *) break ;; esac
+    shownote "$name is $sync, $health: waiting up to 60 s for it to settle"
+    sleep 5
+    st=$(kubectl -n argocd get applications.argoproj.io "$name" \
+      -o jsonpath='{.status.sync.status} {.status.health.status}' 2>/dev/null) || break
+    read -r sync health <<<"$st"
+  done
   if [ "$sync" = Synced ] && [ "$health" = Healthy ]; then ok "Argo CD: $name Synced and Healthy"
   else no "Argo CD: $name is ${sync:-Unknown}, ${health:-Unknown} (want Synced, Healthy): fix $from first"; fi
 else

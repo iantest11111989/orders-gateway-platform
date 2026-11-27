@@ -127,14 +127,6 @@ for e in $envs; do
     "Pods by version: still all on the old version. Git changing moved nothing"
   [ "$PAUSE" -le 0 ] || { say "Holding ${PAUSE} s so you can look..."; sleep "$PAUSE"; }
 
-  # The gate checks the environment before this one again. Right after its own
-  # rollout, its HPA can show Degraded for a minute until it has metrics.
-  src=dev; [ "$e" = prod ] && src=staging
-  for _ in $(seq 1 24); do
-    [ "$(kc -n argocd get applications.argoproj.io "$APP-$src" -o jsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null)" = Synced/Healthy ] && break
-    sleep 5
-  done
-
   step "$n · Sync: ./pipeline cd $APP $e --version $V --sync"
   say "--sync does what the Sync button does, then waits for the rollout: one new pod"
   say "at a time, each ready before an old one stops."
