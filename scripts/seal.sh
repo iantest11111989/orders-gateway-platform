@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Prints a SealedSecret for <namespace>/<name> with the given key=value
 # pairs, sealed offline with the committed demo certificate
-# (stack/sealed-secrets/manifests/demo-cert.pem), so no cluster is needed.
+# (stack/security/sealed-secrets/manifests/demo-cert.pem), so no cluster is needed.
 # Runs in the toolbox (kubeseal, kubectl):
 #   ./platform shell scripts/seal.sh monitoring grafana-admin admin-user=admin admin-password=...
-# Output goes to stdout; commit it under stack/<component>/.
+# Output goes to stdout; commit it under stack/<group>/<component>/.
 # DEMO ONLY: the matching private key is committed too, so these values are
 # readable by anyone with the repo.
 set -euo pipefail

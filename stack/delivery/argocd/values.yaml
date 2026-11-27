@@ -1,5 +1,5 @@
 # Argo CD values: used by ./platform up for the first install and by
-# stack/bootstrap/apps once Argo CD manages itself. Edit only here.
+# stack/delivery/bootstrap/apps once Argo CD manages itself. Edit only here.
 
 global:
   domain: localhost:8081

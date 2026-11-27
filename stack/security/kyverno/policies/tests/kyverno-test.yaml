@@ -1,4 +1,4 @@
-# `kyverno test stack/kyverno/policies/tests`. Audit and Deny policies both report "fail" here.
+# `kyverno test stack/security/kyverno/policies/tests`. Audit and Deny policies both report "fail" here.
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:

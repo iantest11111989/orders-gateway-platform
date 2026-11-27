@@ -21,7 +21,7 @@ An auto-sync Application (a platform component, or an app's dev) has differed fr
 ## Fix
 
 - Refused manifest: fix or revert the commit in Git.
-- A field that keeps changing: add it to `ignoreDifferences` in the Application's template in `stack/bootstrap/apps/templates/` (`<name>.yaml`, or `apps.yaml` for the apps).
+- A field that keeps changing: add it to `ignoreDifferences` in the Application's template in `stack/delivery/bootstrap/apps/templates/` (`<name>.yaml`, or `apps.yaml` for the apps).
 - Then sync now with `argocd app sync <name>`, or wait about 3 minutes.
 
 ## Done when

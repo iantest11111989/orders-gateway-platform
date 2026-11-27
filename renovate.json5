@@ -20,15 +20,15 @@
 
   // The kubernetes manager has no default file patterns.
   kubernetes: {
-    managerFilePatterns: ['/^stack/trickle/.+\\.yaml$/', '/^stack/kube-prometheus-stack/manifests/alert-receiver\\.yaml$/'],
+    managerFilePatterns: ['/^stack/observability/trickle/.+\\.yaml$/', '/^stack/observability/prometheus/manifests/alert-receiver\\.yaml$/'],
   },
 
   customManagers: [
     {
       // Templates, so the built-in argocd manager can't parse them.
       customType: 'regex',
-      description: 'Helm charts from HTTPS repos in stack/bootstrap/apps',
-      managerFilePatterns: ['/^stack/bootstrap/apps/templates/.+\\.yaml$/'],
+      description: 'Helm charts from HTTPS repos in stack/delivery/bootstrap/apps',
+      managerFilePatterns: ['/^stack/delivery/bootstrap/apps/templates/.+\\.yaml$/'],
       matchStrings: [
         'repoURL:\\s*(?<registryUrl>https://\\S+?)/?\\s+chart:\\s*(?<depName>\\S+)\\s+targetRevision:\\s*(?<currentValue>[^\\s#]+)',
       ],
@@ -90,8 +90,8 @@
     {
       // The helm-values manager only reads the repository/tag map form.
       customType: 'regex',
-      description: 'Images pinned in stack/*/values.yaml',
-      managerFilePatterns: ['/^stack/[^/]+/values\\.yaml$/'],
+      description: 'Images pinned in stack/<group>/<component>/values.yaml',
+      managerFilePatterns: ['/^stack/[^/]+/[^/]+/values\\.yaml$/'],
       matchStrings: [
         'image:\\s*(?<depName>[a-z0-9.-]+\\.[a-z]+/[^:@\\s]+):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})',
       ],

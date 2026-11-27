@@ -1,31 +1,31 @@
-# Log collection: Grafana Alloy DaemonSet shipping pod logs to Loki
-# (stack/alloy/values.yaml).
+# Kyverno admission controller (stack/security/kyverno/values.yaml). Wave 20, not 10:
+# its sync is slow and nothing before the policies (wave 30) needs it.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: alloy
+  name: kyverno
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: platform-demo
   annotations:
     argocd.argoproj.io/sync-wave: "20"
-    argocd.argoproj.io/manifest-generate-paths: "/stack/alloy"
+    argocd.argoproj.io/manifest-generate-paths: "/stack/security/kyverno"
 spec:
   project: default
   sources:
-    - repoURL: https://grafana.github.io/helm-charts
-      chart: alloy
-      targetRevision: 1.16.0 # Alloy v1.22.0
+    - repoURL: https://kyverno.github.io/kyverno/
+      chart: kyverno
+      targetRevision: 3.10.0 # Kyverno v1.20.0
       helm:
-        releaseName: alloy
+        releaseName: kyverno
         valueFiles:
-          - $values/stack/alloy/values.yaml
+          - $values/stack/security/kyverno/values.yaml
     - repoURL: {{ .Values.repo.url }}
       targetRevision: {{ .Values.repo.revision }}
       ref: values
   destination:
     server: https://kubernetes.default.svc
-    namespace: logging
+    namespace: kyverno
   syncPolicy:
     automated:
       prune: true
@@ -33,11 +33,7 @@ spec:
     retry:
       limit: 5
       backoff: {duration: 5s, factor: 2, maxDuration: 1m}
-    managedNamespaceMetadata:
-      labels:
-        pod-security.kubernetes.io/enforce: restricted
-        pod-security.kubernetes.io/warn: restricted
-        pod-security.kubernetes.io/audit: restricted
     syncOptions:
       - CreateNamespace=true
+      # Kyverno's CRDs are too large for client-side apply's annotation.
       - ServerSideApply=true

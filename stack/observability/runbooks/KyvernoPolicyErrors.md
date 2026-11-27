@@ -16,14 +16,14 @@ A Kyverno policy (the `policy_name` label) returned an error instead of pass or 
    ./platform shell
    kubectl -n kyverno logs deploy/kyverno-admission-controller --since=30m | grep -i error | tail -20
    kubectl get events -A --field-selector reason=PolicyError --sort-by=.lastTimestamp | tail
-   git log --oneline -5 -- stack/kyverno/policies/
+   git log --oneline -5 -- stack/security/kyverno/policies/
    ```
 3. The Grafana Kyverno dashboard's Policy errors panel shows when it started.
 
 ## Fix
 
 - `verify-image-signatures` can't reach GHCR or Sigstore: usually transient, so watch it. If it persists, check egress from the `kyverno` namespace.
-- A CEL expression breaks on an object: fix the policy in `stack/kyverno/policies/`, add a test in `stack/kyverno/policies/tests/`, and open a PR. If urgent, revert the policy change.
+- A CEL expression breaks on an object: fix the policy in `stack/security/kyverno/policies/`, add a test in `stack/security/kyverno/policies/tests/`, and open a PR. If urgent, revert the policy change.
 
 ## Done when
 

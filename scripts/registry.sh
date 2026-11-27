@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/registry.sh: the in-stack registry (stack/registry/) holding each
+# scripts/registry.sh: the in-stack registry (stack/delivery/registry/) holding each
 # app's published image and OCI chart. Pods pull localhost:30500/<app>:<tag>.
 #   install | published <app> <v> | digest <app> <tag> | push-image <app> <tag>
 #   publish <app> <v>  (never overwrites a version)
@@ -92,7 +92,7 @@ publish() { # publish <app> <version>
 case "${1:-}" in
   install)
     step "In-stack registry (namespace registry)"
-    kubectl apply -k "$ROOT/stack/registry" >/dev/null
+    kubectl apply -k "$ROOT/stack/delivery/registry" >/dev/null
     kubectl -n registry rollout status deploy/registry --timeout=180s >/dev/null
     ok "registry ready: images localhost:30500/<app>, charts registry.registry.svc.cluster.local:5000/charts"
     ;;

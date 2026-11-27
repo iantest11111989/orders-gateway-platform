@@ -1,25 +1,27 @@
-# Steady light traffic to dev, staging and prod so dashboards show live data.
-# Wave 45: after the environments.
+# Kyverno policies from stack/security/kyverno/policies/ (tests/ excluded). Wave 30: before the apps,
+# so new app pods are checked.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: trickle
+  name: kyverno-policies
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: platform-demo
   annotations:
-    argocd.argoproj.io/sync-wave: "45"
-    argocd.argoproj.io/manifest-generate-paths: "/stack/trickle"
+    argocd.argoproj.io/sync-wave: "30"
+    argocd.argoproj.io/manifest-generate-paths: "/stack/security/kyverno/policies"
   finalizers: [resources-finalizer.argocd.argoproj.io]
 spec:
   project: default
   source:
     repoURL: {{ .Values.repo.url }}
     targetRevision: {{ .Values.repo.revision }}
-    path: stack/trickle
+    path: stack/security/kyverno/policies
+    directory:
+      exclude: "{tests/*,README.md}"
   destination:
     server: https://kubernetes.default.svc
-    namespace: trickle
+    namespace: kyverno
   syncPolicy:
     automated:
       prune: true
@@ -27,10 +29,3 @@ spec:
     retry:
       limit: 5
       backoff: {duration: 5s, factor: 2, maxDuration: 1m}
-    managedNamespaceMetadata:
-      labels:
-        pod-security.kubernetes.io/enforce: restricted
-        pod-security.kubernetes.io/warn: restricted
-        pod-security.kubernetes.io/audit: restricted
-    syncOptions:
-      - CreateNamespace=true

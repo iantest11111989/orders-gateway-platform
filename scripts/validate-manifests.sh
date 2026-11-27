@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Renders everything Argo CD applies (app chart per env, stack/bootstrap/apps,
-# stack/*) into out/rendered/ for kubeconform and kyverno in CI, without a
+# Renders everything Argo CD applies (app chart per env, stack/delivery/bootstrap/apps,
+# stack/<group>/<component>) into out/rendered/ for kubeconform and kyverno in CI, without a
 # cluster. Runs in the toolbox: ./platform shell scripts/validate-manifests.sh
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -22,16 +22,17 @@ done
 mkdir -p out/policy-input
 cat "$OUT"/app-dev.yaml "$OUT"/app-staging.yaml "$OUT"/app-prod.yaml >out/policy-input/apps.yaml
 
-step "The app-of-apps (stack/bootstrap/apps)"
-helm lint stack/bootstrap/apps --quiet >/dev/null || die "helm lint failed for stack/bootstrap/apps"
-helm template root stack/bootstrap/apps >"$OUT/apps-in-stack.yaml"
+step "The app-of-apps (stack/delivery/bootstrap/apps)"
+helm lint stack/delivery/bootstrap/apps --quiet >/dev/null || die "helm lint failed for stack/delivery/bootstrap/apps"
+helm template root stack/delivery/bootstrap/apps >"$OUT/apps-in-stack.yaml"
 ok "$(grep -c '^kind:' "$OUT/apps-in-stack.yaml") Applications"
 
-step "stack/<component> manifests"
-for c in stack/*/; do
+step "stack/<group>/<component> manifests"
+for c in stack/*/*/; do
   n=$(basename "$c")
-  # Not components: bootstrap is rendered above; the rest aren't Kubernetes objects.
-  case "$n" in bootstrap|cluster|toolbox|observability) continue ;; esac
+  # Not components: bootstrap is rendered above; the rest aren't Kubernetes
+  # objects (alert rules are checked by scripts/test-alerts.sh).
+  case "$n" in bootstrap|alerts|dashboards|runbooks) continue ;; esac
   if [ -d "${c}manifests" ]; then d="${c}manifests/"
   elif [ -f "${c}values.yaml" ]; then continue # Helm values only
   else d=$c

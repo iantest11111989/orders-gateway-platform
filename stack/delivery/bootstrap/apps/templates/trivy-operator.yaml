@@ -1,5 +1,5 @@
 # Trivy Operator: continuous image and config scans, exported as metrics
-# (stack/trivy-operator/values.yaml). Wave 20.
+# (stack/security/trivy-operator/values.yaml). Wave 20.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/part-of: platform-demo
   annotations:
     argocd.argoproj.io/sync-wave: "20"
-    argocd.argoproj.io/manifest-generate-paths: "/stack/trivy-operator"
+    argocd.argoproj.io/manifest-generate-paths: "/stack/security/trivy-operator"
 spec:
   project: default
   sources:
@@ -19,7 +19,7 @@ spec:
       helm:
         releaseName: trivy-operator
         valueFiles:
-          - $values/stack/trivy-operator/values.yaml
+          - $values/stack/security/trivy-operator/values.yaml
     - repoURL: {{ .Values.repo.url }}
       targetRevision: {{ .Values.repo.revision }}
       ref: values

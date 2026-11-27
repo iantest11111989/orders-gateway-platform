@@ -6,7 +6,7 @@ Each section says where a part lives, how to see it, and why. Run commands from 
 
 ## 1. Start-up
 
-Files: [`docker-compose.yml`](../../docker-compose.yml), [`scripts/compose-ready.sh`](../../scripts/compose-ready.sh), [`scripts/up.sh`](../../scripts/up.sh), [`stack/cluster/kind.yaml`](../../stack/cluster/kind.yaml), [`stack/bootstrap/root.yaml`](../../stack/bootstrap/root.yaml).
+Files: [`docker-compose.yml`](../../docker-compose.yml), [`scripts/compose-ready.sh`](../../scripts/compose-ready.sh), [`scripts/up.sh`](../../scripts/up.sh), [`stack/cluster/kind.yaml`](../../stack/cluster/kind.yaml), [`stack/delivery/bootstrap/root.yaml`](../../stack/delivery/bootstrap/root.yaml).
 
 1. Start the stack and follow it:
 
@@ -26,7 +26,7 @@ Files: [`docker-compose.yml`](../../docker-compose.yml), [`scripts/compose-ready
 
    One control plane and two workers, each a Docker container capped at 2 CPU / 4 GiB, with the workers in different zones.
 
-3. Open Argo CD at <http://localhost:8081>. Each tile is an Application from [`stack/bootstrap/apps/templates/`](../../stack/bootstrap/apps/templates/), installed in sync waves: CRDs, controllers, monitoring and policies, then the apps.
+3. Open Argo CD at <http://localhost:8081>. Each tile is an Application from [`stack/delivery/bootstrap/apps/templates/`](../../stack/delivery/bootstrap/apps/templates/), installed in sync waves: CRDs, controllers, monitoring and policies, then the apps.
 
 Check yourself: `traefik.yaml` is wave 10 and `edge.yaml` is wave 25. Why must Traefik come first?
 
@@ -36,8 +36,8 @@ Run `./platform verify`. It checks most of this in one go.
 
 | Try it | Built in |
 | --- | --- |
-| `curl localhost:8080/version` returns 200 | [`ingress.yaml`](../../apps/orders-gateway/chart/templates/ingress.yaml), [`stack/traefik/values.yaml`](../../stack/traefik/values.yaml) |
-| `curl -X POST localhost:8080/admin/fault` returns 403 | the same, plus [`stack/edge/`](../../stack/edge/) |
+| `curl localhost:8080/version` returns 200 | [`ingress.yaml`](../../apps/orders-gateway/chart/templates/ingress.yaml), [`stack/networking/traefik/values.yaml`](../../stack/networking/traefik/values.yaml) |
+| `curl -X POST localhost:8080/admin/fault` returns 403 | the same, plus [`stack/networking/edge/`](../../stack/networking/edge/) |
 | `./platform kubectl get deploy -A -l app.kubernetes.io/name=orders-gateway` shows dev, staging and prod | [`apps/orders-gateway/chart/`](../../apps/orders-gateway/chart/) |
 | `docker compose stop && docker compose start`, then Grafana still shows the earlier traffic | the cluster runs in kind's own containers, outside Compose |
 
@@ -97,7 +97,7 @@ Check yourself: after `./pipeline cd`, what does `git diff apps/orders-gateway/c
 
 ## 5. GitOps and CI
 
-Files: [`stack/git-server/`](../../stack/git-server/), [`.github/workflows/`](../../.github/workflows/). Exercise [5](05-k8s-operations.md) goes deeper.
+Files: [`stack/delivery/git-server/`](../../stack/delivery/git-server/), [`.github/workflows/`](../../.github/workflows/). Exercise [5](05-k8s-operations.md) goes deeper.
 
 ```sh
 ./platform kubectl -n dev scale deploy orders-gateway --replicas=3
@@ -106,7 +106,7 @@ Files: [`stack/git-server/`](../../stack/git-server/), [`.github/workflows/`](..
 
 Argo CD reads from a Git server inside the cluster that holds a snapshot of your checkout. CI/CD runs locally through `./pipeline`; GitHub only checks pull requests. [`docs/production.md`](../production.md) describes how it would run in production.
 
-Check yourself: which policy in [`stack/kyverno/policies/`](../../stack/kyverno/policies/) stops an unsigned image in prod? Why are `./pipeline`'s unsigned `localhost:30500/` images still admitted? (Read `verify-image-signatures.yaml`.)
+Check yourself: which policy in [`stack/security/kyverno/policies/`](../../stack/security/kyverno/policies/) stops an unsigned image in prod? Why are `./pipeline`'s unsigned `localhost:30500/` images still admitted? (Read `verify-image-signatures.yaml`.)
 
 ## 6. Observability
 
@@ -150,7 +150,7 @@ Check yourself: during `chaos`, why does the second eviction wait? Which object 
 
 ## 8. Pinned versions
 
-Tool versions are in [`stack/toolbox/versions.env`](../../stack/toolbox/versions.env) and chart versions in `stack/bootstrap/apps/templates/`. Renovate keeps them current.
+Tool versions are in [`stack/toolbox/versions.env`](../../stack/toolbox/versions.env) and chart versions in `stack/delivery/bootstrap/apps/templates/`. Renovate keeps them current.
 
 ## Next
 

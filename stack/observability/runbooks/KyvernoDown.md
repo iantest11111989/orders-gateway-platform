@@ -18,11 +18,11 @@ No Kyverno admission controller has answered a metrics scrape for 5 minutes. Its
    kubectl -n dev run try-latest --image=docker.io/library/busybox:latest --restart=Never --dry-run=server -o name \
      --overrides='{"apiVersion":"v1","spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65534,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"try-latest","image":"docker.io/library/busybox:latest","securityContext":{"allowPrivilegeEscalation":false,"readOnlyRootFilesystem":true,"capabilities":{"drop":["ALL"]}},"resources":{"requests":{"cpu":"10m","memory":"16Mi"},"limits":{"memory":"32Mi"}}}]}}'
    ```
-   If it is refused, Kyverno works and only the scrape is broken. Check `stack/network-policies/kyverno.yaml`.
+   If it is refused, Kyverno works and only the scrape is broken. Check `stack/security/network-policies/kyverno.yaml`.
 
 ## Fix
 
-- OOM-killed: raise the limit in `stack/kyverno/values.yaml` in Git.
+- OOM-killed: raise the limit in `stack/security/kyverno/values.yaml` in Git.
 - Not scheduled (nodes full): `./platform budget`, then free room, for example `./platform demo clean`.
 - In Argo CD, check the `kyverno` Application is Synced and Healthy.
 

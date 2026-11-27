@@ -17,9 +17,9 @@ kubectl -n trivy-system get events --sort-by=.lastTimestamp | tail
 
 ## Fix
 
-- OOM-killed (loading the vulnerability DB uses the most memory): raise the limit in `stack/trivy-operator/values.yaml` in Git. Stay within the 6 CPU / 12 GiB budget.
+- OOM-killed (loading the vulnerability DB uses the most memory): raise the limit in `stack/security/trivy-operator/values.yaml` in Git. Stay within the 6 CPU / 12 GiB budget.
 - The DB download fails (registry rate limit): usually transient. The operator retries.
-- Pod runs but the alert fires: the scrape is broken. Check `stack/network-policies/trivy-system.yaml`.
+- Pod runs but the alert fires: the scrape is broken. Check `stack/security/network-policies/trivy-system.yaml`.
 
 ## Done when
 

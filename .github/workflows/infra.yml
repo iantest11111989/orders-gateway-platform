@@ -63,9 +63,9 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/w:ro" -w /w \
             ghcr.io/kyverno/kyverno-cli:v1.20.0@sha256:bd2b8b7c9d550ecf04e0bacaf351adce2f82ce67fd3f291075edcee7f8ab4ab4 \
-            apply stack/kyverno/policies/disallow-latest-tag.yaml stack/kyverno/policies/disallow-latest-tag-platform.yaml \
-              stack/kyverno/policies/require-non-root-readonly.yaml stack/kyverno/policies/require-probes.yaml \
-              stack/kyverno/policies/require-resources.yaml stack/kyverno/policies/restrict-image-registries.yaml \
+            apply stack/security/kyverno/policies/disallow-latest-tag.yaml stack/security/kyverno/policies/disallow-latest-tag-platform.yaml \
+              stack/security/kyverno/policies/require-non-root-readonly.yaml stack/security/kyverno/policies/require-probes.yaml \
+              stack/security/kyverno/policies/require-resources.yaml stack/security/kyverno/policies/restrict-image-registries.yaml \
             --resource out/policy-input/apps.yaml >"$RUNNER_TEMP/kyverno.txt" 2>&1 || { cat "$RUNNER_TEMP/kyverno.txt"; exit 1; }
           grep -E "^(Applying|pass:)" "$RUNNER_TEMP/kyverno.txt"
           grep -qE "^pass: [1-9][0-9]*, fail: 0, warn: 0, error: 0" "$RUNNER_TEMP/kyverno.txt"

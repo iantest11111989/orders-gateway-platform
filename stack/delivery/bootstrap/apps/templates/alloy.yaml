@@ -1,31 +1,31 @@
-# Traefik: the only way in from the host, one entrypoint per host port via a
-# NodePort that kind maps to 127.0.0.1. Wave 10, after the CRDs (-10).
+# Log collection: Grafana Alloy DaemonSet shipping pod logs to Loki
+# (stack/observability/alloy/values.yaml).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: traefik
+  name: alloy
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: platform-demo
   annotations:
-    argocd.argoproj.io/sync-wave: "10"
-    argocd.argoproj.io/manifest-generate-paths: "/stack/traefik"
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/manifest-generate-paths: "/stack/observability/alloy"
 spec:
   project: default
   sources:
-    - repoURL: https://traefik.github.io/charts
-      chart: traefik
-      targetRevision: 43.0.0
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: alloy
+      targetRevision: 1.16.0 # Alloy v1.22.0
       helm:
-        releaseName: traefik
+        releaseName: alloy
         valueFiles:
-          - $values/stack/traefik/values.yaml
+          - $values/stack/observability/alloy/values.yaml
     - repoURL: {{ .Values.repo.url }}
       targetRevision: {{ .Values.repo.revision }}
       ref: values
   destination:
     server: https://kubernetes.default.svc
-    namespace: traefik
+    namespace: logging
   syncPolicy:
     automated:
       prune: true
