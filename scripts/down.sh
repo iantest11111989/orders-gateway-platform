@@ -10,4 +10,5 @@ else
   step "No cluster named '$CLUSTER_NAME'; nothing to delete"
 fi
 rm -f "$KUBECONFIG"  # in the platform-demo-kube volume
+drop_demo_copies
 ok "Done"

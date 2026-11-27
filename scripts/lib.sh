@@ -68,3 +68,25 @@ sync_app() { # sync_app <application> [who]
                  sync: {prune: true, syncOptions: $opts},
                  retry: {limit: 5, backoff: {duration: "5s", factor: 2, maxDuration: "1m"}}}}')" >/dev/null
 }
+
+# hello-world exists only while ./platform demo hello-world has added it
+# (apps/hello-world, marked by .build/hello-world-demo). Starting or deleting
+# the platform drops a copy an earlier demo left in this checkout, so
+# `docker compose up` deploys orders-gateway only. A folder without the
+# marker is someone's own app and is left alone.
+drop_demo_copies() {
+  local root marker f
+  root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+  marker="$root/.build/hello-world-demo"
+  [ -f "$marker" ] || return 0
+  rm -rf "$root/apps/hello-world"
+  # The demo hid the folder from your git (.git/info/exclude); unhide it.
+  f=$(git -c safe.directory='*' -C "$root" rev-parse --git-path info/exclude 2>/dev/null || true)
+  case $f in /*) ;; ?*) f="$root/$f" ;; esac
+  if [ -n "$f" ] && [ -f "$f" ]; then
+    grep -v -e '^# ./platform demo hello-world' -e '^/apps/hello-world/$' "$f" >"$f.tmp" || true
+    mv "$f.tmp" "$f"
+  fi
+  rm -f "$marker"
+  ok "removed the hello-world app an earlier demo left in apps/ (./platform demo hello-world adds it again)"
+}

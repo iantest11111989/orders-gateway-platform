@@ -34,7 +34,11 @@ else
 fi
 
 # Free disk where Docker stores images, measured from a throwaway container.
-free_kb=$(docker run --rm -v /var/lib/docker:/d:ro --entrypoint df "$TOOLBOX_IMAGE" -Pk /d 2>/dev/null | awk 'NR == 2 { print $4 }' || true)
+# Compose's ready container doesn't know its own image name: it skips this.
+free_kb=''
+if [ -n "${TOOLBOX_IMAGE:-}" ]; then
+  free_kb=$(docker run --rm -v /var/lib/docker:/d:ro --entrypoint df "$TOOLBOX_IMAGE" -Pk /d 2>/dev/null | awk 'NR == 2 { print $4 }' || true)
+fi
 if [ -n "$free_kb" ]; then
   free_gb=$((free_kb / 1024 / 1024))
   if [ "$free_gb" -ge 20 ]; then
