@@ -1105,8 +1105,8 @@
     },
     {
       "type": "logs",
-      "title": "orders-gateway logs (errors and warnings first)",
-      "description": "The app's JSON logs from Loki for this namespace, newest first, showing only level warn and error (the app logs 5xx at error). Clear the filter in Explore to see every line. Per-request values like trace_id, pod and duration_ms live here, not in metric labels.",
+      "title": "orders-gateway logs",
+      "description": "Every line the app logs in this namespace, newest first: one JSON line per request at info, 5xx at error. Click a line for its fields (trace_id, pod, route, status, duration_ms), which live here and not in metric labels.",
       "id": 21,
       "datasource": {
         "type": "loki",
@@ -1114,8 +1114,40 @@
       },
       "gridPos": {
         "h": 10,
-        "w": 24,
+        "w": 12,
         "x": 0,
+        "y": 50
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "refId": "A",
+          "expr": "{namespace=\"$namespace\", app=\"orders-gateway\"} | json"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true
+      }
+    },
+    {
+      "type": "logs",
+      "title": "Errors and warnings",
+      "description": "Only the app's lines at level warn or error (it logs 5xx at error). Empty while the app is healthy; run ./platform demo alert or gitops-revert to fill it.",
+      "id": 22,
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
         "y": 50
       },
       "targets": [
