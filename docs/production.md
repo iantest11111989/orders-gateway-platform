@@ -10,7 +10,7 @@ What would change between this local setup and a real cloud deployment, and why.
 | A Git server inside the stack, one Argo CD | GitHub, and an Argo CD in each cluster that deploys only its own environment | No cluster holds credentials for another |
 | A registry inside the stack | ECR (or similar), with immutable tags | |
 | `./pipeline` on your machine | GitHub Actions on merge to main (see below) | Releases should be built by a known, reviewed identity, not a laptop |
-| Traefik on `localhost` ports, plain HTTP | No Traefik. The AWS Load Balancer Controller turns each Ingress into an ALB that sends traffic straight to the pods, with TLS from ACM and a hostname per environment | One component fewer to run, patch and scale, and AWS runs the load balancer. The cost: local and prod routing differ (see below) |
+| Traefik on `localhost` ports, plain HTTP | No Traefik. The AWS Load Balancer Controller turns each Ingress into an ALB that sends traffic straight to the pods, with TLS from ACM and a hostname per environment | One component fewer to run, patch and scale, and AWS runs the load balancer. Dev, staging and prod all use it, so dev mimics prod |
 | Sealed Secrets with a public demo key | External Secrets reading a secret manager (AWS Secrets Manager) | The demo key is public by design |
 | Prometheus (24 h), Loki, Grafana, alerts to a local receiver | Datadog or a similar service; pages to PagerDuty | 30 days of data for the real error budget, and no monitoring stack to run |
 | `admin` / `admin12345` | SSO for people; read-only in prod, changes go through Git | |
@@ -26,7 +26,7 @@ Locally Traefik is the way in. In production the AWS Load Balancer Controller do
 - The ALB's deregistration delay is set to about 20 s, and pod readiness gates are on, so a stopping pod leaves the ALB before it stops listening. The same job the 5 s `preStop` sleep does for Traefik here.
 - The NetworkPolicy lets traffic in from the VPC's subnets instead of the `traefik` namespace.
 
-The trade-off: what you practise locally (Traefik middleware, a port per environment) isn't what runs in prod. Keeping Traefik behind the ALB would avoid that, at the cost of running it. For one small app on EKS, the simpler setup wins.
+Every real environment, dev included, runs this way, so dev mimics prod and a routing change is tested in dev before it reaches prod. Only this local practice setup uses Traefik, because there is no AWS load balancer on a laptop.
 
 What stays the same: the Helm chart (only its Ingress values change), the env files in `apps/<app>/cd/`, Argo CD's app-of-apps, the Kyverno policies, the SLOs and their runbooks, and the app's metrics and JSON logs.
 
