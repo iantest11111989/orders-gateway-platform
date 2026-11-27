@@ -91,6 +91,7 @@ else
   ok "kube-system/sealed-secrets-demo-key"
 fi
 
+drop_demo_copies
 bash "$(dirname "$0")/registry.sh" install
 bash "$(dirname "$0")/registry.sh" seed
 hand_over_app_applications
