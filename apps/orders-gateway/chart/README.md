@@ -21,7 +21,7 @@ Read [`server.js`](../app/server.js) first: about 100 lines. Each row is somethi
 | Reads its settings from environment variables. `/admin/fault` switches on failures with no auth | A fault switch reachable from the internet | Settings are chart values (`config.*`), turned into a ConfigMap. The Ingress refuses `/admin/*` with a 403 | `templates/configmap.yaml`, `templates/ingress.yaml` |
 | Serves `/metrics` and labels unknown paths with their own `route` | A scanner creates thousands of metric series | A ServiceMonitor that keeps only the known routes | `templates/servicemonitor.yaml` |
 
-The app needs no secrets. The platform's secrets are SealedSecrets ([`stack/sealed-secrets/`](../../../stack/sealed-secrets/)).
+The app needs no secrets. The platform's secrets are SealedSecrets ([`stack/security/sealed-secrets/`](../../../stack/security/sealed-secrets/)).
 
 Per environment: dev runs 1 pod with no disruption budget or spreading. Staging and prod autoscale (2 to 4 and 3 to 6 pods) with both on. The differences are all in [`cd/<env>.yaml`](../cd/).
 
