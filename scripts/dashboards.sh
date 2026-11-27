@@ -1,6 +1,6 @@
 #!/bin/sh
 # Grafana dashboards: stack/observability/dashboards/*.json is the source; the ConfigMaps in
-# stack/kube-prometheus-stack/manifests/ are generated from it.
+# stack/observability/prometheus/manifests/ are generated from it.
 #   gen    write the ConfigMaps
 #   check  CI: ConfigMaps current, every panel described, every query parses
 # Needs jq and Docker.
@@ -8,7 +8,7 @@ set -eu
 cd "$(dirname "$0")/.."
 
 PROM_IMAGE=prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
-OUT=stack/kube-prometheus-stack/manifests
+OUT=stack/observability/prometheus/manifests
 
 configmap() { # configmap <dashboard.json>
   name=$(basename "$1" .json)

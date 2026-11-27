@@ -4,7 +4,7 @@
 
 What Terraform does here, and what it deliberately doesn't:
 
-| Terraform owns | Argo CD keeps owning (unchanged from `stack/bootstrap/` and `stack/`) |
+| Terraform owns | Argo CD keeps owning (unchanged from `stack/delivery/bootstrap/` and `stack/`) |
 | --- | --- |
 | VPC across 3 zones, private subnets, NAT | Every platform component: Traefik, Kyverno, the Datadog Agent, ... |
 | EKS: private API endpoint, SSO access entries, add-ons (VPC CNI with network policy) | The app in dev, staging and prod, from `apps/orders-gateway/cd/*.yaml` |

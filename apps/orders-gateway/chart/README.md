@@ -1,6 +1,6 @@
 # apps/orders-gateway/chart
 
-The Helm chart for [`apps/orders-gateway/app/`](../app/README.md). Every object is named after the Helm release, which Argo CD sets to the app's name. Each environment installs it with `apps/orders-gateway/cd/values.yaml` plus its own env file, through the ApplicationSet in `stack/bootstrap/apps/templates/apps.yaml`.
+The Helm chart for [`apps/orders-gateway/app/`](../app/README.md). Every object is named after the Helm release, which Argo CD sets to the app's name. Each environment installs it with `apps/orders-gateway/cd/values.yaml` plus its own env file, through the ApplicationSet in `stack/delivery/bootstrap/apps/templates/apps.yaml`.
 
 ## Templates
 

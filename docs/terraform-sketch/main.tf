@@ -134,7 +134,7 @@ resource "aws_ecr_pull_through_cache_rule" "ghcr" {
 }
 
 # Terraform stops at Argo CD and the root Application; everything else stays
-# in stack/bootstrap/ and stack/ as in kind.
+# in stack/delivery/bootstrap/ and stack/ as in kind.
 provider "helm" {
   kubernetes = {
     host                   = module.eks.cluster_endpoint
@@ -151,10 +151,10 @@ resource "helm_release" "argocd" {
   name             = "argo-cd"
   repository       = "https://argoproj.github.io/argo-helm"
   chart            = "argo-cd"
-  version          = "10.18.2" # the same pin as stack/bootstrap/apps/templates/argocd.yaml
+  version          = "10.18.2" # the same pin as stack/delivery/bootstrap/apps/templates/argocd.yaml
   namespace        = "argocd"
   create_namespace = true
-  values           = [file("${path.module}/../../stack/argocd/values.yaml")]
+  values           = [file("${path.module}/../../stack/delivery/argocd/values.yaml")]
 }
 
 resource "helm_release" "root" {
@@ -171,7 +171,7 @@ resource "helm_release" "root" {
         source = {
           repoURL        = var.repo_url
           targetRevision = "main"
-          path           = "stack/bootstrap/apps"
+          path           = "stack/delivery/bootstrap/apps"
           # A real port would add EKS values (load balancer, storage classes).
           helm = { valuesObject = { repo = { url = var.repo_url, revision = "main" } } }
         }

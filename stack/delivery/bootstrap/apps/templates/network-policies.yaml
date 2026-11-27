@@ -1,27 +1,25 @@
-# Kyverno policies from stack/kyverno/policies/ (tests/ excluded). Wave 30: before the apps,
-# so new app pods are checked.
+# NetworkPolicies for the platform namespaces (stack/security/network-policies/); the
+# app namespaces get theirs from the chart. Wave 30: after all namespaces exist.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: kyverno-policies
+  name: network-policies
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: platform-demo
   annotations:
     argocd.argoproj.io/sync-wave: "30"
-    argocd.argoproj.io/manifest-generate-paths: "/stack/kyverno/policies"
+    argocd.argoproj.io/manifest-generate-paths: "/stack/security/network-policies"
   finalizers: [resources-finalizer.argocd.argoproj.io]
 spec:
   project: default
   source:
     repoURL: {{ .Values.repo.url }}
     targetRevision: {{ .Values.repo.revision }}
-    path: stack/kyverno/policies
-    directory:
-      exclude: "{tests/*,README.md}"
+    path: stack/security/network-policies
   destination:
     server: https://kubernetes.default.svc
-    namespace: kyverno
+    namespace: default
   syncPolicy:
     automated:
       prune: true

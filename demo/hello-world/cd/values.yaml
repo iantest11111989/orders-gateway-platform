@@ -3,7 +3,7 @@
 # folder to apps/hello-world/cd/ and removes it when the demo ends.
 
 image:
-  # The in-stack registry (stack/registry/); ./pipeline publishes here.
+  # The in-stack registry (stack/delivery/registry/); ./pipeline publishes here.
   repository: localhost:30500/hello-world
 
 # Traefik serves every environment. Its own host only: plain

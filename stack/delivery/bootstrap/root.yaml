@@ -1,5 +1,5 @@
 # Root Application (app-of-apps), applied by ./platform up: renders
-# stack/bootstrap/apps from the in-stack Git server.
+# stack/delivery/bootstrap/apps from the in-stack Git server.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -12,7 +12,7 @@ spec:
   source:
     repoURL: http://git.git.svc.cluster.local:23232/platform.git
     targetRevision: main
-    path: stack/bootstrap/apps
+    path: stack/delivery/bootstrap/apps
     helm:
       valuesObject:
         repo:

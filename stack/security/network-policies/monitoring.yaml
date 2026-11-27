@@ -34,7 +34,7 @@ spec:
         # Outside the pod network: the nodes and the API server.
         - ipBlock: {cidr: 0.0.0.0/0, except: [10.244.0.0/16]}
 ---
-# Traefik serves Grafana, Prometheus and Alertmanager (stack/edge).
+# Traefik serves Grafana, Prometheus and Alertmanager (stack/networking/edge).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
