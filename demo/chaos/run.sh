@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# ./platform demo chaos [--keep]: in a copy of prod, delete a pod, then drain
-# a worker (for the demo's pods): the PodDisruptionBudget and the zone spread
-# keep it serving.
+# ./platform demo chaos [staging|prod]: delete one of the app's pods, then
+# drain a worker of the app's pods: the PodDisruptionBudget and the zone
+# spread keep it serving. Prod unless you name staging (dev has 1 pod).
 # Runs in the toolbox; shared helpers in demo/lib.sh.
 # shellcheck source=demo/lib.sh
 source "$(dirname "$0")/../lib.sh"
@@ -29,14 +29,14 @@ evict() { # evict <pod>
 }
 
 demo_chaos() {
-  step "Demo: chaos in a copy of prod"
+  step "Demo: chaos in $ENV ($URL)"
   echo "  First a pod is deleted: its ReplicaSet replaces it. Then a"
   echo "  worker is drained (cordoned, and the demo's pods on it evicted the way"
   echo "  kubectl drain does): the PodDisruptionBudget (maxUnavailable 1) lets"
   echo "  only one go at a time, and the pods spread across zones keep serving."
-  echo "  Only the demo's pods are evicted; nothing else on the node moves."
-  ensure_app orders-gateway-prod v1
-  wait_healthy v1 600
+  echo "  Only orders-gateway's pods are evicted; nothing else on the node moves."
+  needs pdb "2 or more pods and a PodDisruptionBudget"
+  wait_healthy 600
   start_load
   where_to_watch
   want=$(get kubectl -n "$NS" get deployment orders-gateway -o jsonpath='{.spec.replicas}')
@@ -44,6 +44,10 @@ demo_chaos() {
   note "the PodDisruptionBudget: at most 1 pod may be voluntarily disrupted at a time"
   run kubectl get nodes -L topology.kubernetes.io/zone
   echo "  Pods (name, node, zone, phase):" >&2; show_pods
+  check "Grafana, orders-gateway dashboard (environment $NS), during the pod kill and the drain" "$(dash_url orders-gateway "$NS")" \
+    "In-flight requests and ready pods: ready pods dip by one, then recover, at each step; never two at once" \
+    "/work and /echo: share failing with 5xx: stays at 0" \
+    "Pods by version: the same 3 pods, with new names after each replacement"
 
   step "Deleting one pod"
   victim=$(demo_pods | awk 'NR == 1 {print $1}')
@@ -65,6 +69,10 @@ demo_chaos() {
   ok "all $want pods ready again, none on $node"; show_pods
   run kubectl uncordon "$node"; CORDONED=''
   ok "uncordoned $node"
+  check "Grafana → Explore → Loki: the evicted pods shutting down cleanly" \
+    "$(loki_url "{namespace=\"$NS\", app=\"orders-gateway\"} |~ \"SIGTERM|drained\"")" \
+    "one \"SIGTERM received, draining\" and one \"drained, exiting\" per pod that was deleted or evicted" \
+    "query: {namespace=\"$NS\", app=\"orders-gateway\"} |~ \"SIGTERM|drained\""
 
   sleep 10
   k6_summary

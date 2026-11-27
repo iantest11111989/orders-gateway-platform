@@ -40,7 +40,6 @@ Everything is plain HTTP on `127.0.0.1`, through Traefik.
 | --- | --- | --- |
 | orders-gateway in prod | <http://localhost:8080> | |
 | dev, staging | <http://localhost:8082>, <http://localhost:8083> | |
-| Demo copy (while a demo runs) | <http://localhost:8084> | |
 | Argo CD | <http://localhost:8081> | `admin` / `admin12345` |
 | Grafana | <http://localhost:3000> | `admin` / `admin12345` |
 | Prometheus, Alertmanager | <http://localhost:9090>, <http://localhost:9093> | none |
@@ -161,13 +160,13 @@ Start with `./platform doctor` and `./platform verify`.
 
 ## Demos
 
-The repo began as a take-home DevOps test ("the brief"), and each demo runs one of the checks it asked for. A demo prints every command it runs (`kubectl`, `curl`, `git`, `k6`, `./pipeline`) with its output, and ends with a pass or a fail. Run one with `./platform demo <name>`; each is a folder in [`demo/`](demo/README.md).
+The repo began as a take-home DevOps test ("the brief"), and each demo runs one of the checks it asked for. Every demo runs on a real environment, prod (:8080) unless you name another: `./platform demo <name> [dev|staging|prod]`. It prints every command it runs with its output, tells you at each step which Grafana or Argo CD screen to open and what you should see there (the **▶ Check** lines), and ends with a pass or a fail. Each is a folder in [`demo/`](demo/README.md).
 
 | Checks | Demo | What it shows | Time |
 | --- | --- | --- | --- |
 | The fixed contract | `contract` | every row of the contract table, checked live: `ready`, kubeconfig, the Deployments, each endpoint on :8080, `/admin/*` refused, logins, restart policies, volumes | <1 min |
 | Ship and roll back | `hello-world` | a second app through `./pipeline`: CI, dev → staging → prod, a refused out-of-order promotion, a rollback, then a minute of traffic to see in Grafana. Left running (`./platform demo hello-world clean` tears it down) | ~7 min |
-| Rolling releases under traffic | `rolling-update` | v1 → v2 one pod at a time under load, with no errors | ~2 min |
+| Ship a version, rolling releases under traffic | `release` | a new version through `./pipeline`, dev → staging → prod, under load. It stops at the Argo CD Sync point of staging and prod, then the pods roll one at a time with no errors. The version stays released | ~10 min |
 | Pods killed | `chaos` | a pod deleted and a worker drained; the disruption budget keeps it serving | ~3 min |
 | Platform components killed | `platform-chaos` | Traefik, CoreDNS, Argo CD, Prometheus and Kyverno pods deleted under load, one at a time | ~3 min |
 | Traffic that rises sharply | `autoscale` | load pushes the HPA from 3 to 6 pods and back | ~8 min |
@@ -175,7 +174,7 @@ The repo began as a take-home DevOps test ("the brief"), and each demo runs one 
 | Promotion by Git change | `gitops-revert` | a bad commit synced by Argo CD, then healed by `git revert` | ~5 min |
 | Sensible security | `policy` | Kyverno refuses an unsigned image and a `:latest` image | <1 min |
 
-`./platform demo clean` deletes whatever a demo left. Add `--keep` to leave a demo's copy running.
+`chaos` and `autoscale` need staging or prod (dev runs 1 pod, with no disruption budget or HPA). `alert` raises a real alert in the environment you pick, and its failed requests stay in that environment's 24-hour error budget.
 
 ## Tests and CI
 

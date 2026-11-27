@@ -17,7 +17,7 @@ Short hands-on exercises, about 15 minutes each, run against your live stack.
 | Argo CD | <http://localhost:8081> | `admin` / `admin12345` |
 | Prometheus | <http://localhost:9090> | none |
 | Alertmanager | <http://localhost:9093> | none |
-| The app | prod <http://localhost:8080>, dev <http://localhost:8082>, staging <http://localhost:8083>, demo copy <http://localhost:8084> | none |
+| The app | prod <http://localhost:8080>, dev <http://localhost:8082>, staging <http://localhost:8083> | none |
 
 ## About the numbers
 

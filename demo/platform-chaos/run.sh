@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ./platform demo platform-chaos [--keep]: in a copy of prod under load,
+# ./platform demo platform-chaos [dev|staging|prod]: with k6 load on the env,
 # delete the platform's own pods one at a time (Traefik, CoreDNS, the Argo CD
 # repo server and application controller, Prometheus, the Kyverno admission
 # controller) and show each come back, and what the app needed from it.
@@ -18,7 +18,7 @@ pods() {
       "\(.metadata.uid) \(.metadata.name) \(([.status.conditions[]? | select(.type == "Ready") | .status][0]) // "False") \(.spec.nodeName // "-")"'
 }
 
-# probe: one request through Traefik to the demo copy, with its status and time.
+# probe: one request through Traefik to the environment, with its status and time.
 probe() {
   local out
   show "curl -s -o /dev/null -w '%{http_code} %{time_total}s' $URL/version"
@@ -57,15 +57,20 @@ kill_one() {
 }
 
 demo_platform_chaos() {
-  step "Demo: platform components killed under load, in a copy of prod"
+  step "Demo: platform components killed under load, while $ENV serves ($URL)"
   echo "  The goal: stay available and reasonably fast while individual pods"
   echo "  and platform components are killed. k6 sends traffic through Traefik"
-  echo "  to a copy of prod the whole time; one platform pod at a time is"
-  echo "  deleted and comes back. The app's own pods are the chaos demo."
-  ensure_app orders-gateway-prod v1
-  wait_healthy v1 600
+  echo "  to $ENV the whole time; one platform pod at a time is deleted and"
+  echo "  comes back. The app's own pods are the chaos demo."
+  wait_healthy 600
   start_load
   where_to_watch
+  check "Grafana, platform-overview dashboard, while each component is killed" "$(dash_url platform-overview)" \
+    "Pods not Ready: blips to 1 at each kill, then back to 0" \
+    "Requests per second at the edge, by status code: stays 2xx; no 5xx band appears" \
+    "after the Prometheus kill: a short gap in every graph. That's Prometheus restarting, not the app failing"
+  check "Grafana, orders-gateway dashboard (environment $NS)" "$(dash_url orders-gateway "$NS")" \
+    "/work and /echo: share failing with 5xx: stays at 0 through every kill"
   probe
 
   kill_one traefik app.kubernetes.io/name=traefik "a Traefik pod" \

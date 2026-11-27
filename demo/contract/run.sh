@@ -110,6 +110,11 @@ note "Grafana needs none: its dashboards and datasources are code (stack/observa
 note "the E2E workflow checks it: scripts/persistence-check.sh, then docker compose stop and start, then the same check again"
 note "try it yourself: docker compose stop && docker compose start && ./platform demo contract"
 
+check "the same contract, by eye (admin / admin12345)" "" \
+  "http://localhost:8080/version: prod answers" \
+  "$(dash_url platform-overview): Argo CD apps not Synced and not Healthy both 0, Pods not Ready 0" \
+  "http://localhost:9093: only Watchdog firing, the always-on alert that proves alerting works"
+
 echo
 if [ "$FAILED" -eq 0 ]; then
   ok "every contract row checked: all pass"

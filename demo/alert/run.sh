@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ./platform demo alert [--keep]: in a copy of prod under load, switch on the
+# ./platform demo alert [dev|staging|prod]: under load, switch on the
 # app's own fault (POST /admin/fault, 30% of /work and /echo fail), watch the
 # availability fast-burn SLO alert go pending, then firing, reach
 # Alertmanager and the local receiver with its runbook link; then switch the
@@ -9,6 +9,10 @@
 source "$(dirname "$0")/../lib.sh"
 
 ALERT=OrdersGatewayAvailabilityFastBurn
+FAULT_ON=''
+# If the demo stops with the fault on, switch it off: never leave the
+# environment failing on purpose.
+demo_undo() { [ -z "$FAULT_ON" ] || { warn "switching the fault off (the demo stopped early)"; set_fault 0; }; }
 
 # --- helpers -----------------------------------------------------------------
 
@@ -16,7 +20,7 @@ prom() { # prom <promql>: the query's JSON result, through the API server
   kubectl get --raw "/api/v1/namespaces/monitoring/services/kube-prometheus-stack-prometheus:9090/proxy/api/v1/query?query=$(jq -rn --arg q "$1" '$q|@uri')"
 }
 
-# The alert's state for the demo copy: inactive, pending or firing.
+# The alert's state for the environment: inactive, pending or firing.
 alert_state() {
   prom "ALERTS{alertname=\"$ALERT\",namespace=\"$NS\"}" 2>/dev/null |
     jq -r '[.data.result[].metric.alertstate] | if index("firing") then "firing" elif index("pending") then "pending" else "inactive" end' 2>/dev/null || echo "?"
@@ -69,7 +73,7 @@ watch_alert() {
   done
 }
 
-receiver_log() { # receiver_log <status>: the receiver's JSON lines for this alert in namespace demo
+receiver_log() { # receiver_log <status>: the receiver's JSON lines for this alert in the environment
   kubectl -n monitoring logs deploy/alert-receiver --since=30m 2>/dev/null |
     jq -c --arg a "$ALERT" --arg ns "$NS" --arg s "$1" \
       'select(.alertname == $a and .alert_namespace == $ns and .status == $s)' 2>/dev/null || true
@@ -78,16 +82,16 @@ receiver_log() { # receiver_log <status>: the receiver's JSON lines for this ale
 # --- the demo ----------------------------------------------------------------
 
 demo_alert() {
-  step "Demo: an SLO alert, from a fault to the receiver and back, in a copy of prod"
+  step "Demo: an SLO alert in $ENV, from a fault to the receiver and back"
   echo "  The app has a runtime fault switch: POST /admin/fault {\"error_rate\": 0.3}"
   echo "  makes 30% of /work and /echo answer 500. Traefik refuses /admin/* from"
   echo "  outside, so the demo reaches each pod from inside. The availability SLO"
   echo "  (99.5%) then burns 60x faster than allowed; the fast-burn alert fires,"
   echo "  pages the local receiver with its runbook link, and resolves once the"
   echo "  fault is off. Takes about 15 minutes, mostly waiting for the alert windows."
-  delete_app
-  create_app orders-gateway-prod v1
-  wait_healthy v1 600
+  echo "  This is a real alert on $ENV: it pages the receiver, and the failed"
+  echo "  requests stay in $ENV's 24-hour error budget."
+  wait_healthy 600
   start_load
   where_to_watch
   echo "    Alerts              http://localhost:9093 (Alertmanager), http://localhost:9090/alerts"
@@ -104,7 +108,7 @@ demo_alert() {
   run curl -s -w '  HTTP %{http_code}\n' -X POST -d '{"error_rate":0.3}' "$URL/admin/fault"
 
   step "2. From inside the cluster: switch the fault on in every pod"
-  set_fault 0.3
+  set_fault 0.3; FAULT_ON=1
   sleep 5
   show "curl -s -o /dev/null -w '%{http_code} ' $URL/work   # 10 times"
   local codes=''
@@ -113,6 +117,11 @@ demo_alert() {
   note "some requests now answer 500 'injected fault'; k6 keeps sending traffic"
   run kubectl -n "$NS" logs -l app.kubernetes.io/name=orders-gateway --tail=3 --prefix
   note "the app's JSON logs, as Loki stores them: level error, status 500"
+  check "Grafana, orders-gateway dashboard (environment $NS), over the next few minutes" "$(dash_url orders-gateway "$NS")" \
+    "/work and /echo: share failing with 5xx: jumps to about 30%" \
+    "Burn rate over time: climbs past the 14.4 line; that line is the paging threshold" \
+    "Availability budget left: falls fast" \
+    "Firing SLO alerts: $ALERT appears as pending, then firing after 2 minutes"
 
   step "3. Waiting for the alert: pending, then firing after 2 minutes"
   watch_alert firing 600 || die "$ALERT didn't fire within 10 minutes"
@@ -133,11 +142,16 @@ demo_alert() {
   else
     warn "the receiver hasn't logged the page yet (Alertmanager waits group_wait, 10 s, then sends)"
   fi
+  check "Alertmanager, then the receiver's log in Loki" "http://localhost:9093" \
+    "Alertmanager lists $ALERT for namespace $NS, severity page, with its runbook link" \
+    "$(loki_url '{namespace="monitoring", app="alert-receiver"} | json')" \
+    "the receiver logged the page: that's the proof the alert was delivered, not just raised" \
+    "query: {namespace=\"monitoring\", app=\"alert-receiver\"} | json"
   note "the runbook it links to (stack/observability/runbooks/$ALERT.md), first steps:"
   sed -n '1,12p' "$ROOT/stack/observability/runbooks/$ALERT.md" | indent
 
   step "5. Fix it: switch the fault off in every pod"
-  set_fault 0
+  set_fault 0; FAULT_ON=''
   ok "fault off; the 5-minute error rate falls first, then the alert resolves"
 
   step "6. Waiting for the alert to resolve"
@@ -149,8 +163,11 @@ demo_alert() {
     if [ -n "$line" ]; then jq . <<<"$line" | indent; ok "the receiver logged the resolve"
     else warn "Alertmanager hasn't sent the resolve yet (it batches every 5 minutes); it will arrive"; fi
   else
-    warn "$ALERT is still active after 12 minutes; deleting the demo copy ends it"
+    warn "$ALERT is still active after 12 minutes; it resolves by itself once the 5-minute window is clean"
   fi
+  check "Grafana, orders-gateway dashboard (environment $NS), after the fix" "$(dash_url orders-gateway "$NS")" \
+    "the 5xx share drops to 0 within minutes; the 1 h burn rate falls slowly, and the alert clears once the 5-minute window is clean" \
+    "the budget doesn't come back: the failures stay in its 24-hour window"
   k6_summary
   note "k6's SLO line is low on purpose here: the demo broke the service"
 }

@@ -127,10 +127,10 @@ Then look at:
 
 ## 7. Under load and failure
 
-Open Grafana's orders-gateway dashboard with environment `demo`, then run the demos (each is a folder in [`demo/`](../../demo/README.md)). Each runs in namespace `demo`, a copy of prod or dev, and fails if fewer than 99.5% of k6's requests meet the SLO.
+Run the demos (each is a folder in [`demo/`](../../demo/README.md)). Each runs on the real prod, sends k6 traffic to :8080, tells you which Grafana or Argo CD screen to check at each step, and fails if fewer than 99.5% of k6's requests meet the SLO.
 
 ```sh
-./platform demo rolling-update   # a release under load       (~2 min)
+./platform demo release          # a new version, dev → prod  (~10 min)
 ./platform demo chaos            # kill a pod, drain a node   (~3 min)
 ./platform demo autoscale        # HPA 3 → 6 → 3              (~8 min)
 ./platform demo gitops-revert    # a bad commit, git revert   (~5 min)

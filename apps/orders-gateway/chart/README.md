@@ -25,7 +25,7 @@ The app needs no secrets. The platform's secrets are SealedSecrets ([`stack/seal
 
 Per environment: dev runs 1 pod with no disruption budget or spreading. Staging and prod autoscale (2 to 4 and 3 to 6 pods) with both on. The differences are all in [`cd/<env>.yaml`](../cd/).
 
-The demos check this under load: `rolling-update`, `chaos` (pod kill, node drain), `autoscale` and `platform-chaos` each fail if fewer than 99.5% of requests meet the SLO.
+The demos check this under load, on prod: `release`, `chaos` (pod kill, node drain), `autoscale` and `platform-chaos` each fail if fewer than 99.5% of requests meet the SLO.
 
 ## Templates
 

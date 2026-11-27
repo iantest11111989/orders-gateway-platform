@@ -57,7 +57,7 @@ You should see about 3 req/s on `/work`, 1.5 on `/echo` and 0.5 on `/version`, p
 
 1. Open Settings, Variables, Add variable.
 2. Type Query, Name `namespace`, Label `environment`, data source Prometheus.
-3. Query type Label values, Label `namespace`, Metric `app_info`. The preview lists dev, staging and prod (and `demo` if a demo ran recently).
+3. Query type Label values, Label `namespace`, Metric `app_info`. The preview lists dev, staging and prod.
 4. In both panels, replace `namespace="dev"` with `namespace="$namespace"`.
 
 The drop-down now switches both panels, as on the provided dashboard.

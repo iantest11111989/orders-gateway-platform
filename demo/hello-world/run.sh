@@ -45,6 +45,13 @@ esac
 step() { printf '\n==> %s\n' "$*"; }
 ok() { printf '  ✓ %s\n' "$*"; }
 say() { printf '  %s\n' "$*"; }
+# check <where> <url> <what you should see>...: the same "go and look" box as demo/lib.sh.
+check() {
+  local where=$1 url=$2 line; shift 2
+  printf '  %s▶ Check: %s%s\n' "${CMD:-}" "$where" "${RST:-}"
+  [ -z "$url" ] || printf '      %s\n' "$url"
+  for line; do printf '      • %s\n' "$line"; done
+}
 # Every command is printed before it runs ("$ ..."), its output indented below.
 if [ -t 1 ]; then CMD=$(printf '\033[36m') RST=$(printf '\033[0m'); else CMD='' RST=''; fi
 show() { printf '  %s$ %s%s\n' "$CMD" "$*" "$RST"; }
@@ -176,6 +183,9 @@ for e in dev staging prod; do
   fi
   serves "$V" "$(port_of "$e")"
 done
+check "Argo CD: hello-world-dev, -staging and -prod" "http://localhost:8081/applications?search=hello-world" \
+  "all three Synced and Healthy, each on $V" \
+  "open hello-world-staging → History and rollback: the sync names the Git commit ./pipeline made; that commit is the release"
 
 # --- 4. A second version: out of order is refused ----------------------------
 step "4 · CI for a second version: ./pipeline ci $APP --version $W"
@@ -196,6 +206,8 @@ step "5 · Rollback: ./pipeline rollback $APP prod --sync"
 say "Always allowed, no gate: back to what prod ran before ($V)."
 run ./pipeline rollback "$APP" prod --sync
 serves "$V" 8080
+check "Argo CD: hello-world-prod" "http://localhost:8081/applications/argocd/hello-world-prod" \
+  "History and rollback: $V, then $W, then $V again. The rollback is a new Git commit, not a cluster edit"
 
 # --- 6. Load, then observe ---------------------------------------------------
 step "6 · A minute of traffic to hello-world in prod, then see it in Grafana"
