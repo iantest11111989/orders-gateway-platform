@@ -186,7 +186,7 @@ All CI/CD runs on your machine. GitHub Actions only runs checks. Nothing there b
 | CI · infra | pull requests and `main` | shellcheck, actionlint, manifest and chart validation, the toolbox image |
 | CI · infra · alerts, policies | pull requests and `main` | alert unit tests, runbook links, dashboard queries; `kyverno test` |
 | CI · security | pull requests, `main`, weekly | CodeQL, gitleaks |
-| CI · secrets, renovate config | pull requests and `main` | no plain secrets; Renovate's config is valid |
+| CI · secrets | pull requests and `main` | no plain secrets |
 | E2E | `main`, by hand, or a pull request with the `run-e2e` label | a fresh cluster in five stages: start, verify, `./pipeline ci`, `./pipeline cd` dev → prod with a rollback under traffic, the `hello-world` demo |
 | Scheduled · nightly E2E | daily | start-up, verify and two demos on x86-64 and arm64 |
 

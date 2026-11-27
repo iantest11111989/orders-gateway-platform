@@ -1,5 +1,5 @@
 # orders-gateway (server.js). A hardened Dockerfile:
-# - the base image pinned by version and digest (Renovate keeps it current),
+# - the base image pinned by version and digest,
 # - a numeric user, so Kubernetes can check runAsNonRoot (USER node is a
 #   name it can't),
 # - only what runs is copied: no tests, no dev files.

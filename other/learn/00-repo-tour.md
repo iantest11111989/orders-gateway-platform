@@ -150,7 +150,7 @@ Check yourself: during `chaos`, why does the second eviction wait? Which object 
 
 ## 8. Pinned versions
 
-Tool versions are in [`stack/docker/versions.env`](../../stack/docker/versions.env) and chart versions in `stack/delivery/bootstrap/apps/templates/`. Renovate keeps them current.
+Tool versions are in [`stack/docker/versions.env`](../../stack/docker/versions.env) and chart versions in `stack/delivery/bootstrap/apps/templates/`. Updating one is a commit.
 
 ## Next
 

@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # Pinned by tag and digest; a regex manager in renovate.json5 keeps it current.
+      # Pinned by tag and digest.
       - name: kyverno test stack/security/kyverno/policies/tests
         run: |
           docker run --rm -v "$PWD/stack/security/kyverno/policies:/p:ro" -w /p \
