@@ -10,23 +10,21 @@ What would change between this local setup and a real cloud deployment, and why.
 | A Git server inside the stack, one Argo CD | GitHub, and an Argo CD in each cluster that deploys only its own environment | No cluster holds credentials for another |
 | A registry inside the stack | ECR (or similar), with immutable tags | |
 | `./pipeline` on your machine | GitHub Actions on merge to main (see below) | Releases should be built by a known, reviewed identity, not a laptop |
-| Traefik on `localhost` ports, plain HTTP | No Traefik. The AWS Load Balancer Controller turns each Ingress into an ALB that sends traffic straight to the pods, with TLS from ACM and a hostname per environment | One component fewer to run, patch and scale, and AWS runs the load balancer. Dev, staging and prod all use it, so dev mimics prod |
+| Traefik on `localhost` ports, plain HTTP | No Traefik. The AWS Load Balancer Controller turns each Ingress into an ALB that sends traffic straight to the pods, with TLS from ACM and a hostname per environment | One component fewer to run, patch and scale, and AWS runs the load balancer |
 | Sealed Secrets with a public demo key | External Secrets reading a secret manager (AWS Secrets Manager) | The demo key is public by design |
 | Prometheus (24 h), Loki, Grafana, alerts to a local receiver | Datadog or a similar service; pages to PagerDuty | 30 days of data for the real error budget, and no monitoring stack to run |
 | `admin` / `admin12345` | SSO for people; read-only in prod, changes go through Git | |
 | One replica of Argo CD, Kyverno and the monitoring stack; Kyverno fails open | 3 replicas each; Kyverno fails closed for app namespaces | Fail-open here keeps a Kyverno outage from blocking a rollback on one machine |
 | `./pipeline` images are unsigned; the in-stack registry is trusted | Only images signed by CI on main are admitted | The `verify-image-signatures` policy already checks CI-signed images; it would cover every app image |
 
-### Traffic in: the AWS Load Balancer Controller instead of Traefik
+### Traffic in: the AWS Load Balancer Controller
 
-Locally Traefik is the way in. In production the AWS Load Balancer Controller does that job, and Traefik isn't installed:
+Every environment uses the AWS Load Balancer Controller instead of Traefik:
 
-- The chart's Ingress changes class from `traefik` to `alb`, with annotations for the certificate, the hostname and `target-type: ip`, so the ALB sends traffic to pod IPs directly.
-- `/admin/*` is refused by an ALB listener rule (or AWS WAF) instead of Traefik's deny-all middleware.
-- The ALB's deregistration delay is set to about 20 s, and pod readiness gates are on, so a stopping pod leaves the ALB before it stops listening. The same job the 5 s `preStop` sleep does for Traefik here.
-- The NetworkPolicy lets traffic in from the VPC's subnets instead of the `traefik` namespace.
-
-Every real environment, dev included, runs this way, so dev mimics prod and a routing change is tested in dev before it reaches prod. Only this local practice setup uses Traefik, because there is no AWS load balancer on a laptop.
+- The Ingress class is `alb`, with `target-type: ip`, so the ALB sends traffic straight to the pods.
+- `/admin/*` is refused by an ALB listener rule or AWS WAF.
+- A short deregistration delay and pod readiness gates keep traffic off stopping pods.
+- The NetworkPolicy allows traffic in from the VPC.
 
 What stays the same: the Helm chart (only its Ingress values change), the env files in `apps/<app>/cd/`, Argo CD's app-of-apps, the Kyverno policies, the SLOs and their runbooks, and the app's metrics and JSON logs.
 

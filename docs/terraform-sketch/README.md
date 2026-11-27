@@ -22,7 +22,7 @@ How it maps to the local stack:
 | --- | --- |
 | kind: 1 control plane + 2 workers, two fake zones | EKS's managed control plane, nodes in 3 real zones |
 | One cluster, three namespaces | One cluster per environment (`env` is dev, staging or prod), each with its own Argo CD |
-| Traefik on NodePorts mapped to `127.0.0.1`, plain HTTP | No Traefik: the AWS Load Balancer Controller makes an ALB (with WAF) per Ingress, sending traffic straight to the pods ([`../production.md`](../production.md#traffic-in-the-aws-load-balancer-controller-instead-of-traefik)) |
+| Traefik on NodePorts mapped to `127.0.0.1`, plain HTTP | No Traefik: the AWS Load Balancer Controller makes an ALB (with WAF) per Ingress, sending traffic straight to the pods ([`../production.md`](../production.md#traffic-in-the-aws-load-balancer-controller)) |
 | No TLS, a port per environment | ACM certificates on the load balancer, which terminates TLS; ExternalDNS writing Route 53 |
 | Sealed Secrets with a demo key in Git | External Secrets reading AWS Secrets Manager (`platform-demo/<env>/*`) |
 | Prometheus (24 h), Loki, Grafana, alerts to a local receiver | The Datadog Agent on every node (metrics and logs), 30-day SLOs, pages to PagerDuty |
