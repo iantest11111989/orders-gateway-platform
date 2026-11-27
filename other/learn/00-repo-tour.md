@@ -104,7 +104,7 @@ Files: [`stack/delivery/git-server/`](../../stack/delivery/git-server/), [`.gith
 ./platform kubectl -n dev get deploy orders-gateway -w    # back to 1 within seconds
 ```
 
-Argo CD reads from a Git server inside the cluster that holds a snapshot of your checkout. CI/CD runs locally through `./pipeline`; GitHub only checks pull requests. [`docs/production.md`](../production.md) describes how it would run in production.
+Argo CD reads from a Git server inside the cluster that holds a snapshot of your checkout. CI/CD runs locally through `./pipeline`; GitHub only checks pull requests. [`docs/production.md`](../../docs/production.md) describes how it would run in production.
 
 Check yourself: which policy in [`stack/security/kyverno/policies/`](../../stack/security/kyverno/policies/) stops an unsigned image in prod? Why are `./pipeline`'s unsigned `localhost:30500/` images still admitted? (Read `verify-image-signatures.yaml`.)
 
@@ -150,10 +150,10 @@ Check yourself: during `chaos`, why does the second eviction wait? Which object 
 
 ## 8. Pinned versions
 
-Tool versions are in [`stack/toolbox/versions.env`](../../stack/toolbox/versions.env) and chart versions in `stack/delivery/bootstrap/apps/templates/`. Renovate keeps them current.
+Tool versions are in [`stack/docker/versions.env`](../../stack/docker/versions.env) and chart versions in `stack/delivery/bootstrap/apps/templates/`. Updating one is a commit.
 
 ## Next
 
 - Exercises [1](01-prometheus.md) to [5](05-k8s-operations.md), if you skipped them.
 - [`stack/observability/runbooks/`](../../stack/observability/runbooks/README.md): one per alert.
-- [`docs/production.md`](../production.md): what would change in production.
+- [`docs/production.md`](../../docs/production.md): what would change in production.

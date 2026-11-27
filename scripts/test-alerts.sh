@@ -7,7 +7,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-# Pinned by multi-arch index digest. Renovate keeps these current.
+# Pinned by multi-arch index digest.
 YQ_IMAGE=mikefarah/yq:4.54.3@sha256:7834187596ad56fd5a81436114e0b0b9dd54c91bb43946d1f7145b2be5f9c3d2
 PROM_IMAGE=prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
 

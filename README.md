@@ -4,11 +4,11 @@ A Kubernetes platform you can run on your own machine, for hands-on practice. On
 
 CI/CD runs locally too: `./pipeline` tests, builds and scans an app, then promotes it from dev to staging to prod through Git and Argo CD.
 
-It started as an answer to a take-home DevOps test. [docs/brief.md](docs/brief.md) goes through that test point by point.
+[docs/requirements.md](docs/requirements.md) lists what it sets out to do, point by point, and where each is met.
 
 ## What you need
 
-Docker, and nothing else. Every other tool (kind, kubectl, helm, kubeseal, cosign, k6, the argocd CLI, jq, yq) is pinned in a [toolbox image](stack/toolbox/README.md) that `./platform` runs for you.
+Docker, and nothing else. Every other tool (kind, kubectl, helm, kubeseal, cosign, k6, the argocd CLI, jq, yq) is pinned in a [toolbox image](stack/docker/README.md) that `./platform` runs for you.
 
 | | Linux | Mac (Apple silicon) |
 | --- | --- | --- |
@@ -160,7 +160,7 @@ Start with `./platform doctor` and `./platform verify`.
 
 ## Demos
 
-The repo began as a take-home DevOps test ("the brief"), and each demo runs one of the checks it asked for. Every demo runs on a real environment, prod (:8080) unless you name another: `./platform demo <name> [dev|staging|prod]`. It prints every command it runs with its output, tells you at each step which Grafana or Argo CD screen to open and what you should see there (the **▶ Check** lines), and ends with a pass or a fail. Each is a folder in [`demo/`](demo/README.md).
+Each demo checks one of the [requirements](docs/requirements.md) live. Every demo runs on a real environment, prod (:8080) unless you name another: `./platform demo <name> [dev|staging|prod]`. It prints every command it runs with its output, tells you at each step which Grafana or Argo CD screen to open and what you should see there (the **▶ Check** lines), and ends with a pass or a fail. Each is a folder in [`demo/`](demo/README.md).
 
 | Checks | Demo | What it shows | Time |
 | --- | --- | --- | --- |
@@ -186,7 +186,7 @@ All CI/CD runs on your machine. GitHub Actions only runs checks. Nothing there b
 | CI · infra | pull requests and `main` | shellcheck, actionlint, manifest and chart validation, the toolbox image |
 | CI · infra · alerts, policies | pull requests and `main` | alert unit tests, runbook links, dashboard queries; `kyverno test` |
 | CI · security | pull requests, `main`, weekly | CodeQL, gitleaks |
-| CI · secrets, renovate config | pull requests and `main` | no plain secrets; Renovate's config is valid |
+| CI · secrets | pull requests and `main` | no plain secrets |
 | E2E | `main`, by hand, or a pull request with the `run-e2e` label | a fresh cluster in five stages: start, verify, `./pipeline ci`, `./pipeline cd` dev → prod with a rollback under traffic, the `hello-world` demo |
 | Scheduled · nightly E2E | daily | start-up, verify and two demos on x86-64 and arm64 |
 
@@ -204,14 +204,15 @@ This is a local practice setup, so some things differ from a real platform:
 - The Sealed Secrets key is public. Anything sealed with it is public too.
 - Alerts go to a local receiver, not a pager.
 
-[docs/production.md](docs/production.md) covers what would change and why. [docs/brief.md](docs/brief.md) lists the key decisions (why kind, why Helm), what was skipped and why, and what next. See [docs/deviations-from-test.md](docs/deviations-from-test.md) for where the repo departs from the original brief.
+[docs/production.md](docs/production.md) covers what would change and why. [docs/requirements.md](docs/requirements.md) lists the key decisions (why kind, why Helm), what was skipped and why, and what next.
 
 ## Further reading
 
-- [docs/brief.md](docs/brief.md): the original brief point by point, with where each point is answered, the key decisions, what was skipped and why, and what next.
-- [docs/learn/](docs/learn/README.md): hands-on exercises on the running stack, starting with [a tour of the repo](docs/learn/00-repo-tour.md).
+- [docs/requirements.md](docs/requirements.md): the requirements point by point, with where each is met, the key decisions, what was skipped and why, and what next.
+- [docs/naming.md](docs/naming.md): why objects are named after their app.
+- [other/learn/](other/learn/README.md): hands-on exercises on the running stack, starting with [a tour of the repo](other/learn/00-repo-tour.md).
 - [docs/production.md](docs/production.md): what would change in a real cloud deployment, and how shipping and rollback would work there.
-- [docs/terraform-sketch/](docs/terraform-sketch/README.md): the EKS part in Terraform, never applied.
+- [docs/infra-sketch/](docs/infra-sketch/README.md): the cloud infrastructure (VPC, subnets, EKS) in Terraform, never applied.
 
 ## Repository layout
 
@@ -229,7 +230,7 @@ stack/                      the platform, grouped by job
                             Application per component), git-server/, registry/
   networking/               traefik/, edge/ (what's reachable from outside)
   cluster/                  the kind cluster config
-  toolbox/                  the image every command runs in
+  docker/                   the toolbox image every command runs in
 demo/                       one folder per demo
 docs/                       learning guides and production notes
 scripts/                    what ./platform and ./pipeline run

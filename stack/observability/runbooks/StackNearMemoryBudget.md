@@ -16,7 +16,7 @@ Memory across the three kind nodes has been above 90% of the 12 GiB budget for 1
 ## Fix
 
 - A demo or load test left running: `./platform demo clean`, or stop the k6 process.
-- A component that keeps growing: check its limits in its `values.yaml` under `stack/` (Prometheus: `stack/observability/prometheus/values.yaml`). Prometheus with a high-cardinality label is the usual one (`docs/learn/01-prometheus.md`, section 4).
+- A component that keeps growing: check its limits in its `values.yaml` under `stack/` (Prometheus: `stack/observability/prometheus/values.yaml`). Prometheus with a high-cardinality label is the usual one (`other/learn/01-prometheus.md`, section 4).
 - Docker has less than 12 GiB: run `./platform doctor`. Under Colima: `colima start --cpu 6 --memory 12`.
 
 Change limits in Git, not with `kubectl edit`.

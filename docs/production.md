@@ -1,6 +1,6 @@
 # Running this in production
 
-What would change between this local setup and a real cloud deployment, and why. None of it is built. [`terraform-sketch/`](terraform-sketch/README.md) sketches the cluster part on EKS.
+What would change between this local setup and a real cloud deployment, and why. None of it is built. [`infra-sketch/`](infra-sketch/README.md) sketches the cloud infrastructure (VPC, subnets, EKS) in Terraform.
 
 ## What changes
 
@@ -10,7 +10,7 @@ What would change between this local setup and a real cloud deployment, and why.
 | A Git server inside the stack, one Argo CD | GitHub, and an Argo CD in each cluster that deploys only its own environment | No cluster holds credentials for another |
 | A registry inside the stack | ECR (or similar), with immutable tags | |
 | `./pipeline` on your machine | GitHub Actions on merge to main (see below) | Releases should be built by a known, reviewed identity, not a laptop |
-| Traefik on `localhost` ports, plain HTTP | An ALB from the AWS Load Balancer Controller with TLS and a hostname per environment, Traefik behind it | |
+| Traefik on `localhost` ports, plain HTTP | An ALB from the AWS Load Balancer Controller with TLS and a hostname per environment | |
 | Sealed Secrets with a public demo key | External Secrets reading a secret manager (AWS Secrets Manager) | The demo key is public by design |
 | Prometheus (24 h), Loki, Grafana, alerts to a local receiver | Datadog or a similar service; pages to PagerDuty | 30 days of data for the real error budget, and no monitoring stack to run |
 | `admin` / `admin12345` | SSO for people; read-only in prod, changes go through Git | |
@@ -29,6 +29,18 @@ Here, CI/CD runs locally so anyone who clones the repo can practise every step w
 4. **Rollback** is a revert PR of the promotion commit.
 
 The image is built once and pinned by digest, so prod runs exactly what dev ran. CI never talks to a cluster; Argo CD pulls from Git.
+
+## Keeping it patched
+
+Most security fixes arrive as new versions of something the platform already runs, so in production updates have to flow in by themselves, without waiting for someone to notice. Here, every version is pinned (charts, images by digest, the toolbox's tools in `stack/docker/versions.env`, GitHub Actions), and updating one is a manual commit. The Trivy Operator scans what is actually running and reports vulnerable images.
+
+In production:
+
+- **Dependency updates: Renovate.** A bot that watches every pinned version and opens a pull request when a newer one is out. Patch and digest updates, where most security fixes land, merge themselves once CI passes, the full E2E included. Minor and major updates wait for a person. Argo CD never merges itself, since it deploys itself and a bad update would have no automatic way back. Versions that must match, such as a chart and its CLI, move together. A merged update ships like any change: dev first, then staging and prod by promotion.
+- **Nodes.** EKS managed node groups roll onto each new patched AMI (or Bottlerocket updates itself), one node at a time. The disruption budgets keep the app serving, as the `chaos` demo's drain shows.
+- **Kubernetes.** The EKS version is upgraded on a schedule, dev first, before AWS ends support for the old one.
+- **App images.** Rebuilt on a schedule as well as on change, so a fixed base image reaches the app even when its code doesn't change. Prod admits only images signed by CI.
+- **Scanning.** The Trivy Operator keeps scanning running images, which catches what an update can't, such as an image with no fix released yet.
 
 ## Worth exploring
 

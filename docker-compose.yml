@@ -8,10 +8,10 @@
 name: platform-demo
 
 x-toolbox: &toolbox
-  # Tag is a hash of stack/toolbox/ (checked by scripts/check-compose-toolbox.sh);
+  # Tag is a hash of stack/docker/ (checked by scripts/check-compose-toolbox.sh);
   # unpublished tags are built locally.
-  image: ghcr.io/iantest11111989/orders-gateway-platform-toolbox:sha-d15bdc4a86cb
-  build: ./stack/toolbox
+  image: ghcr.io/iantest11111989/orders-gateway-platform-toolbox:sha-9360654291fc
+  build: ./stack/docker
   # Host network: the API server and platform ports are on the host's 127.0.0.1.
   network_mode: host
   working_dir: /work

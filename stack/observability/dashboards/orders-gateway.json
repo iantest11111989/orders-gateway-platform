@@ -912,7 +912,7 @@
             "uid": "prometheus"
           },
           "refId": "A",
-          "expr": "count by (version) (app_info{namespace=\"$namespace\", service=\"orders-gateway\"} * on (namespace, pod) group_left () (kube_pod_status_ready{condition=\"true\"} == 1))",
+          "expr": "count by (version) (app_info{namespace=\"$namespace\", service=\"orders-gateway\"} * on (namespace, pod) group_left () (max by (namespace, pod) (kube_pod_status_ready{namespace=\"$namespace\", condition=\"true\"}) == 1))",
           "legendFormat": "{{version}}"
         }
       ],

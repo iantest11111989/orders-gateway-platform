@@ -162,7 +162,7 @@
     {
       "type": "stat",
       "title": "High vulnerabilities in our app",
-      "description": "High findings in the app's images (dev, staging, prod). Not alerted on, but Renovate and the daily rescan should bring this to 0.",
+      "description": "High findings in the app's images (dev, staging, prod). Not alerted on, but base image updates and the daily rescan should bring this to 0.",
       "id": 4,
       "datasource": {
         "type": "prometheus",
@@ -1218,7 +1218,7 @@
     {
       "type": "timeseries",
       "title": "Findings in dev, staging and prod over time",
-      "description": "Critical and high findings in the app's images per environment. A step up without a new image means a newly published CVE; a step down follows a new image (Renovate, then its promotion PRs).",
+      "description": "Critical and high findings in the app's images per environment. A step up without a new image means a newly published CVE; a step down follows a new image and its promotion.",
       "id": 14,
       "datasource": {
         "type": "prometheus",
