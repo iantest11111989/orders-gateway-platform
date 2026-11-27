@@ -1,0 +1,93 @@
+# Security alerts: Kyverno, Sealed Secrets and Trivy Operator. "page" when a
+# control is weakened now, "ticket" for something to fix today.
+# Tests: stack/observability/alerts/tests/platform-security.test.yaml.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-security
+  labels:
+    app.kubernetes.io/part-of: platform-demo
+    app.kubernetes.io/component: security
+spec:
+  groups:
+    - name: platform-security
+      rules:
+        # Pages: the webhooks are failurePolicy Ignore, so while Kyverno is down
+        # pods are admitted unchecked.
+        - alert: KyvernoDown
+          expr: absent(up{job="kyverno-svc-metrics"} == 1)
+          for: 5m
+          labels:
+            severity: page
+          annotations:
+            summary: "Kyverno's admission controller is down: pods are admitted without policy checks"
+            description: >-
+              No Kyverno admission controller has answered a metrics scrape for 5 minutes. Its webhooks
+              fail open (failurePolicy: Ignore), so new pods, including in the app namespaces, skip the tag and
+              signature policies until it's back.
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/KyvernoDown.md
+        # An erroring policy protects nothing (broken CEL, unreachable registry).
+        - alert: KyvernoPolicyErrors
+          expr: |
+            sum by (policy_name) (
+              increase({__name__=~"kyverno_(image_)?validating_policy_results_total", result="error"}[15m])
+            ) > 0
+          for: 5m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "Kyverno policy {{ $labels.policy_name }} is returning errors"
+            description: >-
+              {{ $value | humanize }} evaluations of {{ $labels.policy_name }} ended in an error in the last
+              15 minutes. An erroring policy neither admits nor refuses on its merits.
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/KyvernoPolicyErrors.md
+        - alert: SealedSecretsControllerDown
+          expr: absent(up{job="sealed-secrets-controller-metrics"} == 1)
+          for: 10m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "The Sealed Secrets controller is down: new or changed SealedSecrets aren't unsealed"
+            description: >-
+              No Sealed Secrets controller has answered a metrics scrape for 10 minutes. Existing Secrets
+              keep working; new or changed SealedSecrets in Git won't become Secrets until it's back.
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/SealedSecretsControllerDown.md
+        # condition_info is 0 when the Synced condition is False.
+        - alert: SealedSecretUnsealFailed
+          expr: sealed_secrets_controller_condition_info{condition="Synced"} == 0
+          for: 5m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "SealedSecret {{ $labels.namespace }}/{{ $labels.name }} can't be unsealed"
+            description: >-
+              The controller couldn't turn SealedSecret {{ $labels.namespace }}/{{ $labels.name }} into a
+              Secret. Anything that reads that Secret has the old value, or none.
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/SealedSecretUnsealFailed.md
+        - alert: TrivyOperatorDown
+          expr: absent(up{job="trivy-operator"} == 1)
+          for: 15m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "Trivy Operator is down: running images aren't being scanned"
+            description: >-
+              Trivy Operator hasn't answered a metrics scrape for 15 minutes. New vulnerabilities in the
+              images that run in the cluster won't be found until it's back (CI's daily rescan still runs).
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/TrivyOperatorDown.md
+        # By digest (envs run digests, so image_tag is empty). Our app's images
+        # only: third-party platform images carry known findings.
+        - alert: OrdersImageCriticalVulnerability
+          expr: |
+            sum by (namespace, image_repository, image_digest) (
+              trivy_image_vulnerabilities{namespace=~"dev|staging|prod", severity="Critical"}
+            ) > 0
+          for: 30m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "{{ $labels.namespace }} runs an image with critical vulnerabilities"
+            description: >-
+              Trivy Operator found {{ $value }} critical vulnerabilities in
+              {{ $labels.image_repository }}@{{ $labels.image_digest }}, running in {{ $labels.namespace }}.
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/OrdersImageCriticalVulnerability.md

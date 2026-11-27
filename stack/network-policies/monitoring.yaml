@@ -1,0 +1,54 @@
+# Baseline for monitoring: deny ingress except from its own pods and the nodes.
+# On kindnet a deny-all would also drop the control plane's traffic to pods.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: monitoring
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: monitoring
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-nodes
+  namespace: monitoring
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        # Outside the pod network: the nodes and the API server.
+        - ipBlock: {cidr: 0.0.0.0/0, except: [10.244.0.0/16]}
+---
+# Traefik serves Grafana, Prometheus and Alertmanager (stack/edge).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-traefik-to-uis
+  namespace: monitoring
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+      ports:
+        - {port: 3000, protocol: TCP}
+        - {port: 9090, protocol: TCP}
+        - {port: 9093, protocol: TCP}

@@ -1,0 +1,27 @@
+# Root Application (app-of-apps), applied by ./platform up: renders
+# stack/bootstrap/apps from the in-stack Git server.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: platform-demo
+spec:
+  project: default
+  source:
+    repoURL: http://git.git.svc.cluster.local:23232/platform.git
+    targetRevision: main
+    path: stack/bootstrap/apps
+    helm:
+      valuesObject:
+        repo:
+          url: http://git.git.svc.cluster.local:23232/platform.git
+          revision: main
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

@@ -1,0 +1,150 @@
+# SLO rules for orders-gateway: 99.5% over 30 days for availability (5xx on
+# /work and /echo; 4xx excluded) and latency (/echo and /version over 250 ms).
+# /work is left out of latency: the caller picks its duration (?ms=).
+# Multi-window burn-rate alerts: fast 14.4x over 1h/5m (page), slow 6x over
+# 6h/30m (ticket). Filtered to service="orders-gateway" (demo apps share the
+# metric names) and grouped by namespace, service for the promotion gate.
+# Tests: stack/observability/alerts/tests/orders-gateway-slo.test.yaml.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: orders-gateway-slo
+  labels:
+    app.kubernetes.io/part-of: platform-demo
+    app.kubernetes.io/component: slo
+spec:
+  groups:
+    - name: orders-gateway-slo-sli
+      interval: 30s
+      rules:
+        # Availability. "or 0 * ..." yields 0, not no data, when there's no 5xx series.
+        - record: slo:orders_availability_errors:ratio_rate5m
+          expr: |
+            (
+              sum by (namespace, service) (rate(http_requests_total{service="orders-gateway", route=~"/work|/echo", status=~"5.."}[5m]))
+              or
+              0 * sum by (namespace, service) (rate(http_requests_total{service="orders-gateway", route=~"/work|/echo"}[5m]))
+            )
+            /
+            sum by (namespace, service) (rate(http_requests_total{service="orders-gateway", route=~"/work|/echo", status!~"4.."}[5m]))
+        - record: slo:orders_availability_errors:ratio_rate30m
+          expr: |
+            (
+              sum by (namespace, service) (rate(http_requests_total{service="orders-gateway", route=~"/work|/echo", status=~"5.."}[30m]))
+              or
+              0 * sum by (namespace, service) (rate(http_requests_total{service="orders-gateway", route=~"/work|/echo"}[30m]))
+            )
+            /
+            sum by (namespace, service) (rate(http_requests_total{service="orders-gateway", route=~"/work|/echo", status!~"4.."}[30m]))
+        - record: slo:orders_availability_errors:ratio_rate1h
+          expr: |
+            (
+              sum by (namespace, service) (rate(http_requests_total{service="orders-gateway", route=~"/work|/echo", status=~"5.."}[1h]))
+              or
+              0 * sum by (namespace, service) (rate(http_requests_total{service="orders-gateway", route=~"/work|/echo"}[1h]))
+            )
+            /
+            sum by (namespace, service) (rate(http_requests_total{service="orders-gateway", route=~"/work|/echo", status!~"4.."}[1h]))
+        - record: slo:orders_availability_errors:ratio_rate6h
+          expr: |
+            (
+              sum by (namespace, service) (rate(http_requests_total{service="orders-gateway", route=~"/work|/echo", status=~"5.."}[6h]))
+              or
+              0 * sum by (namespace, service) (rate(http_requests_total{service="orders-gateway", route=~"/work|/echo"}[6h]))
+            )
+            /
+            sum by (namespace, service) (rate(http_requests_total{service="orders-gateway", route=~"/work|/echo", status!~"4.."}[6h]))
+
+        # Latency: share of /echo and /version requests slower than 250 ms.
+        - record: slo:orders_latency_errors:ratio_rate5m
+          expr: |
+            1 - (
+              sum by (namespace, service) (rate(http_request_duration_seconds_bucket{service="orders-gateway", route=~"/echo|/version", le="0.25"}[5m]))
+              /
+              sum by (namespace, service) (rate(http_request_duration_seconds_count{service="orders-gateway", route=~"/echo|/version"}[5m]))
+            )
+        - record: slo:orders_latency_errors:ratio_rate30m
+          expr: |
+            1 - (
+              sum by (namespace, service) (rate(http_request_duration_seconds_bucket{service="orders-gateway", route=~"/echo|/version", le="0.25"}[30m]))
+              /
+              sum by (namespace, service) (rate(http_request_duration_seconds_count{service="orders-gateway", route=~"/echo|/version"}[30m]))
+            )
+        - record: slo:orders_latency_errors:ratio_rate1h
+          expr: |
+            1 - (
+              sum by (namespace, service) (rate(http_request_duration_seconds_bucket{service="orders-gateway", route=~"/echo|/version", le="0.25"}[1h]))
+              /
+              sum by (namespace, service) (rate(http_request_duration_seconds_count{service="orders-gateway", route=~"/echo|/version"}[1h]))
+            )
+        - record: slo:orders_latency_errors:ratio_rate6h
+          expr: |
+            1 - (
+              sum by (namespace, service) (rate(http_request_duration_seconds_bucket{service="orders-gateway", route=~"/echo|/version", le="0.25"}[6h]))
+              /
+              sum by (namespace, service) (rate(http_request_duration_seconds_count{service="orders-gateway", route=~"/echo|/version"}[6h]))
+            )
+
+    # ---- Burn-rate alerts (budget 0.005 = 1 - 0.995) ----
+    - name: orders-gateway-slo-alerts
+      rules:
+        - alert: OrdersGatewayAvailabilityFastBurn
+          expr: |
+            slo:orders_availability_errors:ratio_rate1h > (14.4 * 0.005)
+            and
+            slo:orders_availability_errors:ratio_rate5m > (14.4 * 0.005)
+          for: 2m
+          labels:
+            severity: page
+            slo: orders-availability
+          annotations:
+            summary: "orders-gateway in {{ $labels.namespace }} is burning its availability error budget fast"
+            description: >-
+              {{ $value | humanizePercentage }} of /work and /echo requests failed with 5xx over the last hour
+              (the SLO allows 0.5%). At this rate the whole 30-day error budget is gone in about 2 days.
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/OrdersGatewayAvailabilityFastBurn.md
+        - alert: OrdersGatewayAvailabilitySlowBurn
+          expr: |
+            slo:orders_availability_errors:ratio_rate6h > (6 * 0.005)
+            and
+            slo:orders_availability_errors:ratio_rate30m > (6 * 0.005)
+          for: 15m
+          labels:
+            severity: ticket
+            slo: orders-availability
+          annotations:
+            summary: "orders-gateway in {{ $labels.namespace }} is steadily burning its availability error budget"
+            description: >-
+              {{ $value | humanizePercentage }} of /work and /echo requests failed with 5xx over the last 6 hours
+              (the SLO allows 0.5%). At this rate the 30-day error budget is gone in about 5 days.
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/OrdersGatewayAvailabilitySlowBurn.md
+        - alert: OrdersGatewayLatencyFastBurn
+          expr: |
+            slo:orders_latency_errors:ratio_rate1h > (14.4 * 0.005)
+            and
+            slo:orders_latency_errors:ratio_rate5m > (14.4 * 0.005)
+          for: 2m
+          labels:
+            severity: page
+            slo: orders-latency
+          annotations:
+            summary: "orders-gateway in {{ $labels.namespace }} is burning its latency error budget fast"
+            description: >-
+              {{ $value | humanizePercentage }} of /echo and /version requests took longer than 250 ms over the last hour
+              (the SLO allows 0.5%). At this rate the whole 30-day error budget is gone in about 2 days.
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/OrdersGatewayLatencyFastBurn.md
+        - alert: OrdersGatewayLatencySlowBurn
+          expr: |
+            slo:orders_latency_errors:ratio_rate6h > (6 * 0.005)
+            and
+            slo:orders_latency_errors:ratio_rate30m > (6 * 0.005)
+          for: 15m
+          labels:
+            severity: ticket
+            slo: orders-latency
+          annotations:
+            summary: "orders-gateway in {{ $labels.namespace }} is steadily burning its latency error budget"
+            description: >-
+              {{ $value | humanizePercentage }} of /echo and /version requests took longer than 250 ms over the last 6 hours
+              (the SLO allows 0.5%). At this rate the 30-day error budget is gone in about 5 days.
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/OrdersGatewayLatencySlowBurn.md

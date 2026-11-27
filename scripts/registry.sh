@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# scripts/registry.sh: the in-stack registry (system/registry/) holding each
+# scripts/registry.sh: the in-stack registry (stack/registry/) holding each
 # app's published image and OCI chart. Pods pull localhost:30500/<app>:<tag>.
 #   install | published <app> <v> | digest <app> <tag> | push-image <app> <tag>
 #   publish <app> <v>  (never overwrites a version)
-#   seed               build and publish versions cd/*/ pins but the registry lacks
+#   seed               build and publish versions apps/*/cd/ pins but the registry lacks
 # Pushes go over a port-forward on 127.0.0.1 (plain HTTP). Runs in the toolbox.
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -12,7 +12,7 @@ NODE_REGISTRY=localhost:30500
 
 semver() { [[ $1 =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; }
 check_app() {
-  [[ $1 =~ ^[a-z0-9-]+$ ]] && [ -d "$ROOT/helm/$1" ] && [ -d "$ROOT/apps/$1" ] || die "unknown app '$1'"
+  [[ $1 =~ ^[a-z0-9-]+$ ]] && [ -d "$ROOT/apps/$1/chart" ] && [ -d "$ROOT/apps/$1/app" ] || die "unknown app '$1'"
 }
 
 tmp=$(mktemp -d)
@@ -69,10 +69,10 @@ push_image() { # push_image <app> <tag>: localhost:30500/<app>:<tag>, built loca
   ok "image $local_img ($(manifest_digest "$1" "$2"))"
 }
 
-push_chart() { # push_chart <app> <version>: helm/<app> as <version>
+push_chart() { # push_chart <app> <version>: apps/<app>/chart as <version>
   forward
-  showcmd "helm package helm/$1 --version $2 --app-version $2"
-  helm package "$ROOT/helm/$1" --version "$2" --app-version "$2" -d "$tmp/chart" >/dev/null
+  showcmd "helm package apps/$1/chart --version $2 --app-version $2"
+  helm package "$ROOT/apps/$1/chart" --version "$2" --app-version "$2" -d "$tmp/chart" >/dev/null
   showcmd "helm push $1-$2.tgz oci://$REG/charts --plain-http"
   helm push "$tmp/chart/$1-$2.tgz" "oci://$REG/charts" --plain-http >/dev/null 2>&1 ||
     die "push of chart $1 $2 to the registry failed"
@@ -92,7 +92,7 @@ publish() { # publish <app> <version>
 case "${1:-}" in
   install)
     step "In-stack registry (namespace registry)"
-    kubectl apply -k "$ROOT/system/registry" >/dev/null
+    kubectl apply -k "$ROOT/stack/registry" >/dev/null
     kubectl -n registry rollout status deploy/registry --timeout=180s >/dev/null
     ok "registry ready: images localhost:30500/<app>, charts registry.registry.svc.cluster.local:5000/charts"
     ;;
@@ -108,17 +108,17 @@ case "${1:-}" in
   seed)
     # A fresh cluster's registry is empty: quick bootstrap builds (no tests,
     # no scan) of every version an env file pins.
-    step "Versions the env files pin (cd/<app>/*.yaml)"
-    for dir in "$ROOT"/cd/*/; do
-      app=$(basename "$dir")
+    step "Versions the env files pin (apps/<app>/cd/*.yaml)"
+    for dir in "$ROOT"/apps/*/cd/; do
+      app=$(basename "${dir%/cd/}")
       versions=$(for f in "$dir"dev.yaml "$dir"staging.yaml "$dir"prod.yaml; do
         [ -f "$f" ] && yq '.version // ""' "$f"
       done | grep -v '^$' | sort -u || true)
       for v in $versions; do
         if published "$app" "$v"; then ok "$app $v: published"; continue; fi
         warn "$app $v: not in this cluster's registry; bootstrap build of $v from this checkout, untested (not a release)"
-        docker build -q -t "$NODE_REGISTRY/$app:$v" --build-arg "VERSION=$v" "$ROOT/apps/$app" >/dev/null ||
-          die "build of apps/$app failed"
+        docker build -q -t "$NODE_REGISTRY/$app:$v" --build-arg "VERSION=$v" "$ROOT/apps/$app/app" >/dev/null ||
+          die "build of apps/$app/app failed"
         publish "$app" "$v"
       done
     done

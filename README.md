@@ -6,7 +6,7 @@ CI/CD runs locally too: `./pipeline` tests, builds and scans an app, then promot
 
 ## What you need
 
-Docker, and nothing else. Every other tool (kind, kubectl, helm, kubeseal, cosign, k6, the argocd CLI, jq, yq) is pinned in a [toolbox image](toolbox/README.md) that `./platform` runs for you.
+Docker, and nothing else. Every other tool (kind, kubectl, helm, kubeseal, cosign, k6, the argocd CLI, jq, yq) is pinned in a [toolbox image](stack/toolbox/README.md) that `./platform` runs for you.
 
 | | Linux | Mac (Apple silicon) |
 | --- | --- | --- |
@@ -61,7 +61,7 @@ Everything is plain HTTP on `127.0.0.1`, through Traefik.
 
 ## Ship a version
 
-`./pipeline` is the CI/CD. It works for any app that has `apps/<app>/`, `helm/<app>/` and `cd/<app>/`.
+`./pipeline` is the CI/CD. It works for any app that has `apps/<app>/app/`, `apps/<app>/chart/` and `apps/<app>/cd/`.
 
 ```sh
 ./pipeline ci orders-gateway --version 1.2.0          # test, build, scan, publish image and chart 1.2.0
@@ -74,7 +74,7 @@ Everything is plain HTTP on `127.0.0.1`, through Traefik.
 How it behaves:
 
 - `ci` publishes to the registry inside the cluster. A published version is never overwritten. Without `--version` you get a dev-only build.
-- `cd` sets the version in `cd/<app>/<env>.yaml`, commits it and pushes the checkout to the in-cluster Git server. Argo CD then deploys it.
+- `cd` sets the version in `apps/<app>/cd/<env>.yaml`, commits it and pushes the checkout to the in-cluster Git server. Argo CD then deploys it.
 - Promotion goes in order. Staging only takes a version dev has run, and prod only one staging has run. The previous environment must be healthy: Synced and Healthy in Argo CD, with no alerts firing for the app. `--force` skips these checks for emergencies.
 - dev syncs by itself. Staging and prod wait for you: open Argo CD, check the diff and click **Sync**, or add `--sync` to sync from the command line and wait for the rollout.
 - `rollback` is always allowed. You always name the environment; there is no default.
@@ -114,19 +114,19 @@ flowchart LR
   dev -->|commit| git
 ```
 
-- Compose is only the outer shell. Its `ready` service creates the kind cluster, installs Argo CD and gives it the root Application from [`bootstrap/`](bootstrap/README.md).
+- Compose is only the outer shell. Its `ready` service creates the kind cluster, installs Argo CD and gives it the root Application from [`stack/bootstrap/`](stack/bootstrap/README.md).
 - Argo CD installs everything with Helm, itself included, in order: CRDs, controllers, monitoring, policies, then the apps. Self-heal and prune are on.
 - Traefik is the only way in. It serves each port as a standard Kubernetes Ingress.
-- Kyverno checks pods as they are admitted. See [`policies/`](policies/README.md).
+- Kyverno checks pods as they are admitted. See [`stack/kyverno/policies/`](stack/kyverno/policies/README.md).
 - Secrets are SealedSecrets. The decryption key is committed so any clone works. That is for the demo only.
 
-The app's chart is built for zero-downtime releases and drains: probes, a graceful shutdown, a disruption budget, spreading across nodes and an HPA in prod. See [`helm/orders-gateway/`](helm/orders-gateway/README.md).
+The app's chart is built for zero-downtime releases and drains: probes, a graceful shutdown, a disruption budget, spreading across nodes and an HPA in prod. See [`apps/orders-gateway/chart/`](apps/orders-gateway/chart/README.md).
 
 ## Observability
 
-- **Dashboards.** Six Grafana dashboards in [`dashboards/`](dashboards/README.md). Start with **platform-overview** for the cluster or **orders-gateway** for the app.
-- **SLOs.** 99.5% of `/work` and `/echo` requests succeed, and 99.5% of `/echo` and `/version` answer within 250 ms. Burn-rate alerts are in [`alerts/`](alerts/README.md).
-- **Alerts.** Each alert links to a runbook in [`runbooks/`](runbooks/README.md). Alertmanager sends them to a small receiver that logs them into Loki. When all is well, only Watchdog fires.
+- **Dashboards.** Six Grafana dashboards in [`stack/observability/dashboards/`](stack/observability/dashboards/README.md). Start with **platform-overview** for the cluster or **orders-gateway** for the app.
+- **SLOs.** 99.5% of `/work` and `/echo` requests succeed, and 99.5% of `/echo` and `/version` answer within 250 ms. Burn-rate alerts are in [`stack/observability/alerts/`](stack/observability/alerts/README.md).
+- **Alerts.** Each alert links to a runbook in [`stack/observability/runbooks/`](stack/observability/runbooks/README.md). Alertmanager sends them to a small receiver that logs them into Loki. When all is well, only Watchdog fires.
 - **Logs.** Alloy ships every pod's output to Loki. The app logs JSON, so `| json` gives you its fields.
 - **Tracing.** Not set up. The app logs a `trace_id` from the `traceparent` header, so you can follow one request through the logs.
 
@@ -150,7 +150,7 @@ Start with `./platform doctor` and `./platform verify`.
 | `doctor` says a port is in use | Stop whatever holds it. On a Mac, then run `colima restart`. |
 | Pods in `ImagePullBackOff` during start-up | A registry was slow. Wait, or re-run `./platform up`. |
 | `up` fails: "nodes advertise more than their cap" | An old cluster. Run `./platform down && ./platform up`. |
-| `budget` reports `OOMKilled` | Describe the pod. Limits are in `system/<component>/values.yaml`. |
+| `budget` reports `OOMKilled` | Describe the pod. Limits are in `stack/<component>/values.yaml`. |
 | A pod is refused by `disallow-latest-tag` or `verify-image-signatures` | Working as intended. Use a tagged, signed image. |
 | staging or prod is `OutOfSync` after `./pipeline cd` | It is waiting for its Sync. Click **Sync** in Argo CD, or rerun with `--sync`. |
 | `docker compose up -d --wait` never finishes | Run `docker compose down && docker compose up -d --wait`. |
@@ -189,7 +189,7 @@ All CI/CD runs on your machine. GitHub Actions only runs checks. Nothing there b
 | E2E | `main`, by hand, or a pull request with the `run-e2e` label | a fresh cluster in five stages: start, verify, `./pipeline ci`, `./pipeline cd` dev → prod with a rollback under traffic, the `hello-world` demo |
 | Scheduled · nightly E2E | daily | start-up, verify and two demos on x86-64 and arm64 |
 
-To run checks locally: `scripts/test-alerts.sh` for alerts, `scripts/dashboards.sh check` for dashboards, and the `kyverno test` command in [`policies/`](policies/README.md).
+To run checks locally: `scripts/test-alerts.sh` for alerts, `scripts/dashboards.sh check` for dashboards, and the `kyverno test` command in [`stack/kyverno/policies/`](stack/kyverno/policies/README.md).
 
 ## Local versus production
 
@@ -214,23 +214,23 @@ This is a local practice setup, so some things differ from a real platform:
 ## Repository layout
 
 ```
-apps/orders-gateway/    the service, its Dockerfile, tests and k6 scripts
-helm/orders-gateway/    its Helm chart
-cd/orders-gateway/      what each environment runs
-bootstrap/              the root Argo CD Application and one Application per component
-system/<component>/     cluster components: Helm values and manifests
-policies/               Kyverno policies and tests
-dashboards/             Grafana dashboards (JSON)
-alerts/                 Prometheus alert rules and tests
-runbooks/               one per alert
-demo/                   demo material
-platform                the cluster CLI
-pipeline                local CI/CD
-scripts/                what ./platform and ./pipeline run
-cluster/                kind cluster config
-toolbox/                the toolbox image
-docs/                   learning material and production notes
-.github/workflows/      GitHub checks
+apps/orders-gateway/        the app: everything ./pipeline ships
+  app/                      the code, Dockerfile, tests and k6 scripts
+  chart/                    its Helm chart
+  cd/                       the version each environment runs
+stack/                      the platform, one folder per component
+  bootstrap/                Argo CD's root Application and one Application per component
+  argocd/ traefik/ kyverno/ kube-prometheus-stack/ loki/ alloy/ …
+                            each component's Helm values and manifests
+  kyverno/policies/         the Kyverno policies and their tests
+  observability/            alert rules, Grafana dashboards, one runbook per alert
+  cluster/                  the kind cluster config
+  toolbox/                  the image every command runs in
+demo/                       one folder per demo
+docs/                       learning guides and production notes
+scripts/                    what ./platform and ./pipeline run
+platform                    the cluster CLI
+pipeline                    local CI/CD
 ```
 
 ## License

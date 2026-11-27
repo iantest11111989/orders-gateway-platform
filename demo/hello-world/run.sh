@@ -4,7 +4,7 @@
 # ./platform demo hello-world clean: tear it down again.
 #
 #   1. Add the app: demo/hello-world/{app,chart,cd} are copied to
-#      apps/hello-world, helm/hello-world and cd/hello-world in this checkout.
+#      apps/hello-world, apps/hello-world/chart and apps/hello-world/cd in this checkout.
 #   2. CI: ./pipeline ci hello-world --version V (test, build, scan, publish
 #      image and chart V to the in-stack registry).
 #   3. CD: ./pipeline cd hello-world dev, then staging, then prod. dev syncs
@@ -34,7 +34,7 @@ REPO_ROOT=$(pwd)
 
 APP=hello-world
 SRC=demo/hello-world
-DIRS="apps/$APP helm/$APP cd/$APP"
+DIRS="apps/$APP"
 MARKER=.build/hello-world-demo
 clean_only=''
 case "${1:-}" in
@@ -61,7 +61,7 @@ hide_from_git() {
 }
 unhide_from_git() {
   f=$(exclude_file); [ -n "$f" ] && [ -f "$f" ] || return 0
-  grep -v -e '^# ./platform demo hello-world' -e "^/apps/$APP/\$" -e "^/helm/$APP/\$" -e "^/cd/$APP/\$" "$f" >"$f.tmp" || true
+  grep -v -e '^# ./platform demo hello-world' -e "^/apps/$APP/\$" "$f" >"$f.tmp" || true
   mv "$f.tmp" "$f"
 }
 
@@ -139,16 +139,17 @@ trap 'exit 130' INT TERM
 
 # --- 1. Add the app ----------------------------------------------------------
 step "1 · Add a second app: hello-world"
-say "An app here is three folders: apps/<app> (the code), helm/<app> (the"
-say "chart) and cd/<app> (what each environment runs). Copying them in is all"
-say "it takes; nothing in the platform names orders-gateway."
+say "An app here is one folder, apps/<app>: app/ (the code), chart/ (its Helm"
+say "chart) and cd/ (what each environment runs). Copying it in is all it"
+say "takes; nothing in the platform names orders-gateway."
 mkdir -p .build && : >"$MARKER"
 hide_from_git
-run cp -R "$SRC/app" "apps/$APP"
-run cp -R "$SRC/chart" "helm/$APP"
-run mkdir -p "cd/$APP"
-run cp "$SRC/cd/values.yaml" "cd/$APP/values.yaml"
-ok "apps/$APP, helm/$APP, cd/$APP/values.yaml (hidden from your git while the demo runs)"
+run mkdir -p "apps/$APP"
+run cp -R "$SRC/app" "apps/$APP/app"
+run cp -R "$SRC/chart" "apps/$APP/chart"
+run mkdir -p "apps/$APP/cd"
+run cp "$SRC/cd/values.yaml" "apps/$APP/cd/values.yaml"
+ok "apps/$APP: app/, chart/, cd/values.yaml (hidden from your git while the demo runs)"
 
 # --- 2. CI -------------------------------------------------------------------
 V=$(next_version 0.1.0)
@@ -160,12 +161,12 @@ run ./pipeline ci "$APP" --version "$V"
 
 # --- 3. CD, in order ---------------------------------------------------------
 for e in dev staging prod; do
-  run cp "$SRC/cd/$e.yaml" "cd/$APP/$e.yaml"
+  run cp "$SRC/cd/$e.yaml" "apps/$APP/cd/$e.yaml"
   if [ "$e" = dev ]; then
     step "3 · CD: ./pipeline cd $APP dev --version $V"
     say "dev has autoSync: true, so Argo CD rolls it out as soon as the change"
     say "reaches the in-stack Git server. The ApplicationSet creates $APP-dev"
-    say "because cd/$APP/dev.yaml now exists."
+    say "because apps/$APP/cd/dev.yaml now exists."
     run ./pipeline cd "$APP" dev --version "$V"
   else
     step "3 · CD: ./pipeline cd $APP $e --version $V --sync"

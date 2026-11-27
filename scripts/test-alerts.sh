@@ -1,7 +1,7 @@
 #!/bin/sh
-# Validates and unit-tests every PrometheusRule in alerts/ with promtool, and
-# checks every alert has a runbook_url whose file exists in runbooks/.
-# Needs only Docker; CI runs it on every pull request that touches alerts/.
+# Validates and unit-tests every PrometheusRule in stack/observability/alerts/ with promtool, and
+# checks every alert has a runbook_url whose file exists in stack/observability/runbooks/.
+# Needs only Docker; CI runs it on every pull request that touches stack/observability/alerts/.
 #
 #   scripts/test-alerts.sh
 set -eu
@@ -15,7 +15,7 @@ PROM_IMAGE=prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27
 # reads the plain form, so extract it into .build/ (git-ignored).
 rm -rf .build/alerts
 mkdir -p .build/alerts
-for f in alerts/*.yaml; do
+for f in stack/observability/alerts/*.yaml; do
   name=$(basename "$f" .yaml)
   docker run --rm -i "$YQ_IMAGE" '.spec' <"$f" >".build/alerts/$name.rules.yaml"
 done
@@ -24,7 +24,7 @@ docker run --rm -v "$PWD":/w -w /w --entrypoint promtool "$PROM_IMAGE" \
   check rules .build/alerts/*.rules.yaml
 # shellcheck disable=SC2046 # one argument per test file
 docker run --rm -v "$PWD":/w -w /w --entrypoint promtool "$PROM_IMAGE" \
-  test rules $(ls alerts/tests/*.test.yaml)
+  test rules $(ls stack/observability/alerts/tests/*.test.yaml)
 
 # Every alert needs a runbook, and every runbook link must resolve.
 status=0
@@ -34,13 +34,13 @@ for url in $(for f in .build/alerts/*.rules.yaml; do docker run --rm -i "$YQ_IMA
     '.groups[].rules[] | select(has("alert")) | .alert + "=" + (.annotations.runbook_url // "")' <"$f"; done); do
   alert=${url%%=*}
   link=${url#*=}
-  want="https://github.com/iantest11111989/platform-demo/blob/main/runbooks/$alert.md"
+  want="https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/$alert.md"
   if [ "$link" != "$want" ]; then
     echo "FAIL $alert: runbook_url must be $want (got '${link}')"; status=1
-  elif [ ! -f "runbooks/$alert.md" ]; then
-    echo "FAIL $alert: runbooks/$alert.md does not exist"; status=1
+  elif [ ! -f "stack/observability/runbooks/$alert.md" ]; then
+    echo "FAIL $alert: stack/observability/runbooks/$alert.md does not exist"; status=1
   else
-    echo "ok   $alert -> runbooks/$alert.md"
+    echo "ok   $alert -> stack/observability/runbooks/$alert.md"
   fi
 done
 exit "$status"

@@ -1,13 +1,13 @@
 #!/bin/sh
-# ./pipeline: this repo's CI/CD, run locally. An <app> has apps/<app>/,
-# helm/<app>/ and cd/<app>/; releases live in the in-stack registry.
+# ./pipeline: this repo's CI/CD, run locally. An <app> has apps/<app>/app/,
+# apps/<app>/chart/ and apps/<app>/cd/; releases live in the in-stack registry.
 #
 #   ./pipeline ci <app> [--version V]
 #         test, build, scan (Trivy: fixable HIGH/CRITICAL fails) and publish.
 #         --version (semver) publishes image and chart V, never overwritten;
 #         without it, a dev-only build <app>:local-<time>.
 #   ./pipeline cd <app> <env> [--version V] [--force] [--sync]
-#         point cd/<app>/<env>.yaml at V (default: the last `ci` build), push
+#         point apps/<app>/cd/<env>.yaml at V (default: the last `ci` build), push
 #         it to the in-stack Git server and wait for the rollout. Promotion
 #         goes in order (dev, staging, prod) and needs the previous env
 #         healthy; --force skips both. staging and prod sync by hand: click
@@ -38,13 +38,13 @@ shownote() { printf '    %s# %s%s\n' "$DIMC" "$*" "$RSTC" >&2; }
 # An app is a name with all three folders; anything else is refused.
 check_app() {
   case "$1" in ''|*[!a-z0-9-]*) die "not an app name: '$1'" ;; esac
-  [ -d "apps/$1" ] && [ -d "helm/$1" ] && [ -d "cd/$1" ] ||
-    die "unknown app '$1': expected apps/$1/, helm/$1/ and cd/$1/ (apps: $(cd apps && echo *))"
+  [ -d "apps/$1/app" ] && [ -d "apps/$1/chart" ] && [ -d "apps/$1/cd" ] ||
+    die "unknown app '$1': expected apps/$1/app/, apps/$1/chart/ and apps/$1/cd/ (apps: $(cd apps && echo *))"
 }
 
 check_env() {
   case "$1" in dev|staging|prod) ;; *) die "<env> must be dev, staging or prod, not '$1'" ;; esac
-  [ -f "cd/$app/$1.yaml" ] || die "no cd/$app/$1.yaml"
+  [ -f "apps/$app/cd/$1.yaml" ] || die "no apps/$app/cd/$1.yaml"
 }
 
 check_version() {
@@ -86,17 +86,17 @@ ci() {
   app_img="localhost:30500/$app:$tag"
 
   step "Test (npm test, npm run lint) in the Dockerfile's Node image"
-  node_image=$(sed -n 's/^FROM \(node:[^ ]*\) AS app$/\1/p' "apps/$app/Dockerfile")
-  [ -n "$node_image" ] || die "no 'FROM node:… AS app' line in apps/$app/Dockerfile"
-  showcmd "docker run --rm -v apps/$app:/app -w /app $node_image sh -c 'npm test && npm run lint'"
-  docker run --rm -v "$REPO_ROOT/apps/$app":/app -w /app "$node_image" sh -c 'npm test && npm run lint' ||
+  node_image=$(sed -n 's/^FROM \(node:[^ ]*\) AS app$/\1/p' "apps/$app/app/Dockerfile")
+  [ -n "$node_image" ] || die "no 'FROM node:… AS app' line in apps/$app/app/Dockerfile"
+  showcmd "docker run --rm -v apps/$app/app:/app -w /app $node_image sh -c 'npm test && npm run lint'"
+  docker run --rm -v "$REPO_ROOT/apps/$app/app":/app -w /app "$node_image" sh -c 'npm test && npm run lint' ||
     die "tests failed"
   ok "tests pass"
 
   step "Build $app_img"
-  showcmd "docker build -t $app_img --build-arg VERSION=$tag apps/$app"
+  showcmd "docker build -t $app_img --build-arg VERSION=$tag apps/$app/app"
   shownote "VERSION is what the app reports on /version"
-  docker build -q -t "$app_img" --build-arg "VERSION=$tag" "apps/$app" >/dev/null || die "build failed"
+  docker build -q -t "$app_img" --build-arg "VERSION=$tag" "apps/$app/app" >/dev/null || die "build failed"
   showcmd "docker image ls $app_img"
   docker image ls --format '      {{.Repository}}:{{.Tag}}  id {{.ID}}  {{.Size}}' "$app_img"
   ok "built"

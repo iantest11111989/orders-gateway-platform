@@ -4,7 +4,7 @@
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
 
-ARGOCD_CHART_VERSION=$(yq '.spec.sources[0].targetRevision' bootstrap/apps/templates/argocd.yaml)
+ARGOCD_CHART_VERSION=$(yq '.spec.sources[0].targetRevision' stack/bootstrap/apps/templates/argocd.yaml)
 REPO_URL=http://git.git.svc.cluster.local:23232/platform.git
 REVISION=main
 APPS_TIMEOUT=${APPS_TIMEOUT:-600}
@@ -13,7 +13,7 @@ if kubectl -n argocd get deploy argocd-server >/dev/null 2>&1; then
   step "Argo CD already installed; it manages itself from Git"
   # Repositories added to values since would only arrive when Argo CD syncs
   # itself, after apps may need them (and a failed pull is cached): apply now.
-  yq -o json '.configs.repositories // {}' system/argocd/values.yaml | jq -c 'to_entries[]' |
+  yq -o json '.configs.repositories // {}' stack/argocd/values.yaml | jq -c 'to_entries[]' |
     while read -r repo; do
       jq '{apiVersion: "v1", kind: "Secret",
            metadata: {name: ("argocd-repo-" + .key), namespace: "argocd",
@@ -26,7 +26,7 @@ else
   helm repo add argo https://argoproj.github.io/argo-helm --force-update >/dev/null
   helm upgrade --install argocd argo/argo-cd --version "$ARGOCD_CHART_VERSION" \
     --namespace argocd --create-namespace \
-    --values system/argocd/values.yaml \
+    --values stack/argocd/values.yaml \
     --wait --timeout 5m >/dev/null
   ok "Argo CD running"
 fi
@@ -37,7 +37,7 @@ REPO_URL="$REPO_URL" REVISION="$REVISION" yq '
   .spec.source.targetRevision = strenv(REVISION) |
   .spec.source.helm.valuesObject.repo.url = strenv(REPO_URL) |
   .spec.source.helm.valuesObject.repo.revision = strenv(REVISION)
-' bootstrap/root.yaml | kubectl apply -f - >/dev/null
+' stack/bootstrap/root.yaml | kubectl apply -f - >/dev/null
 ok "root applied"
 
 step "Waiting for every Application to be Synced and Healthy (up to ${APPS_TIMEOUT}s)"

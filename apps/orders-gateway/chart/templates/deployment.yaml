@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "orders-gateway.name" . }}
+  labels:
+    {{- include "orders-gateway.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicas }}
+  {{- end }}
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      {{- include "orders-gateway.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "orders-gateway.labels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "orders-gateway.name" . }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000   # the node image's user, by number (apps/orders-gateway/app/Dockerfile)
+        runAsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      {{- if .Values.topologySpread.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "orders-gateway.selectorLabels" . | nindent 14 }}
+          matchLabelKeys: [pod-template-hash]
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "orders-gateway.selectorLabels" . | nindent 14 }}
+          matchLabelKeys: [pod-template-hash]
+      {{- end }}
+      containers:
+        - name: orders-gateway
+          image: {{ include "orders-gateway.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: VERSION   # app_info{version} and /version
+              value: {{ .Values.image.tag | quote }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "orders-gateway.name" . }}
+          # Up to 30 s to answer before liveness takes over.
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 1
+            failureThreshold: 30
+          # Lenient: /work blocks Node's event loop (and /healthz) for up to
+          # 2 s, so a strict probe would restart pods when they're busiest.
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            timeoutSeconds: 3
+            periodSeconds: 10
+            failureThreshold: 6
+          # Three misses, not one: under a spike every pod is slow, and pulling
+          # them out one by one piles the load on the rest.
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            timeoutSeconds: 2
+            periodSeconds: 2
+            failureThreshold: 3
+          # Let endpoints drop the pod before SIGTERM stops it accepting.
+          lifecycle:
+            preStop:
+              sleep: {seconds: 5}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}

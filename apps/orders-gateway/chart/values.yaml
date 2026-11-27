@@ -1,0 +1,63 @@
+# Defaults for every environment; apps/orders-gateway/cd/<env>.yaml overrides them.
+
+# The pods' `env` label (Loki, Grafana).
+env: dev
+
+image:
+  repository: ghcr.io/iantest11111989/orders-gateway
+  # Required. Promotion changes only this line.
+  tag: ""
+  # Optional. When set the pod runs repository@digest, so a re-pushed tag
+  # can't change what runs.
+  digest: ""
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+# Env vars server.js reads; null keeps the app's defaults (no faults, 3 s warm-up).
+config:
+  faultErrorRate: null
+  faultLatencyMs: null
+  startupDelayMs: null
+
+# The HPA's 70% is measured against the CPU request. No CPU limit (it would only throttle).
+resources:
+  requests: {cpu: 100m, memory: 48Mi}
+  limits: {memory: 128Mi}
+
+# One Traefik entrypoint = one host port (stack/traefik/values.yaml); no
+# hostname needed. /admin/* (unauthenticated fault switch) gets a 403.
+ingress:
+  enabled: true
+  className: traefik
+  entrypoint: dev
+  # e.g. orders-gateway.localhost (*.localhost resolves to 127.0.0.1).
+  hosts: []
+  # Also serve requests with no matching host. One app per entrypoint.
+  default: false
+
+autoscaling:
+  enabled: false
+  minReplicas: 3
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: false
+  maxUnavailable: 1
+
+topologySpread:
+  enabled: false
+
+serviceMonitor:
+  enabled: true
+  interval: 30s
+
+# Ingress only from Traefik and Prometheus; egress only to DNS.
+networkPolicy:
+  enabled: true
+  ingressNamespace: traefik
+  monitoringNamespace: monitoring
+
+# 5 s preStop + the app's 25 s hard exit after SIGTERM + margin.
+terminationGracePeriodSeconds: 35

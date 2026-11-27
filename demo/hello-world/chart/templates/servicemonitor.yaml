@@ -1,7 +1,7 @@
 {{- if .Values.serviceMonitor.enabled }}
 # Scraped by Prometheus, so hello-world's requests show in Prometheus and
 # Grafana next to orders-gateway's, as service="hello-world". The SLO rules
-# (alerts/orders-gateway-slo.yaml) count only orders-gateway.
+# (stack/observability/alerts/orders-gateway-slo.yaml) count only orders-gateway.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:

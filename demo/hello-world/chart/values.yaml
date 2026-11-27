@@ -1,5 +1,5 @@
-# Defaults for every environment. cd/hello-world/<env>.yaml overrides
-# them; Argo CD passes both (the ApplicationSet in bootstrap/apps/templates/apps.yaml).
+# Defaults for every environment. apps/hello-world/cd/<env>.yaml overrides
+# them; Argo CD passes both (the ApplicationSet in stack/bootstrap/apps/templates/apps.yaml).
 
 # Environment name: the `env` label on pods (Loki, Grafana).
 env: dev
@@ -32,7 +32,7 @@ resources:
   limits: {memory: 128Mi}
 
 # The way in: an Ingress on one Traefik entrypoint, which is one host port
-# (system/traefik/values.yaml): prod 8080, dev 8082, staging 8083, demo 8084.
+# (stack/traefik/values.yaml): prod 8080, dev 8082, staging 8083, demo 8084.
 # Every request on that port reaches this environment; there's no hostname.
 # /admin/* (the runtime fault switch, no auth) gets a 403 there.
 ingress:

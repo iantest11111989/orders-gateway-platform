@@ -14,7 +14,7 @@ variable "vpc_cidr" {
 }
 
 variable "kubernetes_version" {
-  description = "The newest EKS offers; kind runs v1.37.0 (cluster/kind.yaml), and EKS trails upstream."
+  description = "The newest EKS offers; kind runs v1.37.0 (stack/cluster/kind.yaml), and EKS trails upstream."
   type        = string
 }
 

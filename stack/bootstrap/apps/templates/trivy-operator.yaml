@@ -1,0 +1,44 @@
+# Trivy Operator: continuous image and config scans, exported as metrics
+# (stack/trivy-operator/values.yaml). Wave 20.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: trivy-operator
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: platform-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/manifest-generate-paths: "/stack/trivy-operator"
+spec:
+  project: default
+  sources:
+    - repoURL: https://aquasecurity.github.io/helm-charts/
+      chart: trivy-operator
+      targetRevision: 0.38.1 # operator v0.36.1
+      helm:
+        releaseName: trivy-operator
+        valueFiles:
+          - $values/stack/trivy-operator/values.yaml
+    - repoURL: {{ .Values.repo.url }}
+      targetRevision: {{ .Values.repo.revision }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: trivy-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff: {duration: 5s, factor: 2, maxDuration: 1m}
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/warn: restricted
+        pod-security.kubernetes.io/audit: restricted
+    syncOptions:
+      - CreateNamespace=true
+      # The CRDs are too large for client-side apply's annotation.
+      - ServerSideApply=true

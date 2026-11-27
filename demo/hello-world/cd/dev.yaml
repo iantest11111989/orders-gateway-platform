@@ -1,4 +1,4 @@
-# dev: copied to cd/hello-world/dev.yaml first, by ./pipeline cd hello-world dev. ./pipeline cd adds the version
+# dev: copied to apps/hello-world/cd/dev.yaml first, by ./pipeline cd hello-world dev. ./pipeline cd adds the version
 # and fills in the image before it pushes, so the in-stack Git never sees
 # this file without a version.
 env: dev

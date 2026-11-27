@@ -20,7 +20,7 @@ You'll watch three controllers at work, each in its own UI and in Grafana:
    kubectl -n dev get deploy orders-gateway -w
    ```
 
-   Within seconds it's back to 1, the value in `cd/orders-gateway/dev.yaml`. Argo CD saw the drift and self-healed. Press Ctrl-C. The Syncs per Application panel shows the extra sync.
+   Within seconds it's back to 1, the value in `apps/orders-gateway/cd/dev.yaml`. Argo CD saw the drift and self-healed. Press Ctrl-C. The Syncs per Application panel shows the extra sync.
 
 The rule: change Git, not the cluster.
 

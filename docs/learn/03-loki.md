@@ -10,7 +10,7 @@ You'll select logs by label, filter by text, parse JSON fields, follow one reque
 
    ```sh
    ./platform shell
-   k6 run --quiet -e BASE_URL=http://localhost:8082 -e RATE=5 -e DURATION=15m apps/orders-gateway/k6/load.js
+   k6 run --quiet -e BASE_URL=http://localhost:8082 -e RATE=5 -e DURATION=15m apps/orders-gateway/app/k6/load.js
    ```
 
 2. In Grafana (<http://localhost:3000>), open Explore, pick the Loki data source, and switch the editor to Code.

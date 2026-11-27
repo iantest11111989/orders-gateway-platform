@@ -17,14 +17,14 @@ What would change between this local setup and a real cloud deployment, and why.
 | One replica of Argo CD, Kyverno and the monitoring stack; Kyverno fails open | 3 replicas each; Kyverno fails closed for app namespaces | Fail-open here keeps a Kyverno outage from blocking a rollback on one machine |
 | `./pipeline` images are unsigned; the in-stack registry is trusted | Only images signed by CI on main are admitted | The `verify-image-signatures` policy already checks CI-signed images; it would cover every app image |
 
-What stays the same: the Helm chart, the env files in `cd/`, Argo CD's app-of-apps, the Kyverno policies, the SLOs and their runbooks, and the app's metrics and JSON logs.
+What stays the same: the Helm chart, the env files in `apps/<app>/cd/`, Argo CD's app-of-apps, the Kyverno policies, the SLOs and their runbooks, and the app's metrics and JSON logs.
 
 ## Shipping and rolling back
 
 Here, CI/CD runs locally so anyone who clones the repo can practise every step without their own CI or registry. In production the same flow moves to CI:
 
 1. A pull request sets the new version. Merging it to main runs CI: test, build, scan, sign, then push the image and chart to the registry under that version and tag the commit (`orders-gateway-v1.2.0`).
-2. CI commits the version and image digest to `cd/<app>/dev.yaml`. Dev's Argo CD deploys it.
+2. CI commits the version and image digest to `apps/<app>/cd/dev.yaml`. Dev's Argo CD deploys it.
 3. Staging and prod move by **promotion PR**: a PR that changes only that environment's file. Its checks are the gates `./pipeline cd` runs today: the previous environment runs this version, is Synced and Healthy, and has no alert firing. Prod also needs an approval. Merging is the deploy.
 4. **Rollback** is a revert PR of the promotion commit.
 

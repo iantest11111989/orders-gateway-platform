@@ -6,7 +6,7 @@ Each section says where a part lives, how to see it, and why. Run commands from 
 
 ## 1. Start-up
 
-Files: [`docker-compose.yml`](../../docker-compose.yml), [`scripts/compose-ready.sh`](../../scripts/compose-ready.sh), [`scripts/up.sh`](../../scripts/up.sh), [`cluster/kind.yaml`](../../cluster/kind.yaml), [`bootstrap/root.yaml`](../../bootstrap/root.yaml).
+Files: [`docker-compose.yml`](../../docker-compose.yml), [`scripts/compose-ready.sh`](../../scripts/compose-ready.sh), [`scripts/up.sh`](../../scripts/up.sh), [`stack/cluster/kind.yaml`](../../stack/cluster/kind.yaml), [`stack/bootstrap/root.yaml`](../../stack/bootstrap/root.yaml).
 
 1. Start the stack and follow it:
 
@@ -26,7 +26,7 @@ Files: [`docker-compose.yml`](../../docker-compose.yml), [`scripts/compose-ready
 
    One control plane and two workers, each a Docker container capped at 2 CPU / 4 GiB, with the workers in different zones.
 
-3. Open Argo CD at <http://localhost:8081>. Each tile is an Application from [`bootstrap/apps/templates/`](../../bootstrap/apps/templates/), installed in sync waves: CRDs, controllers, monitoring and policies, then the apps.
+3. Open Argo CD at <http://localhost:8081>. Each tile is an Application from [`stack/bootstrap/apps/templates/`](../../stack/bootstrap/apps/templates/), installed in sync waves: CRDs, controllers, monitoring and policies, then the apps.
 
 Check yourself: `traefik.yaml` is wave 10 and `edge.yaml` is wave 25. Why must Traefik come first?
 
@@ -36,9 +36,9 @@ Run `./platform verify`. It checks most of this in one go.
 
 | Try it | Built in |
 | --- | --- |
-| `curl localhost:8080/version` returns 200 | [`ingress.yaml`](../../helm/orders-gateway/templates/ingress.yaml), [`system/traefik/values.yaml`](../../system/traefik/values.yaml) |
-| `curl -X POST localhost:8080/admin/fault` returns 403 | the same, plus [`system/edge/`](../../system/edge/) |
-| `./platform kubectl get deploy -A -l app.kubernetes.io/name=orders-gateway` shows dev, staging and prod | [`helm/orders-gateway/`](../../helm/orders-gateway/) |
+| `curl localhost:8080/version` returns 200 | [`ingress.yaml`](../../apps/orders-gateway/chart/templates/ingress.yaml), [`stack/traefik/values.yaml`](../../stack/traefik/values.yaml) |
+| `curl -X POST localhost:8080/admin/fault` returns 403 | the same, plus [`stack/edge/`](../../stack/edge/) |
+| `./platform kubectl get deploy -A -l app.kubernetes.io/name=orders-gateway` shows dev, staging and prod | [`apps/orders-gateway/chart/`](../../apps/orders-gateway/chart/) |
 | `docker compose stop && docker compose start`, then Grafana still shows the earlier traffic | the cluster runs in kind's own containers, outside Compose |
 
 `/admin` is blocked at the edge by a deny-all middleware. The app itself has no auth on it, so it still works from inside the cluster.
@@ -47,7 +47,7 @@ Check yourself: [`scripts/ready-check.sh`](../../scripts/ready-check.sh) checks 
 
 ## 3. Running the app well
 
-Files: [`apps/orders-gateway/server.js`](../../apps/orders-gateway/server.js), [`helm/orders-gateway/values.yaml`](../../helm/orders-gateway/values.yaml), [`templates/deployment.yaml`](../../helm/orders-gateway/templates/deployment.yaml).
+Files: [`apps/orders-gateway/app/server.js`](../../apps/orders-gateway/app/server.js), [`apps/orders-gateway/chart/values.yaml`](../../apps/orders-gateway/chart/values.yaml), [`templates/deployment.yaml`](../../apps/orders-gateway/chart/templates/deployment.yaml).
 
 1. Read `server.js` (about 100 lines). Find the 3-second warm-up before `/readyz` returns 200, and the SIGTERM handler that drains and exits within 25 s.
 2. Match each behaviour to the chart:
@@ -71,9 +71,9 @@ Check yourself: if the app took 40 s to exit, what would you change, and what br
 
 ## 4. Environments, release and rollback
 
-Files: [`cd/orders-gateway/`](../../cd/orders-gateway/), [`pipeline`](../../pipeline).
+Files: [`apps/orders-gateway/cd/`](../../apps/orders-gateway/cd/), [`pipeline`](../../pipeline).
 
-1. Diff the environments: `diff cd/orders-gateway/dev.yaml cd/orders-gateway/prod.yaml`. That diff is the whole difference between dev and prod.
+1. Diff the environments: `diff apps/orders-gateway/cd/dev.yaml apps/orders-gateway/cd/prod.yaml`. That diff is the whole difference between dev and prod.
 2. In one terminal, send traffic to dev:
 
    ```sh
@@ -84,20 +84,20 @@ Files: [`cd/orders-gateway/`](../../cd/orders-gateway/), [`pipeline`](../../pipe
 
    ```sh
    ./pipeline ci orders-gateway          # test, build, scan, publish a local-<time> build
-   ./pipeline cd orders-gateway dev      # point cd/orders-gateway/dev.yaml at it
+   ./pipeline cd orders-gateway dev      # point apps/orders-gateway/cd/dev.yaml at it
    curl localhost:8082/version
    ./pipeline rollback orders-gateway dev
    ```
 
 The first terminal should show only `200`. Watch Grafana, dashboard orders-gateway, panel Pods by version.
 
-A release is a change to `cd/orders-gateway/<env>.yaml`, pushed to the in-stack Git server; Argo CD rolls it out. dev syncs by itself. For staging and prod, add `--sync` or click Sync in Argo CD.
+A release is a change to `apps/orders-gateway/cd/<env>.yaml`, pushed to the in-stack Git server; Argo CD rolls it out. dev syncs by itself. For staging and prod, add `--sync` or click Sync in Argo CD.
 
-Check yourself: after `./pipeline cd`, what does `git diff cd/orders-gateway/dev.yaml` show?
+Check yourself: after `./pipeline cd`, what does `git diff apps/orders-gateway/cd/dev.yaml` show?
 
 ## 5. GitOps and CI
 
-Files: [`system/git-server/`](../../system/git-server/), [`.github/workflows/`](../../.github/workflows/). Exercise [5](05-k8s-operations.md) goes deeper.
+Files: [`stack/git-server/`](../../stack/git-server/), [`.github/workflows/`](../../.github/workflows/). Exercise [5](05-k8s-operations.md) goes deeper.
 
 ```sh
 ./platform kubectl -n dev scale deploy orders-gateway --replicas=3
@@ -106,7 +106,7 @@ Files: [`system/git-server/`](../../system/git-server/), [`.github/workflows/`](
 
 Argo CD reads from a Git server inside the cluster that holds a snapshot of your checkout. CI/CD runs locally through `./pipeline`; GitHub only checks pull requests. [`docs/production.md`](../production.md) describes how it would run in production.
 
-Check yourself: which policy in [`policies/`](../../policies/) stops an unsigned image in prod? Why are `./pipeline`'s unsigned `localhost:30500/` images still admitted? (Read `verify-image-signatures.yaml`.)
+Check yourself: which policy in [`stack/kyverno/policies/`](../../stack/kyverno/policies/) stops an unsigned image in prod? Why are `./pipeline`'s unsigned `localhost:30500/` images still admitted? (Read `verify-image-signatures.yaml`.)
 
 ## 6. Observability
 
@@ -115,9 +115,9 @@ This is the biggest part. Do exercises 1 to 4 here.
 | Topic | Exercise |
 | --- | --- |
 | Metrics, counters and histograms, cardinality | [1. Prometheus](01-prometheus.md) |
-| Dashboards as code | [2. Grafana](02-grafana.md), [`dashboards/`](../../dashboards/README.md) |
+| Dashboards as code | [2. Grafana](02-grafana.md), [`stack/observability/dashboards/`](../../stack/observability/dashboards/README.md) |
 | JSON logs, following one request | [3. Loki](03-loki.md) |
-| SLOs, burn rates, runbooks | [4. SLOs](04-slos.md), [`alerts/`](../../alerts/README.md), [`runbooks/`](../../runbooks/README.md) |
+| SLOs, burn rates, runbooks | [4. SLOs](04-slos.md), [`stack/observability/alerts/`](../../stack/observability/alerts/README.md), [`stack/observability/runbooks/`](../../stack/observability/runbooks/README.md) |
 
 Then look at:
 
@@ -150,10 +150,10 @@ Check yourself: during `chaos`, why does the second eviction wait? Which object 
 
 ## 8. Pinned versions
 
-Tool versions are in [`toolbox/versions.env`](../../toolbox/versions.env) and chart versions in `bootstrap/apps/templates/`. Renovate keeps them current.
+Tool versions are in [`stack/toolbox/versions.env`](../../stack/toolbox/versions.env) and chart versions in `stack/bootstrap/apps/templates/`. Renovate keeps them current.
 
 ## Next
 
 - Exercises [1](01-prometheus.md) to [5](05-k8s-operations.md), if you skipped them.
-- [`runbooks/`](../../runbooks/README.md): one per alert.
+- [`stack/observability/runbooks/`](../../stack/observability/runbooks/README.md): one per alert.
 - [`docs/production.md`](../production.md): what would change in production.

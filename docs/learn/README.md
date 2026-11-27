@@ -21,4 +21,4 @@ Short hands-on exercises, about 15 minutes each, run against your live stack.
 
 ## About the numbers
 
-The expected numbers in each exercise are for k6's traffic only. A small background client (`system/trickle`) also sends `GET /work?ms=10` and `POST /echo` to every environment twice a second, so dev's `/work` and `/echo` rates read about 2/s higher each.
+The expected numbers in each exercise are for k6's traffic only. A small background client (`stack/trickle`) also sends `GET /work?ms=10` and `POST /echo` to every environment twice a second, so dev's `/work` and `/echo` rates read about 2/s higher each.

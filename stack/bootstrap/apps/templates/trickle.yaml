@@ -1,0 +1,36 @@
+# Steady light traffic to dev, staging and prod so dashboards show live data.
+# Wave 45: after the environments.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: trickle
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: platform-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "45"
+    argocd.argoproj.io/manifest-generate-paths: "/stack/trickle"
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repo.url }}
+    targetRevision: {{ .Values.repo.revision }}
+    path: stack/trickle
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: trickle
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff: {duration: 5s, factor: 2, maxDuration: 1m}
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/warn: restricted
+        pod-security.kubernetes.io/audit: restricted
+    syncOptions:
+      - CreateNamespace=true

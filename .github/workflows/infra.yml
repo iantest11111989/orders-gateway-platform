@@ -5,10 +5,10 @@ name: CI · infra
 
 on:
   pull_request:
-    paths: ["platform", "pipeline", "docker-compose.yml", "scripts/**", "demo/**", "toolbox/**", "cluster/**", "bootstrap/**", "system/**", "helm/**", "cd/**", "alerts/**", "policies/**", ".github/workflows/**", ".shellcheckrc"]
+    paths: ["platform", "pipeline", "docker-compose.yml", "scripts/**", "demo/**", "stack/**", "apps/*/chart/**", "apps/*/cd/**", ".github/workflows/**", ".shellcheckrc"]
   push:
     branches: [main]
-    paths: ["platform", "pipeline", "docker-compose.yml", "scripts/**", "demo/**", "toolbox/**", "cluster/**", "bootstrap/**", "system/**", "helm/**", "cd/**", "alerts/**", "policies/**", ".github/workflows/**", ".shellcheckrc"]
+    paths: ["platform", "pipeline", "docker-compose.yml", "scripts/**", "demo/**", "stack/**", "apps/*/chart/**", "apps/*/cd/**", ".github/workflows/**", ".shellcheckrc"]
   workflow_dispatch:
 
 permissions:
@@ -30,7 +30,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD":/mnt -w /mnt \
             koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d \
-            -x platform pipeline scripts/*.sh scripts/lib/host.sh demo/*.sh demo/*/run.sh toolbox/install-tools.sh
+            -x platform pipeline scripts/*.sh scripts/lib/host.sh demo/*.sh demo/*/run.sh stack/toolbox/install-tools.sh
       - name: docker-compose.yml uses the current toolbox image
         run: sh scripts/check-compose-toolbox.sh
       - name: actionlint
@@ -63,9 +63,9 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/w:ro" -w /w \
             ghcr.io/kyverno/kyverno-cli:v1.20.0@sha256:bd2b8b7c9d550ecf04e0bacaf351adce2f82ce67fd3f291075edcee7f8ab4ab4 \
-            apply policies/disallow-latest-tag.yaml policies/disallow-latest-tag-platform.yaml \
-              policies/require-non-root-readonly.yaml policies/require-probes.yaml \
-              policies/require-resources.yaml policies/restrict-image-registries.yaml \
+            apply stack/kyverno/policies/disallow-latest-tag.yaml stack/kyverno/policies/disallow-latest-tag-platform.yaml \
+              stack/kyverno/policies/require-non-root-readonly.yaml stack/kyverno/policies/require-probes.yaml \
+              stack/kyverno/policies/require-resources.yaml stack/kyverno/policies/restrict-image-registries.yaml \
             --resource out/policy-input/apps.yaml >"$RUNNER_TEMP/kyverno.txt" 2>&1 || { cat "$RUNNER_TEMP/kyverno.txt"; exit 1; }
           grep -E "^(Applying|pass:)" "$RUNNER_TEMP/kyverno.txt"
           grep -qE "^pass: [1-9][0-9]*, fail: 0, warn: 0, error: 0" "$RUNNER_TEMP/kyverno.txt"
@@ -81,12 +81,12 @@ jobs:
       # Build only; toolbox-publish pushes from main.
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: toolbox
+          context: stack/toolbox
           platforms: linux/amd64,linux/arm64
           push: false
 
   # Publishes the toolbox from main so ./platform can pull it. The tag is the
-  # same toolbox/ hash ./platform computes (scripts/lib/host.sh).
+  # same stack/toolbox/ hash ./platform computes (scripts/lib/host.sh).
   toolbox-publish:
     name: "Publish toolbox (main only)"
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
@@ -103,9 +103,9 @@ jobs:
         with:
           persist-credentials: false
       - id: tag
-        name: Tag = hash of toolbox/ (same as ./platform)
+        name: Tag = hash of stack/toolbox/ (same as ./platform)
         run: |
-          hash=$(cd toolbox && find . -type f | LC_ALL=C sort | xargs cat | sha256sum | cut -c1-12)
+          hash=$(cd stack/toolbox && find . -type f | LC_ALL=C sort | xargs cat | sha256sum | cut -c1-12)
           echo "tag=sha-$hash" >>"$GITHUB_OUTPUT"
       - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
@@ -135,7 +135,7 @@ jobs:
         if: steps.exists.outputs.digest == ''
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: toolbox
+          context: stack/toolbox
           platforms: linux/amd64,linux/arm64
           push: true
           sbom: true

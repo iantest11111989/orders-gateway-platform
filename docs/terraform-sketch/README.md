@@ -4,10 +4,10 @@
 
 What Terraform does here, and what it deliberately doesn't:
 
-| Terraform owns | Argo CD keeps owning (unchanged from `bootstrap/` and `system/`) |
+| Terraform owns | Argo CD keeps owning (unchanged from `stack/bootstrap/` and `stack/`) |
 | --- | --- |
 | VPC across 3 zones, private subnets, NAT | Every platform component: Prometheus, Loki, Kyverno, Traefik, ... |
-| EKS: private API endpoint, SSO access entries, add-ons (VPC CNI with network policy, EBS CSI) | The app in dev, staging and prod, from `cd/orders-gateway/*.yaml` |
+| EKS: private API endpoint, SSO access entries, add-ons (VPC CNI with network policy, EBS CSI) | The app in dev, staging and prod, from `apps/orders-gateway/cd/*.yaml` |
 | Two node groups: `platform` (tainted) and `apps` | Promotion by Git change, self-heal and prune |
 | IAM roles for service accounts: ExternalDNS, the AWS Load Balancer Controller, External Secrets | |
 | An ECR pull-through cache of GHCR | |
