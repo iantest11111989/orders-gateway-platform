@@ -36,7 +36,7 @@ demo_gitops_revert() {
   narrate_git "$(git -C "$work" rev-parse HEAD)" 30 300
 
   step "Committing a bad config change to $branch"
-  run yq -i '.config.faultErrorRate = 0.3' "$work/cd/orders-gateway/dev.yaml"
+  run yq -i '.config.faultErrorRate = 0.3' "$work/apps/orders-gateway/cd/dev.yaml"
   note "the chart turns config.faultErrorRate into the app's FAULT_ERROR_RATE env var (an app setting, no code change)"
   run git -C "$work" --no-pager diff
   run git -C "$work" -c user.name="orders-gateway demo" -c user.email="demo@localhost" \
