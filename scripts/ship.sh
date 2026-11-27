@@ -137,14 +137,16 @@ roll_out() { # roll_out <image>: push the checkout, then wait for the Deployment
   done
   showcmd "kubectl -n $env rollout status deploy/$DEPLOYMENT --timeout=300s"
   kubectl -n "$env" rollout status "deploy/$DEPLOYMENT" --timeout=300s 2>&1 | sed 's/^/      /'
-  # Then wait for pruning (PruneLast) so the next promotion's gate sees Synced.
+  # Then wait for pruning (PruneLast) and for Healthy, so the next promotion's
+  # gate sees Synced and Healthy. An HPA reads Degraded for up to a minute
+  # after a rollout, until metrics-server has CPU samples for the new pods.
   local st deadline2=$(( $(date +%s) + 300 ))
-  showcmd "kubectl -n argocd get applications.argoproj.io $APP-$env -o jsonpath='{.status.sync.status} {.status.operationState.phase}'"
-  shownote "until Synced Succeeded (old objects pruned)"
+  showcmd "kubectl -n argocd get applications.argoproj.io $APP-$env -o jsonpath='{.status.sync.status} {.status.operationState.phase} {.status.health.status}'"
+  shownote "until Synced Succeeded Healthy (old objects pruned, the HPA has metrics)"
   while :; do
-    st=$(kubectl -n argocd get applications.argoproj.io "$APP-$env" -o jsonpath='{.status.sync.status} {.status.operationState.phase}' 2>/dev/null || true)
-    [ "$st" = "Synced Succeeded" ] && break
-    [ "$(date +%s)" -lt "$deadline2" ] || { app_status; die "$APP-$env isn't Synced after its sync (it shows: ${st:-nothing}); see ./platform verify"; }
+    st=$(kubectl -n argocd get applications.argoproj.io "$APP-$env" -o jsonpath='{.status.sync.status} {.status.operationState.phase} {.status.health.status}' 2>/dev/null || true)
+    [ "$st" = "Synced Succeeded Healthy" ] && break
+    [ "$(date +%s)" -lt "$deadline2" ] || { app_status; die "$APP-$env isn't Synced and Healthy after its sync (it shows: ${st:-nothing}); see ./platform verify"; }
     sleep 3
   done
   ok "$env runs $want"
