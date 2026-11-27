@@ -4,7 +4,7 @@ A Kubernetes platform you can run on your own machine, for hands-on practice. On
 
 CI/CD runs locally too: `./pipeline` tests, builds and scans an app, then promotes it from dev to staging to prod through Git and Argo CD.
 
-It started as an answer to a take-home DevOps test. [docs/brief.md](docs/brief.md) goes through that test point by point.
+[docs/requirements.md](docs/requirements.md) lists what it sets out to do, point by point, and where each is met.
 
 ## What you need
 
@@ -160,7 +160,7 @@ Start with `./platform doctor` and `./platform verify`.
 
 ## Demos
 
-The repo began as a take-home DevOps test ("the brief"), and each demo runs one of the checks it asked for. Every demo runs on a real environment, prod (:8080) unless you name another: `./platform demo <name> [dev|staging|prod]`. It prints every command it runs with its output, tells you at each step which Grafana or Argo CD screen to open and what you should see there (the **▶ Check** lines), and ends with a pass or a fail. Each is a folder in [`demo/`](demo/README.md).
+Each demo checks one of the [requirements](docs/requirements.md) live. Every demo runs on a real environment, prod (:8080) unless you name another: `./platform demo <name> [dev|staging|prod]`. It prints every command it runs with its output, tells you at each step which Grafana or Argo CD screen to open and what you should see there (the **▶ Check** lines), and ends with a pass or a fail. Each is a folder in [`demo/`](demo/README.md).
 
 | Checks | Demo | What it shows | Time |
 | --- | --- | --- | --- |
@@ -204,11 +204,12 @@ This is a local practice setup, so some things differ from a real platform:
 - The Sealed Secrets key is public. Anything sealed with it is public too.
 - Alerts go to a local receiver, not a pager.
 
-[docs/production.md](docs/production.md) covers what would change and why. [docs/brief.md](docs/brief.md) lists the key decisions (why kind, why Helm), what was skipped and why, and what next. See [docs/deviations-from-test.md](docs/deviations-from-test.md) for where the repo departs from the original brief.
+[docs/production.md](docs/production.md) covers what would change and why. [docs/requirements.md](docs/requirements.md) lists the key decisions (why kind, why Helm), what was skipped and why, and what next.
 
 ## Further reading
 
-- [docs/brief.md](docs/brief.md): the original brief point by point, with where each point is answered, the key decisions, what was skipped and why, and what next.
+- [docs/requirements.md](docs/requirements.md): the requirements point by point, with where each is met, the key decisions, what was skipped and why, and what next.
+- [docs/naming.md](docs/naming.md): why objects are named after their app.
 - [docs/learn/](docs/learn/README.md): hands-on exercises on the running stack, starting with [a tour of the repo](docs/learn/00-repo-tour.md).
 - [docs/production.md](docs/production.md): what would change in a real cloud deployment, and how shipping and rollback would work there.
 - [docs/terraform-sketch/](docs/terraform-sketch/README.md): the EKS part in Terraform, never applied.

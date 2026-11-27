@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# ./platform demo contract: checks the brief's "fixed contract" table on the
-# running platform, the way a reviewer would: readiness, kubeconfig,
+# ./platform demo contract: checks the platform's fixed contract
+# (docs/requirements.md) on the running platform: readiness, kubeconfig,
 # namespaces and Deployments, the app on :8080 with /admin/* blocked, the
 # UIs and their login, restart policies and what keeps data across a
 # docker compose stop/start. Read-only: it changes nothing.
@@ -28,8 +28,8 @@ http() {
 
 step "Demo: the fixed contract, checked on the running platform"
 echo "  The names, ports and endpoints the repo promises (the contract table in"
-echo "  the take-home brief it began as), each checked with the command a"
-echo "  reviewer would run. Read-only. Takes under a minute."
+echo "  docs/requirements.md), each checked with the command you would run by"
+echo "  hand. Read-only. Takes under a minute."
 
 # --- Readiness ----------------------------------------------------------------
 step "Readiness: a Compose service named ready, healthy only when everything is up"
@@ -49,7 +49,7 @@ fi
 
 # --- Namespaces ---------------------------------------------------------------
 step "Namespaces: dev, staging and prod each run the app"
-note "deviation from the brief: the Deployment is named orders-gateway, not app (docs/deviations-from-test.md)"
+note "the Deployment is named after its app, orders-gateway, not app (docs/naming.md)"
 for ns in dev staging prod; do
   if run kubectl -n "$ns" get deployment -l app.kubernetes.io/name=orders-gateway -o wide &&
      [ "$(kubectl -n "$ns" get deployment orders-gateway -o jsonpath='{.status.availableReplicas}' 2>/dev/null)" -ge 1 ] 2>/dev/null; then

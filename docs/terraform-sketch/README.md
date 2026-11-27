@@ -1,6 +1,6 @@
 # Terraform sketch: the platform on EKS
 
-**A sketch, never applied.** `terraform validate` passes, nothing more. It sketches what changes between the local kind cluster and a real cloud deployment: the shape and the choices, not a tested module. Monitoring moves to Datadog, as in [`../production.md`](../production.md). Datadog is a paid service; the local stack stays open source, as the brief requires.
+**A sketch, never applied.** `terraform validate` passes, nothing more. It sketches what changes between the local kind cluster and a real cloud deployment: the shape and the choices, not a tested module. Monitoring moves to Datadog, as in [`../production.md`](../production.md). Datadog is a paid service; the local stack stays open source.
 
 What Terraform does here, and what it deliberately doesn't:
 

@@ -1,12 +1,12 @@
 # Demos
 
-Each demo is a folder here, run with `./platform demo <name>`. Each one runs a check from the take-home test the repo began as ("the brief"). It prints every command it runs, as `$ kubectl ...`, with its output indented below, explains what it's doing in `# ...` notes, and ends with a pass or a fail.
+Each demo is a folder here, run with `./platform demo <name>`. Each one checks one of the [requirements](../docs/requirements.md) live. It prints every command it runs, as `$ kubectl ...`, with its output indented below, explains what it's doing in `# ...` notes, and ends with a pass or a fail.
 
 Every demo runs on a real environment: `./platform demo <name> [dev|staging|prod]`, prod (:8080) by default. At each step it prints a **▶ Check** box: which Grafana dashboard, Loki query or Argo CD page to open (as a link, with the environment already picked), and what you should see there.
 
 | Demo | What happens | Time |
 | --- | --- | --- |
-| [`contract`](contract/run.sh) | the brief's contract table, checked live and read-only: `ready` healthy, `out/kubeconfig.yaml` works, the Deployments in dev, staging and prod, each endpoint on :8080, `/admin/*` refused (403), the Grafana login, Prometheus and Alertmanager, restart policies, the volumes that keep data | <1 min |
+| [`contract`](contract/run.sh) | the platform's contract ([requirements](../docs/requirements.md#the-fixed-contract)), checked live and read-only: `ready` healthy, `out/kubeconfig.yaml` works, the Deployments in dev, staging and prod, each endpoint on :8080, `/admin/*` refused (403), the Grafana login, Prometheus and Alertmanager, restart policies, the volumes that keep data | <1 min |
 | [`release`](release/run.sh) | a new version of orders-gateway through `./pipeline`: CI, dev (syncs by itself), then staging and prod, each stopped at its Sync point: Git has the new version, Argo CD shows OutOfSync, the pods still run the old one. Then Sync, and the pods roll one at a time under load. Fails if fewer than 99.5% of requests meet the SLO. The version stays released; it prints the rollback. `release staging` stops after staging. `RELEASE_PAUSE` sets the hold at each Sync point (default 30 s) | ~10 min |
 | [`alert`](alert/run.sh) | under load: the app's fault switched on in each pod from inside the cluster (`/admin/fault` is refused from outside), so 30% of requests fail; the availability fast-burn alert goes pending, then firing, reaches Alertmanager and the local receiver with its runbook link; the fault switched off (also if the demo is interrupted), and the alert resolves | ~15 min |
 | [`chaos`](chaos/run.sh) | delete a pod, then drain a worker of the app's pods; the disruption budget lets only one go at a time; fails if fewer than 99.5% of requests meet the SLO. Staging or prod | ~3 min |

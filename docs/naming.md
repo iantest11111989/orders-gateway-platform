@@ -1,10 +1,6 @@
-# Deviations from the brief
+# Objects are named after their app
 
-The repo began as a take-home DevOps test, called "the brief" here. This page lists where the repo knowingly differs from it, and why.
-
-## Deployments are named after their app, not `app`
-
-**The brief:** each environment runs a Deployment named `app`.
+**The usual starting point:** each environment runs a single Deployment named `app`.
 
 **Here:** the Deployment, and every other object the chart makes, is named after the app: `orders-gateway`. Pods carry the label `app.kubernetes.io/name=orders-gateway`, and metrics carry `service="orders-gateway"` and `job="orders-gateway"`.
 

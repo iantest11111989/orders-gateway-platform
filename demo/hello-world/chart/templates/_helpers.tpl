@@ -1,8 +1,8 @@
 {{- /* Every resource is named after the app, which is the release name
      (Argo CD installs the chart as release <app>): Deployment hello-world,
      labelled app.kubernetes.io/name=hello-world, so several apps can share
-     an environment's namespace. A deliberate deviation from the brief's
-     Deployment "app" (docs/deviations-from-test.md). */ -}}
+     an environment's namespace. Named after the app on purpose,
+     not "app" (docs/naming.md). */ -}}
 {{- define "hello-world.name" -}}{{ .Release.Name }}{{- end -}}
 
 {{- define "hello-world.selectorLabels" -}}
