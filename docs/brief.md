@@ -35,12 +35,12 @@ Status: **done** means built and checked by a demo, `./platform verify` or CI. *
 
 | The brief asks | Status | Where |
 | --- | --- | --- |
-| A Helm chart or Kustomize, justified | done | A Helm chart: [`apps/orders-gateway/chart/`](../apps/orders-gateway/chart/README.md). Why Helm: [Key decisions](#key-decisions) |
+| A Helm chart or Kustomize, justified | done | A Helm chart: [`apps/orders-gateway/chart/`](../apps/orders-gateway/chart/README.md). Why Helm: [Key decisions](#key-decisions). Each setting tied to what `server.js` does: [the chart README](../apps/orders-gateway/chart/README.md#how-the-app-behaves-and-what-the-chart-does-about-it) |
 | Resources | done | 100m CPU request, no CPU limit (it would throttle the single event loop), 48Mi request and 128Mi limit for memory |
 | Probes | done | A startup probe covers the app's 3 s warm-up, then readiness on `/readyz`. Liveness is lenient because `/work` blocks the event loop |
 | Rollout and shutdown | done | `maxSurge: 1`, `maxUnavailable: 0`. A `preStop` sleep of 5 s lets Traefik stop sending traffic first, then the app has 25 s to drain on SIGTERM, within a 35 s grace period |
 | Disruption budgets | done | At most one pod down during a drain |
-| Autoscaling | done | HPA in prod, 3 to 6 pods at 70% CPU |
+| Autoscaling | done | HPA at 70% CPU: 3 to 6 pods in prod, 2 to 4 in staging, so a release meets autoscaling before prod |
 | Security context | done | Non-root, read-only root filesystem, no capabilities, RuntimeDefault seccomp, no service account token. The app namespaces enforce Pod Security `restricted`, and Kyverno adds a read-only root filesystem rule |
 | Network policy | done | Traffic in only from Traefik and Prometheus, out only to DNS |
 | Configuration and secrets | done | Settings are chart values that become a ConfigMap. Secrets are SealedSecrets (see section 2) |
