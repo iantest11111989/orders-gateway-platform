@@ -14,8 +14,14 @@ BAD_PUSHED='' WORK=''
 demo_undo() {
   [ -n "$BAD_PUSHED" ] && [ -n "$WORK" ] || return 0
   warn "reverting the bad commit (the demo stopped early)"
-  git -C "$WORK" -c user.name="orders-gateway demo" -c user.email="demo@localhost" revert --no-edit HEAD >/dev/null &&
-    gitauth -C "$WORK" push origin HEAD:main >/dev/null 2>&1 && { [ "$ENV" = dev ] || sync_app "$APP" demo; }
+  if git -C "$WORK" -c user.name="orders-gateway demo" -c user.email="demo@localhost" revert --no-edit HEAD >/dev/null &&
+    gitauth -C "$WORK" push origin HEAD:main >/dev/null 2>&1 &&
+    { [ "$ENV" = dev ] || sync_app "$APP" demo >/dev/null; }; then
+    ok "reverted and synced: $ENV is back to what Git had before the demo"
+  else
+    warn "the revert didn't go through: $ENV may still fail 30% of requests."
+    warn "Fix: remove config.faultErrorRate from apps/orders-gateway/cd/$ENV.yaml in the in-cluster Git, then Sync $APP"
+  fi
 }
 
 # Pushes the clone's HEAD to main; staging and prod then wait at the Sync point.

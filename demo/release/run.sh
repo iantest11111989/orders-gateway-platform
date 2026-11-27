@@ -23,7 +23,7 @@ APP=orders-gateway
 TARGET=${1:-prod}
 case $TARGET in staging | prod) ;; *) die "usage: ./platform demo release [staging|prod] (got '$TARGET')" ;; esac
 PAUSE=${RELEASE_PAUSE:-30}
-K6_LOG=.build/release-k6.log K6_PID=''
+K6_LOG=.build/release-k6.log K6_PID='' K6_NAME=platform-demo-release-k6-$$
 
 step() { printf '\n==> %s\n' "$*"; }
 ok() { printf '  ✓ %s\n' "$*"; }
@@ -56,7 +56,8 @@ next_version() {
 
 stop_load() {
   [ -n "$K6_PID" ] || return 0
-  kill -INT "$K6_PID" 2>/dev/null || true
+  # Ctrl-C to k6 itself (in its container), so it stops and prints its summary.
+  docker kill --signal INT "$K6_NAME" >/dev/null 2>&1 || true
   wait "$K6_PID" 2>/dev/null || true
   K6_PID=''
 }
@@ -79,7 +80,7 @@ say "wait for someone to press Sync. That Sync is the release decision."
 mkdir -p .build
 step "Starting k6: ~10 requests/s to $TARGET ($URL) for the whole release (log: $K6_LOG)"
 show "k6 run --quiet --summary-mode=compact -e BASE_URL=$URL -e RATE=10 -e DURATION=30m apps/$APP/app/k6/load.js &"
-TOOLBOX_EXEC='' run_toolbox k6 run --quiet --summary-mode=compact -e BASE_URL="$URL" -e RATE=10 -e DURATION=30m \
+TOOLBOX_EXEC='' TOOLBOX_NAME=$K6_NAME run_toolbox k6 run --quiet --summary-mode=compact -e BASE_URL="$URL" -e RATE=10 -e DURATION=30m \
   "apps/$APP/app/k6/load.js" >"$K6_LOG" 2>&1 &
 K6_PID=$!
 sleep 10
@@ -126,6 +127,14 @@ for e in $envs; do
     "Pods by version: still all on the old version. Git changing moved nothing"
   [ "$PAUSE" -le 0 ] || { say "Holding ${PAUSE} s so you can look..."; sleep "$PAUSE"; }
 
+  # The gate checks the environment before this one again. Right after its own
+  # rollout, its HPA can show Degraded for a minute until it has metrics.
+  src=dev; [ "$e" = prod ] && src=staging
+  for _ in $(seq 1 24); do
+    [ "$(kc -n argocd get applications.argoproj.io "$APP-$src" -o jsonpath='{.status.sync.status}/{.status.health.status}' 2>/dev/null)" = Synced/Healthy ] && break
+    sleep 5
+  done
+
   step "$n · Sync: ./pipeline cd $APP $e --version $V --sync"
   say "--sync does what the Sync button does, then waits for the rollout: one new pod"
   say "at a time, each ready before an old one stops."
@@ -148,4 +157,5 @@ awk -v p="${slo:-0}" 'BEGIN { exit !(p >= 99.5) }' ||
 ok "released $V to $TARGET under traffic; ${slo}% of requests met the SLO (>= 99.5%)"
 say "The release stays: your checkout's apps/$APP/cd/*.yaml now say $V (git diff shows it),"
 say "and the in-cluster Git server has the same commits Argo CD deployed."
-say "Roll back: ./pipeline rollback $APP $TARGET --sync"
+say "To go back: ./pipeline rollback $APP $TARGET --sync, then"
+say "git checkout -- apps/$APP/cd/ to put your checkout back to what you pulled."

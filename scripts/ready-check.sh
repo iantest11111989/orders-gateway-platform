@@ -7,9 +7,8 @@
 #   After that: only prod serving. A demo or a short Degraded
 #   moment later on shouldn't make the whole platform read as unhealthy.
 # The marker is in /tmp, so restarting the container (compose stop/start)
-# brings back the full check. Demo copies (label demo=true) never count: one
-# kept with --keep (possibly mid-demo) would otherwise keep `ready` unhealthy
-# after a restart. Quiet on success; says why on failure.
+# brings back the full check. Applications labelled demo=true (copies made by
+# older versions of the demos) never count. Quiet on success; says why on failure.
 set -euo pipefail
 INSTALLED=/tmp/installed-once
 

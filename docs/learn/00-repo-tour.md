@@ -43,7 +43,7 @@ Run `./platform verify`. It checks most of this in one go.
 
 `/admin` is blocked at the edge by a deny-all middleware. The app itself has no auth on it, so it still works from inside the cluster.
 
-Check yourself: [`scripts/ready-check.sh`](../../scripts/ready-check.sh) checks every Application only until it first passes, then only prod. Why? (Hint: what happens during a demo?)
+Check yourself: [`scripts/ready-check.sh`](../../scripts/ready-check.sh) checks every Application only until it first passes, then only prod. Why? (Hint: the demos kill pods, drain a node and release new versions on purpose, and staging and prod are OutOfSync whenever a release waits at its Sync point.)
 
 ## 3. Running the app well
 

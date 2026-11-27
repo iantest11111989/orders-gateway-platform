@@ -49,7 +49,7 @@ run_toolbox() {
     docker volume create --label com.docker.compose.project=platform-demo \
       --label com.docker.compose.volume=kube platform-demo-kube >/dev/null
   # shellcheck disable=SC2086
-  ${TOOLBOX_EXEC-exec} docker run --rm $tty \
+  ${TOOLBOX_EXEC-exec} docker run --rm $tty ${TOOLBOX_NAME:+--name "$TOOLBOX_NAME"} \
     --network host \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "$REPO_ROOT":/work \

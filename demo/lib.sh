@@ -77,14 +77,18 @@ needs() {
 K6_PID='' CORDONED='' GIT_WORK='' GIT_PF='' GIT_KEYDIR=''
 cleanup() {
   [ -z "$K6_PID" ] || kill "$K6_PID" 2>/dev/null || true
+  # A demo that changed the environment on purpose undoes it here if it was
+  # interrupted. First, while the Git port-forward is still up.
+  if declare -F demo_undo >/dev/null; then demo_undo || true; fi
   [ -z "$GIT_PF" ] || kill "$GIT_PF" 2>/dev/null || true
   [ -z "$GIT_KEYDIR" ] || rm -rf "$GIT_KEYDIR"
   if [ -n "$CORDONED" ]; then kubectl uncordon "$CORDONED" >/dev/null 2>&1 || true; fi
-  # A demo that changed prod on purpose undoes it here if it was interrupted.
-  if declare -F demo_undo >/dev/null; then demo_undo || true; fi
   [ -z "$GIT_WORK" ] || rm -rf "$GIT_WORK"
 }
 trap cleanup EXIT
+# Ctrl-C (and docker stop) end the demo through cleanup. Needed: in the toolbox
+# container bash is PID 1, which ignores signals it has no trap for.
+trap 'exit 130' INT TERM
 
 # --- prod ---------------------------------------------------------------------
 
