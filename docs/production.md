@@ -34,7 +34,7 @@ The image is built once and pinned by digest, so prod runs exactly what dev ran.
 
 Most security fixes arrive as new versions of something the platform already runs, so updates have to flow in by themselves, without waiting for someone to notice.
 
-**Here**, [Renovate](../renovate.json5) runs every day against the repo. It knows every pinned version: the Helm charts in `stack/delivery/bootstrap/apps/`, the images (pinned by digest), the tools in the toolbox (`stack/docker/versions.env`), the GitHub Actions and the kind node image. For each one with a newer version it opens a pull request.
+**Here**, [Renovate](../renovate.json5) is set up to run every day against the repo, as a GitHub App installed on it. It knows every pinned version: the Helm charts in `stack/delivery/bootstrap/apps/`, the images (pinned by digest), the tools in the toolbox (`stack/docker/versions.env`), the GitHub Actions and the kind node image. For each one with a newer version it opens a pull request.
 
 - **Patch and digest updates merge themselves** once the pull request's CI checks pass: lint, manifest and policy validation, and the scans. The full E2E then runs on main after the merge. That's where most security fixes land.
 - **Minor and major updates wait for a person**, labelled `needs-owner-approval`.
