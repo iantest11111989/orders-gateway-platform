@@ -714,7 +714,7 @@
             "uid": "prometheus"
           },
           "refId": "A",
-          "expr": "count by (namespace, version) (app_info{namespace=~\"dev|staging|prod\"} * on (namespace, pod) group_left () (kube_pod_status_ready{condition=\"true\"} == 1))",
+          "expr": "count by (namespace, version) (app_info{namespace=~\"dev|staging|prod\"} * on (namespace, pod) group_left () (max by (namespace, pod) (kube_pod_status_ready{namespace=~\"dev|staging|prod\", condition=\"true\"}) == 1))",
           "instant": true,
           "format": "table"
         }
