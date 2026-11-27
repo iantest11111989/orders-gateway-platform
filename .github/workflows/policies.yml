@@ -3,10 +3,10 @@ name: CI · infra · policies
 # Kyverno policy tests, with the CLI matching the in-cluster Kyverno.
 on:
   pull_request:
-    paths: ["stack/kyverno/policies/**", ".github/workflows/policies.yml"]
+    paths: ["stack/security/kyverno/policies/**", ".github/workflows/policies.yml"]
   push:
     branches: [main]
-    paths: ["stack/kyverno/policies/**", ".github/workflows/policies.yml"]
+    paths: ["stack/security/kyverno/policies/**", ".github/workflows/policies.yml"]
 
 permissions:
   contents: read
@@ -21,8 +21,8 @@ jobs:
         with:
           persist-credentials: false
       # Pinned by tag and digest; a regex manager in renovate.json5 keeps it current.
-      - name: kyverno test stack/kyverno/policies/tests
+      - name: kyverno test stack/security/kyverno/policies/tests
         run: |
-          docker run --rm -v "$PWD/stack/kyverno/policies:/p:ro" -w /p \
+          docker run --rm -v "$PWD/stack/security/kyverno/policies:/p:ro" -w /p \
             ghcr.io/kyverno/kyverno-cli:v1.20.0@sha256:bd2b8b7c9d550ecf04e0bacaf351adce2f82ce67fd3f291075edcee7f8ab4ab4 \
             test tests

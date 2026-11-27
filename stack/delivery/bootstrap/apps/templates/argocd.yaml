@@ -10,7 +10,7 @@ metadata:
     app.kubernetes.io/part-of: platform-demo
   annotations:
     argocd.argoproj.io/sync-wave: "0"
-    argocd.argoproj.io/manifest-generate-paths: "/stack/argocd"
+    argocd.argoproj.io/manifest-generate-paths: "/stack/delivery/argocd"
 spec:
   project: default
   sources:
@@ -20,7 +20,7 @@ spec:
       helm:
         releaseName: argocd
         valueFiles:
-          - $values/stack/argocd/values.yaml
+          - $values/stack/delivery/argocd/values.yaml
     - repoURL: {{ .Values.repo.url }}
       targetRevision: {{ .Values.repo.revision }}
       ref: values

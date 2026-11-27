@@ -2,7 +2,7 @@
 
 What each environment runs. `values.yaml` is shared. `dev.yaml`, `staging.yaml` and `prod.yaml` hold only what differs. Argo CD layers them in that order over the chart's defaults in `apps/orders-gateway/chart/values.yaml`.
 
-Each environment is an Argo CD Application, `orders-gateway-<env>`, in a namespace of the same name. The ApplicationSet in `stack/bootstrap/apps/templates/apps.yaml` generates them. Every object is named `orders-gateway`, so other apps can share the namespace.
+Each environment is an Argo CD Application, `orders-gateway-<env>`, in a namespace of the same name. The ApplicationSet in `stack/delivery/bootstrap/apps/templates/apps.yaml` generates them. Every object is named `orders-gateway`, so other apps can share the namespace.
 
 | | dev | staging | prod |
 | --- | --- | --- | --- |
@@ -15,7 +15,7 @@ Each port also answers on `http://orders-gateway.localhost:<port>`.
 
 ## Versions
 
-An env file pins a published `version`, for example `version: 1.2.0`. That means image `localhost:30500/orders-gateway:1.2.0` and chart `orders-gateway` 1.2.0, both from the in-cluster registry (`stack/registry/`).
+An env file pins a published `version`, for example `version: 1.2.0`. That means image `localhost:30500/orders-gateway:1.2.0` and chart `orders-gateway` 1.2.0, both from the in-cluster registry (`stack/delivery/registry/`).
 
 - `./pipeline ci orders-gateway --version 1.2.0` publishes a version.
 - `./pipeline cd orders-gateway <env> --version 1.2.0` sets it in the env file. Staging only takes a version dev has run, and prod only one staging has run.

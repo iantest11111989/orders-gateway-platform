@@ -1,25 +1,25 @@
-# NetworkPolicies for the platform namespaces (stack/network-policies/); the
-# app namespaces get theirs from the chart. Wave 30: after all namespaces exist.
+# Ingresses for the platform UIs, one Traefik entrypoint each (stack/networking/edge/).
+# Wave 25: after Traefik and the `monitoring` namespace exist.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: network-policies
+  name: edge
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: platform-demo
   annotations:
-    argocd.argoproj.io/sync-wave: "30"
-    argocd.argoproj.io/manifest-generate-paths: "/stack/network-policies"
+    argocd.argoproj.io/sync-wave: "25"
+    argocd.argoproj.io/manifest-generate-paths: "/stack/networking/edge"
   finalizers: [resources-finalizer.argocd.argoproj.io]
 spec:
   project: default
   source:
     repoURL: {{ .Values.repo.url }}
     targetRevision: {{ .Values.repo.revision }}
-    path: stack/network-policies
+    path: stack/networking/edge
   destination:
     server: https://kubernetes.default.svc
-    namespace: default
+    namespace: traefik
   syncPolicy:
     automated:
       prune: true
@@ -27,3 +27,6 @@ spec:
     retry:
       limit: 5
       backoff: {duration: 5s, factor: 2, maxDuration: 1m}
+    syncOptions:
+      # A route may apply before its backend Service exists.
+      - SkipDryRunOnMissingResource=true

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests the Application health customization in argocd-cm (the root's sync
-# wave gate, stack/argocd/values.yaml) against fixture Applications in
+# wave gate, stack/delivery/argocd/values.yaml) against fixture Applications in
 # stack/observability/alerts/tests/argocd/, with the cluster's live argocd-cm:
 #   argocd admin settings resource-overrides health <app> --argocd-cm-path …
 # Each fixture's expected status is in the case list below. Runs in the

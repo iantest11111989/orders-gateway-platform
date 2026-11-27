@@ -10,7 +10,7 @@ metadata:
     app.kubernetes.io/part-of: platform-demo
   annotations:
     argocd.argoproj.io/sync-wave: "20"
-    argocd.argoproj.io/manifest-generate-paths: "/stack/kube-prometheus-stack"
+    argocd.argoproj.io/manifest-generate-paths: "/stack/observability/prometheus"
 spec:
   project: default
   sources:
@@ -20,14 +20,14 @@ spec:
       helm:
         releaseName: kube-prometheus-stack
         valueFiles:
-          - $values/stack/kube-prometheus-stack/values.yaml
+          - $values/stack/observability/prometheus/values.yaml
     - repoURL: {{ .Values.repo.url }}
       targetRevision: {{ .Values.repo.revision }}
       ref: values
     # SealedSecrets (Grafana's admin login).
     - repoURL: {{ .Values.repo.url }}
       targetRevision: {{ .Values.repo.revision }}
-      path: stack/kube-prometheus-stack/manifests
+      path: stack/observability/prometheus/manifests
   destination:
     server: https://kubernetes.default.svc
     namespace: monitoring

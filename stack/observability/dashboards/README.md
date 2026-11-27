@@ -18,5 +18,5 @@ Open one at `http://localhost:3000/d/<name>`, for example <http://localhost:3000
 Git is the source. Changes made only in the Grafana UI are lost when Grafana restarts.
 
 1. Edit the dashboard in Grafana, then use **Export → Export as JSON** with "Export for sharing externally" off. Save it over `stack/observability/dashboards/<name>.json`. Or edit the JSON directly.
-2. Run `scripts/dashboards.sh gen`. It writes the ConfigMap that Argo CD applies, `stack/kube-prometheus-stack/manifests/dashboard-<name>.yaml`.
+2. Run `scripts/dashboards.sh gen`. It writes the ConfigMap that Argo CD applies, `stack/observability/prometheus/manifests/dashboard-<name>.yaml`.
 3. Run `scripts/dashboards.sh check`. CI runs it too. It checks that the ConfigMap is up to date, every panel has a description and every PromQL query parses.

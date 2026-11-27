@@ -12,8 +12,8 @@ Status: **done** means built and checked by a demo, `./platform verify` or CI. *
 | Fits 6 CPU / 12 GB on an 8 vCPU / 16 GB x86-64 Linux VM | done | `./platform budget` checks it. Each kind node is capped (2 CPU / 4 GiB) in [`stack/cluster/kind.yaml`](../stack/cluster/kind.yaml) |
 | Healthy in under 15 minutes | done | About 10 minutes on a first start, mostly pulling images. The nightly E2E starts from scratch on x86-64 and arm64 |
 | The interesting part runs inside Kubernetes; justify the choice of kind, k3d, k3s or minikube | done | kind. See [Key decisions](#key-decisions) below |
-| Everything in the cluster installed declaratively with Helm or Kustomize, automatically | done | Argo CD installs every component from a Helm chart, itself included: [`stack/bootstrap/`](../stack/bootstrap/README.md) |
-| Open-source tools only, with pinned versions | done | Tools: [`stack/toolbox/versions.env`](../stack/toolbox/versions.env). Charts: `stack/bootstrap/apps/templates/`. Images and actions are pinned by digest. Renovate keeps them current |
+| Everything in the cluster installed declaratively with Helm or Kustomize, automatically | done | Argo CD installs every component from a Helm chart, itself included: [`stack/delivery/bootstrap/`](../stack/delivery/bootstrap/README.md) |
+| Open-source tools only, with pinned versions | done | Tools: [`stack/toolbox/versions.env`](../stack/toolbox/versions.env). Charts: `stack/delivery/bootstrap/apps/templates/`. Images and actions are pinned by digest. Renovate keeps them current |
 | Don't change the app except by configuration | done | `server.js` is byte-for-byte the original. It moved from `app/` to `apps/orders-gateway/app/` so a second app can sit beside it. The Dockerfile is new, which the brief allows |
 | Mark what you skipped and why | done | [Skipped, and why](#skipped-and-why) below |
 
@@ -59,7 +59,7 @@ Status: **done** means built and checked by a demo, `./platform verify` or CI. *
 
 | The brief asks | Status | Where |
 | --- | --- | --- |
-| Argo CD or Flux, from a Git server the stack hosts | done | Argo CD reads from a small Git server inside the cluster ([`stack/git-server/`](../stack/git-server/)) |
+| Argo CD or Flux, from a Git server the stack hosts | done | Argo CD reads from a small Git server inside the cluster ([`stack/delivery/git-server/`](../stack/delivery/git-server/)) |
 | Self-healing and pruning | done | Both on. Scale a Deployment by hand and Argo CD puts it back within seconds ([learn/05](learn/05-k8s-operations.md)) |
 | Promotion by Git change | done | `./pipeline cd` commits the version to the environment's file. The `gitops-revert` demo shows a bad commit healed by `git revert` |
 | Workflows valid on real GitHub: lint and test, build, scan | done | [`.github/workflows/`](../.github/workflows/), listed in [README: Tests and CI](../README.md#tests-and-ci) |

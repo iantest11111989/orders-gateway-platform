@@ -5,7 +5,7 @@ name: platform-demo
 networking:
   # API server only on loopback; the toolbox shares the host network.
   apiServerAddress: 127.0.0.1
-  # kindnet enforces NetworkPolicy. stack/network-policies/ treats everything
+  # kindnet enforces NetworkPolicy. stack/security/network-policies/ treats everything
   # outside this range as "the nodes": keep them in step (needs a new cluster).
   podSubnet: 10.244.0.0/16
 nodes:

@@ -116,10 +116,10 @@ flowchart LR
   dev -->|commit| git
 ```
 
-- Compose is only the outer shell. Its `ready` service creates the kind cluster, installs Argo CD and gives it the root Application from [`stack/bootstrap/`](stack/bootstrap/README.md).
+- Compose is only the outer shell. Its `ready` service creates the kind cluster, installs Argo CD and gives it the root Application from [`stack/delivery/bootstrap/`](stack/delivery/bootstrap/README.md).
 - Argo CD installs everything with Helm, itself included, in order: CRDs, controllers, monitoring, policies, then the apps. Self-heal and prune are on.
 - Traefik is the only way in. It serves each port as a standard Kubernetes Ingress.
-- Kyverno checks pods as they are admitted. See [`stack/kyverno/policies/`](stack/kyverno/policies/README.md).
+- Kyverno checks pods as they are admitted. See [`stack/security/kyverno/policies/`](stack/security/kyverno/policies/README.md).
 - Secrets are SealedSecrets. The decryption key is committed so any clone works. That is for the demo only.
 
 The app's chart is built for zero-downtime releases and drains: probes, a graceful shutdown, a disruption budget, spreading across nodes and an HPA in staging and prod. [The chart's README](apps/orders-gateway/chart/README.md#how-the-app-behaves-and-what-the-chart-does-about-it) goes through what `server.js` does and which setting answers each behaviour.
@@ -152,7 +152,7 @@ Start with `./platform doctor` and `./platform verify`.
 | `doctor` says a port is in use | Stop whatever holds it. On a Mac, then run `colima restart`. |
 | Pods in `ImagePullBackOff` during start-up | A registry was slow. Wait, or re-run `./platform up`. |
 | `up` fails: "nodes advertise more than their cap" | An old cluster. Run `./platform down && ./platform up`. |
-| `budget` reports `OOMKilled` | Describe the pod. Limits are in `stack/<component>/values.yaml`. |
+| `budget` reports `OOMKilled` | Describe the pod. Limits are in that component's `values.yaml` under `stack/` (Prometheus and Grafana: `stack/observability/prometheus/values.yaml`). |
 | A pod is refused by `disallow-latest-tag` or `verify-image-signatures` | Working as intended. Use a tagged, signed image. |
 | staging or prod is `OutOfSync` after `./pipeline cd` | It is waiting for its Sync. Click **Sync** in Argo CD, or rerun with `--sync`. |
 | `docker compose up -d --wait` never finishes | Run `docker compose down && docker compose up -d --wait`. |
@@ -191,7 +191,7 @@ All CI/CD runs on your machine. GitHub Actions only runs checks. Nothing there b
 | E2E | `main`, by hand, or a pull request with the `run-e2e` label | a fresh cluster in five stages: start, verify, `./pipeline ci`, `./pipeline cd` dev → prod with a rollback under traffic, the `hello-world` demo |
 | Scheduled · nightly E2E | daily | start-up, verify and two demos on x86-64 and arm64 |
 
-To run checks locally: `scripts/test-alerts.sh` for alerts, `scripts/dashboards.sh check` for dashboards, and the `kyverno test` command in [`stack/kyverno/policies/`](stack/kyverno/policies/README.md).
+To run checks locally: `scripts/test-alerts.sh` for alerts, `scripts/dashboards.sh check` for dashboards, and the `kyverno test` command in [`stack/security/kyverno/policies/`](stack/security/kyverno/policies/README.md).
 
 ## Local versus production
 
@@ -221,12 +221,14 @@ apps/orders-gateway/        the app: everything ./pipeline ships
   app/                      the code, Dockerfile, tests and k6 scripts
   chart/                    its Helm chart
   cd/                       the version each environment runs
-stack/                      the platform, one folder per component
-  bootstrap/                Argo CD's root Application and one Application per component
-  argocd/ traefik/ kyverno/ kube-prometheus-stack/ loki/ alloy/ …
-                            each component's Helm values and manifests
-  kyverno/policies/         the Kyverno policies and their tests
-  observability/            alert rules, Grafana dashboards, one runbook per alert
+stack/                      the platform, grouped by job
+  observability/            Prometheus, Grafana and Alertmanager (prometheus/), loki/, alloy/,
+                            dashboards/, alerts/, runbooks/, trickle/ (background traffic)
+  security/                 kyverno/ (and its policies/), sealed-secrets/, trivy-operator/,
+                            network-policies/
+  delivery/                 argocd/, bootstrap/ (Argo CD's root Application and one
+                            Application per component), git-server/, registry/
+  networking/               traefik/, edge/ (what's reachable from outside)
   cluster/                  the kind cluster config
   toolbox/                  the image every command runs in
 demo/                       one folder per demo

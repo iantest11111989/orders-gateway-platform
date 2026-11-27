@@ -25,7 +25,7 @@ resources:
   requests: {cpu: 100m, memory: 48Mi}
   limits: {memory: 128Mi}
 
-# One Traefik entrypoint = one host port (stack/traefik/values.yaml); no
+# One Traefik entrypoint = one host port (stack/networking/traefik/values.yaml); no
 # hostname needed. /admin/* (unauthenticated fault switch) gets a 403.
 ingress:
   enabled: true
