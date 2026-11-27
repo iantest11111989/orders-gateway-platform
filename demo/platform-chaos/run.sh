@@ -58,7 +58,7 @@ kill_one() {
 
 demo_platform_chaos() {
   step "Demo: platform components killed under load, in a copy of prod"
-  echo "  The brief: stay available and reasonably fast while individual pods"
+  echo "  The goal: stay available and reasonably fast while individual pods"
   echo "  and platform components are killed. k6 sends traffic through Traefik"
   echo "  to a copy of prod the whole time; one platform pod at a time is"
   echo "  deleted and comes back. The app's own pods are the chaos demo."

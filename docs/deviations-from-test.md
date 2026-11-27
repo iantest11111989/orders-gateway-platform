@@ -1,6 +1,6 @@
 # Deviations from the brief
 
-Where this repo knowingly differs from the brief, and why.
+The repo began as a take-home DevOps test, called "the brief" here. This page lists where the repo knowingly differs from it, and why.
 
 ## Deployments are named after their app, not `app`
 

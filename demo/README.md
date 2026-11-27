@@ -1,6 +1,6 @@
 # Demos
 
-Each demo is a folder here, run with `./platform demo <name>`. Each one runs a check the brief says the reviewers will make. It prints every command it runs, as `$ kubectl ...`, with its output indented below, explains what it's doing in `# ...` notes, and ends with a pass or a fail.
+Each demo is a folder here, run with `./platform demo <name>`. Each one runs a check from the take-home test the repo began as ("the brief"). It prints every command it runs, as `$ kubectl ...`, with its output indented below, explains what it's doing in `# ...` notes, and ends with a pass or a fail.
 
 | Demo | What happens | Time |
 | --- | --- | --- |
@@ -9,7 +9,7 @@ Each demo is a folder here, run with `./platform demo <name>`. Each one runs a c
 | [`rolling-update`](rolling-update/run.sh) | v1 → v2 in a 3-pod copy of dev: pods replace one at a time; fails if fewer than 99.5% of requests meet the SLO | ~2 min |
 | [`chaos`](chaos/run.sh) | in a copy of prod: delete a pod, then drain a worker; the disruption budget lets only one pod go at a time; fails if fewer than 99.5% of requests meet the SLO | ~3 min |
 | [`gitops-revert`](gitops-revert/run.sh) | a bad config commit (30% of requests fail) on a temporary branch that a copy of dev follows; Argo CD syncs it, then `git revert` heals it. Pushes to the cluster's Git server | ~5 min |
-| [`platform-chaos`](platform-chaos/run.sh) | in a copy of prod under load: deletes a Traefik pod, a CoreDNS pod, the Argo CD repo server and application controller, Prometheus and the Kyverno admission controller, one at a time; shows each come back and what the app needed from it; fails if fewer than 99.5% of requests meet the SLO | ~6 min |
+| [`platform-chaos`](platform-chaos/run.sh) | in a copy of prod under load: deletes a Traefik pod, a CoreDNS pod, the Argo CD repo server and application controller, Prometheus and the Kyverno admission controller, one at a time; shows each come back and what the app needed from it; fails if fewer than 99.5% of requests meet the SLO | ~3 min |
 | [`autoscale`](autoscale/run.sh) | in a copy of prod: k6 sends a fixed 20 requests/s (`AUTOSCALE_RATE`), mostly CPU-heavy `/work`; the HPA scales 3 → 6 pods, then back to 3 about 5 minutes after the load stops | ~8 min |
 | [`policy`](policy/run.sh) | Kyverno refuses an unsigned image and a `:latest` image, printing which policy refused each and why; a signed image is admitted | <1 min |
 | [`hello-world`](hello-world/) | a second app through the whole CI/CD, next to orders-gateway in dev, staging and prod: `./pipeline ci --version`, `cd` dev → staging → prod, a refused out-of-order promotion, a rollback, then its metrics and logs. It stays running to play with; `./platform demo hello-world clean` tears it down | ~6 min |
