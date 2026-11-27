@@ -4,7 +4,7 @@
 set -euo pipefail
 
 CLUSTER_NAME=platform-demo
-KIND_CONFIG=cluster/kind.yaml
+KIND_CONFIG=stack/cluster/kind.yaml
 BUDGET_CPUS=6
 BUDGET_MEM_GB=12
 # Per-node cap: 3 nodes x 2 CPU / 4 GiB = the 6 CPU / 12 GiB budget.
@@ -44,8 +44,8 @@ node_containers() {
 # their workloads via the finalizer) before the ApplicationSet adopts them.
 hand_over_app_applications() {
   local dir app owner
-  for dir in "$(dirname "${BASH_SOURCE[0]}")"/../cd/*/; do
-    for app in "$(basename "$dir")"-{dev,staging,prod}; do
+  for dir in "$(dirname "${BASH_SOURCE[0]}")"/../apps/*/cd/; do
+    for app in "$(basename "${dir%/cd/}")"-{dev,staging,prod}; do
       owner=$(kubectl -n argocd get applications.argoproj.io "$app" \
         -o jsonpath='{.metadata.ownerReferences[0].kind}' 2>/dev/null) || continue
       [ "$owner" = ApplicationSet ] && continue

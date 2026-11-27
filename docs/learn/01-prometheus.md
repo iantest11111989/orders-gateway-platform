@@ -11,14 +11,14 @@ You'll learn where the app's metrics come from, how counters and histograms diff
 
    ```sh
    ./platform shell
-   k6 run --quiet -e BASE_URL=http://localhost:8082 -e RATE=5 -e DURATION=10m apps/orders-gateway/k6/load.js
+   k6 run --quiet -e BASE_URL=http://localhost:8082 -e RATE=5 -e DURATION=10m apps/orders-gateway/app/k6/load.js
    ```
 
    The mix is 60% `GET /work`, 30% `POST /echo` and 10% `GET /version`. Leave it running.
 
 ## 1. Where the metrics come from
 
-Each pod serves `/metrics`, written by hand in [`server.js`](../../apps/orders-gateway/server.js). Prometheus scrapes every pod every 30 seconds.
+Each pod serves `/metrics`, written by hand in [`server.js`](../../apps/orders-gateway/app/server.js). Prometheus scrapes every pod every 30 seconds.
 
 1. Open Status, then Targets. Find the `orders-gateway` targets: one per pod in dev, staging and prod, all UP.
 2. On the Query page, run:
@@ -87,7 +87,7 @@ The latency SLO uses 250 ms because it's a bucket edge, so slow requests are cou
    sum(rate(http_request_duration_seconds_count{namespace="dev", route=~"/echo|/version"}[5m]))
    ```
 
-The SLO recording rules in [`alerts/orders-gateway-slo.yaml`](../../alerts/orders-gateway-slo.yaml) are these queries, saved. Try `slo:orders_availability_errors:ratio_rate5m`.
+The SLO recording rules in [`stack/observability/alerts/orders-gateway-slo.yaml`](../../stack/observability/alerts/orders-gateway-slo.yaml) are these queries, saved. Try `slo:orders_availability_errors:ratio_rate5m`.
 
 ## 4. Cardinality
 
@@ -111,7 +111,7 @@ Every unique set of label values is a separate series, and each costs memory.
 
 3. Look for them: `http_requests_total{namespace="dev", route=~"/nope.*"}` returns nothing.
 
-The app reports any unknown path as its own `route`, so a scanner could create thousands of series. The [ServiceMonitor](../../helm/orders-gateway/templates/servicemonitor.yaml) keeps only `/work`, `/echo`, `/version` and `/admin` and drops the rest. The 404s still show in the logs (exercise 3).
+The app reports any unknown path as its own `route`, so a scanner could create thousands of series. The [ServiceMonitor](../../apps/orders-gateway/chart/templates/servicemonitor.yaml) keeps only `/work`, `/echo`, `/version` and `/admin` and drops the rest. The 404s still show in the logs (exercise 3).
 
 Rule of thumb: a label whose values can grow without limit (IDs, raw URLs) doesn't belong on a metric.
 

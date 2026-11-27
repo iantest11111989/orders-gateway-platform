@@ -1,0 +1,102 @@
+# promtool tests for stack/observability/alerts/platform-delivery.yaml (scripts/test-alerts.sh).
+rule_files:
+  - ../../../../.build/alerts/platform-delivery.rules.yaml
+
+evaluation_interval: 1m
+
+tests:
+  - name: Argo CD app stays OutOfSync, another syncs within minutes
+    interval: 1m
+    input_series:
+      - series: 'argocd_app_info{name="orders-gateway-prod", sync_status="OutOfSync", health_status="Healthy"}'
+        values: '1x30'
+      - series: 'argocd_app_info{name="orders-gateway-dev", sync_status="OutOfSync", health_status="Healthy"}'
+        values: '1x3 _x27'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ArgoCDAppOutOfSync
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: ArgoCDAppOutOfSync
+        exp_alerts:
+          - exp_labels: {severity: ticket, name: orders-gateway-prod}
+            exp_annotations:
+              summary: "Argo CD application orders-gateway-prod has been OutOfSync for 15 minutes"
+              description: "The live state of orders-gateway-prod differs from Git and Argo CD hasn't been able to sync it. Changes merged for it aren't reaching the cluster."
+              runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/ArgoCDAppOutOfSync.md
+
+  # Manual-sync app OutOfSync 90 min: only ArgoCDManualSyncPending, after 1 h.
+  - name: manual-sync app waits for a click
+    interval: 1m
+    input_series:
+      - series: 'argocd_app_info{name="orders-gateway-staging", sync_status="OutOfSync", health_status="Healthy", autosync_enabled="false"}'
+        values: '1x90'
+      - series: 'argocd_app_info{name="orders-gateway-dev", sync_status="OutOfSync", health_status="Healthy", autosync_enabled="true"}'
+        values: '1x90'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: ArgoCDManualSyncPending
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: ArgoCDAppOutOfSync
+        exp_alerts:
+          - exp_labels: {severity: ticket, name: orders-gateway-dev}
+            exp_annotations:
+              summary: "Argo CD application orders-gateway-dev has been OutOfSync for 15 minutes"
+              description: "The live state of orders-gateway-dev differs from Git and Argo CD hasn't been able to sync it. Changes merged for it aren't reaching the cluster."
+              runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/ArgoCDAppOutOfSync.md
+      - eval_time: 80m
+        alertname: ArgoCDManualSyncPending
+        exp_alerts:
+          - exp_labels: {severity: ticket, name: orders-gateway-staging}
+            exp_annotations:
+              summary: "Argo CD application orders-gateway-staging has waited an hour for a manual Sync"
+              description: "Git has a change for orders-gateway-staging that nobody has synced, so it still runs what it ran before. Sync it (the Argo CD UI, or ./pipeline cd --sync), or revert the change in Git."
+              runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/ArgoCDManualSyncPending.md
+
+  - name: Argo CD app Degraded
+    interval: 1m
+    input_series:
+      - series: 'argocd_app_info{name="orders-gateway-staging", sync_status="Synced", health_status="Degraded"}'
+        values: '1x20'
+      - series: 'argocd_app_info{name="orders-gateway-dev", sync_status="Synced", health_status="Healthy"}'
+        values: '1x20'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: ArgoCDAppUnhealthy
+        exp_alerts:
+          - exp_labels: {severity: ticket, name: orders-gateway-staging, health_status: Degraded}
+            exp_annotations:
+              summary: "Argo CD application orders-gateway-staging is Degraded"
+              description: "orders-gateway-staging has been Degraded for 10 minutes."
+              runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/ArgoCDAppUnhealthy.md
+
+  # 3 x 3.8 GiB = 95% of 12 GiB fires; 3 x 2.4 GiB (60%) doesn't.
+  - name: stack near its memory budget
+    interval: 1m
+    input_series:
+      - series: 'container_memory_working_set_bytes{id="/", node="platform-demo-control-plane"}'
+        values: '4080218931x15'
+      - series: 'container_memory_working_set_bytes{id="/", node="platform-demo-worker"}'
+        values: '4080218931x15'
+      - series: 'container_memory_working_set_bytes{id="/", node="platform-demo-worker2"}'
+        values: '4080218931x15'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: StackNearMemoryBudget
+        exp_alerts:
+          - exp_labels: {severity: ticket}
+            exp_annotations:
+              summary: "The stack uses 95% of its 12 GiB memory budget"
+              description: "Memory across the kind nodes has been above 90% of the budget for 10 minutes."
+              runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/StackNearMemoryBudget.md
+
+  - name: stack at today's level stays quiet
+    interval: 1m
+    input_series:
+      - series: 'container_memory_working_set_bytes{id="/", node="platform-demo-worker"}'
+        values: '2576980378x15'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: StackNearMemoryBudget
+        exp_alerts: []

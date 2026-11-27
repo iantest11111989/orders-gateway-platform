@@ -1,9 +1,9 @@
 # hello-world in this platform: what every environment shares (like
-# cd/orders-gateway/values.yaml). ./platform demo hello-world copies this
-# folder to cd/hello-world/ and removes it when the demo ends.
+# apps/orders-gateway/cd/values.yaml). ./platform demo hello-world copies this
+# folder to apps/hello-world/cd/ and removes it when the demo ends.
 
 image:
-  # The in-stack registry (system/registry/); ./pipeline publishes here.
+  # The in-stack registry (stack/registry/); ./pipeline publishes here.
   repository: localhost:30500/hello-world
 
 # Traefik serves every environment. Its own host only: plain

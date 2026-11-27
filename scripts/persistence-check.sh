@@ -25,11 +25,11 @@ git_main() {
 
 pinned() {
   local dir f
-  for dir in "$ROOT"/cd/*/; do
+  for dir in "$ROOT"/apps/*/cd/; do
     for f in "$dir"dev.yaml "$dir"staging.yaml "$dir"prod.yaml; do
       [ -f "$f" ] || continue
       v=$(yq '.version // ""' "$f")
-      [ -z "$v" ] || echo "$(basename "$dir"):$v"
+      [ -z "$v" ] || echo "$(basename "${dir%/cd/}"):$v"
     done
   done | sort -u
 }

@@ -1,4 +1,4 @@
-# prod: copied to cd/hello-world/prod.yaml when the demo promotes to prod.
+# prod: copied to apps/hello-world/cd/prod.yaml when the demo promotes to prod.
 # ./pipeline cd adds the version and fills in the image before it pushes, so
 # the in-stack Git never sees this file without a version.
 env: prod

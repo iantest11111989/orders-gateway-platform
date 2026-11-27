@@ -1,4 +1,4 @@
-# staging: copied to cd/hello-world/staging.yaml when the demo promotes to staging.
+# staging: copied to apps/hello-world/cd/staging.yaml when the demo promotes to staging.
 # ./pipeline cd adds the version and fills in the image before it pushes, so
 # the in-stack Git never sees this file without a version.
 env: staging

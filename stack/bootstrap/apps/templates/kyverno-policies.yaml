@@ -1,0 +1,31 @@
+# Kyverno policies from stack/kyverno/policies/ (tests/ excluded). Wave 30: before the apps,
+# so new app pods are checked.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kyverno-policies
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: platform-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "30"
+    argocd.argoproj.io/manifest-generate-paths: "/stack/kyverno/policies"
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repo.url }}
+    targetRevision: {{ .Values.repo.revision }}
+    path: stack/kyverno/policies
+    directory:
+      exclude: "{tests/*,README.md}"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kyverno
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff: {duration: 5s, factor: 2, maxDuration: 1m}

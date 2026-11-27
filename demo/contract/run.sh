@@ -61,7 +61,7 @@ done
 # --- App endpoint -------------------------------------------------------------
 step "App endpoint: prod through an Ingress on http://localhost:8080"
 run kubectl -n prod get ingress
-note "the app's own endpoints (apps/orders-gateway/server.js), all through Traefik:"
+note "the app's own endpoints (apps/orders-gateway/app/server.js), all through Traefik:"
 http 200 http://localhost:8080/version && pass "GET /version" || miss "GET /version"
 http 200 http://localhost:8080/healthz && pass "GET /healthz" || miss "GET /healthz"
 http 200 http://localhost:8080/readyz && pass "GET /readyz" || miss "GET /readyz"
@@ -105,7 +105,7 @@ note "the kind node containers restart too, so the cluster comes back after a re
 step "Data that survives docker compose stop / start"
 run kubectl get pvc -A
 note "the Git server (Argo CD's source), the registry, Prometheus and Loki keep their data on these volumes, inside the kind node containers"
-note "Grafana needs none: its dashboards and datasources are code (dashboards/), loaded at start"
+note "Grafana needs none: its dashboards and datasources are code (stack/observability/dashboards/), loaded at start"
 note "the E2E workflow checks it: scripts/persistence-check.sh, then docker compose stop and start, then the same check again"
 note "try it yourself: docker compose stop && docker compose start && ./platform demo contract"
 

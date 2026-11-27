@@ -7,7 +7,7 @@ useDefault = true
 description = "The DEMO ONLY Sealed Secrets key, committed on purpose (scripts/check-no-plain-secrets.sh allowlists it the same way)"
 # Both paths: the history scan still sees the key at its old place (before
 # the repo layout change).
-paths = ['''^system/sealed-secrets/manifests/demo-key\.yaml$''', '''^gitops/manifests/sealed-secrets/demo-key\.yaml$''']
+paths = ['''^stack/sealed-secrets/manifests/demo-key\.yaml$''', '''^gitops/manifests/sealed-secrets/demo-key\.yaml$''']
 
 [[allowlists]]
 description = "SealedSecrets: encrypted for the cluster's controller, so their ciphertext only looks like a key"

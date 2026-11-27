@@ -3,7 +3,7 @@
 # built container the way Kubernetes runs it (non-root, read-only root
 # filesystem, no capabilities) and check the behaviour the chart relies on:
 #   - /healthz answers at once; /readyz is 503 during the 3 s warm-up, then 200
-#     (the startupProbe and readinessProbe, helm/orders-gateway)
+#     (the startupProbe and readinessProbe, apps/orders-gateway/chart)
 #   - /version, /work, POST /echo serve; unknown paths are 404
 #   - /metrics has the series the SLOs and dashboards read
 #   - SIGTERM drains: an in-flight request finishes with 200, /readyz turns

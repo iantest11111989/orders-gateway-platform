@@ -1,0 +1,29 @@
+# NetworkPolicies for the platform namespaces (stack/network-policies/); the
+# app namespaces get theirs from the chart. Wave 30: after all namespaces exist.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: network-policies
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: platform-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "30"
+    argocd.argoproj.io/manifest-generate-paths: "/stack/network-policies"
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repo.url }}
+    targetRevision: {{ .Values.repo.revision }}
+    path: stack/network-policies
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff: {duration: 5s, factor: 2, maxDuration: 1m}

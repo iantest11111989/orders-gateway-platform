@@ -11,7 +11,7 @@ You'll make the app fail, watch the burn-rate alert fire, follow the runbook to 
 
 The 0.5% allowed to fail is the error budget. The burn rate is how fast you spend it: 1 uses up the budget in exactly 30 days, 14.4 in about 2 days.
 
-`OrdersGatewayAvailabilityFastBurn` fires when the burn rate is over 14.4 (7.2% failing) over both the last 1 hour and the last 5 minutes, for 2 minutes. The rules are in [`alerts/orders-gateway-slo.yaml`](../../alerts/orders-gateway-slo.yaml).
+`OrdersGatewayAvailabilityFastBurn` fires when the burn rate is over 14.4 (7.2% failing) over both the last 1 hour and the last 5 minutes, for 2 minutes. The rules are in [`stack/observability/alerts/orders-gateway-slo.yaml`](../../stack/observability/alerts/orders-gateway-slo.yaml).
 
 ## 0. Make a copy to break
 
@@ -33,12 +33,12 @@ After about 2 minutes, Argo CD Application `orders-gateway-demo` runs at <http:/
      -p '[{"op":"add","path":"/spec/source/helm/parameters/-","value":{"name":"config.faultErrorRate","value":"0.2"}}]'
    ```
 
-   Argo CD syncs it and the pods restart. In the real environments you'd change `config.faultErrorRate` in `cd/orders-gateway/<env>.yaml` instead. Don't `kubectl edit` the Deployment: Argo CD would undo it.
+   Argo CD syncs it and the pods restart. In the real environments you'd change `config.faultErrorRate` in `apps/orders-gateway/cd/<env>.yaml` instead. Don't `kubectl edit` the Deployment: Argo CD would undo it.
 
 2. Send traffic from the same shell:
 
    ```sh
-   k6 run --quiet -e BASE_URL=http://localhost:8084 -e RATE=5 -e DURATION=30m apps/orders-gateway/k6/load.js
+   k6 run --quiet -e BASE_URL=http://localhost:8084 -e RATE=5 -e DURATION=30m apps/orders-gateway/app/k6/load.js
    ```
 
    k6 warns that `orders_slo_good` is crossed. That's expected.
@@ -58,7 +58,7 @@ You can see the same alert in Prometheus (<http://localhost:9090/alerts>) and Al
 
 ## 3. Follow the runbook
 
-Open [`runbooks/OrdersGatewayAvailabilityFastBurn.md`](../../runbooks/OrdersGatewayAvailabilityFastBurn.md) and use `demo` as the namespace.
+Open [`stack/observability/runbooks/OrdersGatewayAvailabilityFastBurn.md`](../../stack/observability/runbooks/OrdersGatewayAvailabilityFastBurn.md) and use `demo` as the namespace.
 
 1. Where is it failing? In Prometheus:
 

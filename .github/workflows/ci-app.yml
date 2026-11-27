@@ -4,7 +4,7 @@ name: CI · app
 
 on:
   pull_request:
-    paths: ["apps/orders-gateway/**", "!apps/orders-gateway/k6/**", "!apps/orders-gateway/**/*.md", "apps/orders-gateway/k6/load.js", "apps/orders-gateway/k6/perf-gate.js", "scripts/smoke-test-image.sh", ".github/workflows/ci-app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh"]
+    paths: ["apps/orders-gateway/app/**", "!apps/orders-gateway/app/k6/**", "!apps/orders-gateway/app/**/*.md", "apps/orders-gateway/app/k6/load.js", "apps/orders-gateway/app/k6/perf-gate.js", "scripts/smoke-test-image.sh", ".github/workflows/ci-app.yml", "scripts/sign-images.sh", "scripts/scan-image.sh"]
 
 # Only the `image` job (signing rehearsal) requests an OIDC token.
 permissions:
@@ -22,7 +22,7 @@ env:
 
 defaults:
   run:
-    working-directory: apps/orders-gateway
+    working-directory: apps/orders-gateway/app
 
 jobs:
   # server.js has no dependencies: test in the Dockerfile's own Node image.
@@ -70,7 +70,7 @@ jobs:
       - id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: apps/orders-gateway
+          context: apps/orders-gateway/app
           platforms: linux/amd64,linux/arm64
           push: true
           sbom: true

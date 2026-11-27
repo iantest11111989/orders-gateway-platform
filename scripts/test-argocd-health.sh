@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Tests the Application health customization in argocd-cm (the root's sync
-# wave gate, system/argocd/values.yaml) against fixture Applications in
-# tests/argocd/, with the cluster's live argocd-cm:
+# wave gate, stack/argocd/values.yaml) against fixture Applications in
+# stack/observability/alerts/tests/argocd/, with the cluster's live argocd-cm:
 #   argocd admin settings resource-overrides health <app> --argocd-cm-path …
 # Each fixture's expected status is in the case list below. Runs in the
 # toolbox after `up` (CI: platform job).
 # shellcheck source=scripts/lib.sh
 source "$(dirname "$0")/lib.sh"
-dir="$(dirname "$0")/../tests/argocd"
+dir="$(dirname "$0")/../stack/observability/alerts/tests/argocd"
 cm=$(mktemp)
 trap 'rm -f "$cm"' EXIT
 kubectl -n argocd get configmap argocd-cm -o yaml >"$cm"

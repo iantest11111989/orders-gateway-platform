@@ -2,10 +2,10 @@ name: CI · infra · alerts
 
 on:
   pull_request:
-    paths: ["alerts/**", "runbooks/**", "scripts/test-alerts.sh", "dashboards/**", "system/kube-prometheus-stack/manifests/dashboard-*.yaml", "scripts/dashboards.sh", ".github/workflows/alerts.yml"]
+    paths: ["stack/observability/alerts/**", "stack/observability/runbooks/**", "scripts/test-alerts.sh", "stack/observability/dashboards/**", "stack/kube-prometheus-stack/manifests/dashboard-*.yaml", "scripts/dashboards.sh", ".github/workflows/alerts.yml"]
   push:
     branches: [main]
-    paths: ["alerts/**", "runbooks/**", "scripts/test-alerts.sh", "dashboards/**", "system/kube-prometheus-stack/manifests/dashboard-*.yaml", "scripts/dashboards.sh", ".github/workflows/alerts.yml"]
+    paths: ["stack/observability/alerts/**", "stack/observability/runbooks/**", "scripts/test-alerts.sh", "stack/observability/dashboards/**", "stack/kube-prometheus-stack/manifests/dashboard-*.yaml", "scripts/dashboards.sh", ".github/workflows/alerts.yml"]
 
 permissions:
   contents: read

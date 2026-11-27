@@ -1,0 +1,66 @@
+# Delivery alerts: Argo CD and the 6 CPU / 12 GiB budget. The chart already
+# covers TargetDown, Watchdog and KubePodCrashLooping.
+# Tests: stack/observability/alerts/tests/platform-delivery.test.yaml.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-delivery
+  labels:
+    app.kubernetes.io/part-of: platform-demo
+    app.kubernetes.io/component: alerts
+spec:
+  groups:
+    - name: platform-delivery
+      rules:
+        # Auto-sync apps only: self-heal reverts manual changes, so staying
+        # OutOfSync means Argo CD can't apply Git. Manual-sync apps: see below.
+        - alert: ArgoCDAppOutOfSync
+          expr: max by (name) (argocd_app_info{sync_status="OutOfSync", autosync_enabled!="false"}) == 1
+          for: 15m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "Argo CD application {{ $labels.name }} has been OutOfSync for 15 minutes"
+            description: >-
+              The live state of {{ $labels.name }} differs from Git and Argo CD hasn't
+              been able to sync it. Changes merged for it aren't reaching the cluster.
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/ArgoCDAppOutOfSync.md
+
+        # A promotion pushed but never synced: a reminder, not an outage.
+        - alert: ArgoCDManualSyncPending
+          expr: max by (name) (argocd_app_info{sync_status="OutOfSync", autosync_enabled="false"}) == 1
+          for: 1h
+          labels:
+            severity: ticket
+          annotations:
+            summary: "Argo CD application {{ $labels.name }} has waited an hour for a manual Sync"
+            description: >-
+              Git has a change for {{ $labels.name }} that nobody has synced, so it still runs
+              what it ran before. Sync it (the Argo CD UI, or ./pipeline cd --sync), or
+              revert the change in Git.
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/ArgoCDManualSyncPending.md
+
+        # Missing: a resource Git expects doesn't exist.
+        - alert: ArgoCDAppUnhealthy
+          expr: max by (name, health_status) (argocd_app_info{health_status=~"Degraded|Missing"}) == 1
+          for: 10m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "Argo CD application {{ $labels.name }} is {{ $labels.health_status }}"
+            description: >-
+              {{ $labels.name }} has been {{ $labels.health_status }} for 10 minutes.
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/ArgoCDAppUnhealthy.md
+
+        # Each kind node's root cgroup is the whole node container, so this sum
+        # matches `./platform budget`. At 90% nodes near their 4 GiB cap and OOM.
+        - alert: StackNearMemoryBudget
+          expr: sum(container_memory_working_set_bytes{id="/"}) / (12 * 2^30) > 0.9
+          for: 10m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "The stack uses {{ $value | humanizePercentage }} of its 12 GiB memory budget"
+            description: >-
+              Memory across the kind nodes has been above 90% of the budget for 10 minutes.
+            runbook_url: https://github.com/iantest11111989/platform-demo/blob/main/stack/observability/runbooks/StackNearMemoryBudget.md

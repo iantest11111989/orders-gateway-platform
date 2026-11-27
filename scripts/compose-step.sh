@@ -32,8 +32,8 @@ not_ready() {
 # not ready. Manual-sync apps count as Synced once a sync has succeeded.
 apps_not_ready() {
   local want
-  want=$(cd "$(dirname "$0")/.." && for f in cd/*/dev.yaml cd/*/staging.yaml cd/*/prod.yaml; do
-    [ -f "$f" ] && { d=${f%/*}; e=${f##*/}; echo "${d#cd/}-${e%.yaml}"; }
+  want=$(cd "$(dirname "$0")/.." && for f in apps/*/cd/dev.yaml apps/*/cd/staging.yaml apps/*/cd/prod.yaml; do
+    [ -f "$f" ] && { d=${f%/cd/*}; e=${f##*/}; echo "${d#apps/}-${e%.yaml}"; }
   done | jq -R . | jq -sc .)
   kubectl -n argocd get applications.argoproj.io -o json 2>/dev/null | jq -r --argjson want "$want" '
     [.items[] | {key: .metadata.name, value: .}] | from_entries as $live

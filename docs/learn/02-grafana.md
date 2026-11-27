@@ -11,7 +11,7 @@ You'll build a small dashboard with a time series panel, a stat panel and an env
 
    ```sh
    ./platform shell
-   k6 run --quiet -e BASE_URL=http://localhost:8082 -e RATE=5 -e DURATION=15m apps/orders-gateway/k6/load.js
+   k6 run --quiet -e BASE_URL=http://localhost:8082 -e RATE=5 -e DURATION=15m apps/orders-gateway/app/k6/load.js
    ```
 
 ## 1. Tour the provided dashboard
@@ -67,15 +67,15 @@ The drop-down now switches both panels, as on the provided dashboard.
 On the provided dashboard, open the menu of Requests per second, by route and status and choose Edit. Look, don't save.
 
 - It sums `by (method, route, status)`, so failures and 404s show too.
-- /echo and /version: share under 250 ms uses `1 - slo:orders_latency_errors:ratio_rate5m`, the recording rule from `alerts/`. The dashboard and the alerts compute the SLI the same way.
+- /echo and /version: share under 250 ms uses `1 - slo:orders_latency_errors:ratio_rate5m`, the recording rule from `stack/observability/alerts/`. The dashboard and the alerts compute the SLI the same way.
 
 Leave without saving (Discard).
 
 ## 6. Where dashboards live
 
-Grafana here has no persistent storage, so dashboards saved in the UI are lost when its pod restarts. The provided ones are JSON files in [`dashboards/`](../../dashboards/), loaded through Argo CD.
+Grafana here has no persistent storage, so dashboards saved in the UI are lost when its pod restarts. The provided ones are JSON files in [`stack/observability/dashboards/`](../../stack/observability/dashboards/), loaded through Argo CD.
 
-To keep yours, use Export, Export as JSON, save it in `dashboards/`, and follow [`dashboards/README.md`](../../dashboards/README.md).
+To keep yours, use Export, Export as JSON, save it in `stack/observability/dashboards/`, and follow [`stack/observability/dashboards/README.md`](../../stack/observability/dashboards/README.md).
 
 ## Check yourself
 

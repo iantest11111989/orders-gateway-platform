@@ -92,7 +92,7 @@ demo_alert() {
   where_to_watch
   echo "    Alerts              http://localhost:9093 (Alertmanager), http://localhost:9090/alerts"
 
-  step "The alert rule (alerts/orders-gateway-slo.yaml, a PrometheusRule)"
+  step "The alert rule (stack/observability/alerts/orders-gateway-slo.yaml, a PrometheusRule)"
   show "kubectl -n monitoring get prometheusrule orders-gateway-slo -o yaml | yq '<the $ALERT rule>'"
   kubectl -n monitoring get prometheusrule orders-gateway-slo -o yaml |
     yq ".spec.groups[].rules[] | select(.alert == \"$ALERT\")" | indent
@@ -133,8 +133,8 @@ demo_alert() {
   else
     warn "the receiver hasn't logged the page yet (Alertmanager waits group_wait, 10 s, then sends)"
   fi
-  note "the runbook it links to (runbooks/$ALERT.md), first steps:"
-  sed -n '1,12p' "$ROOT/runbooks/$ALERT.md" | indent
+  note "the runbook it links to (stack/observability/runbooks/$ALERT.md), first steps:"
+  sed -n '1,12p' "$ROOT/stack/observability/runbooks/$ALERT.md" | indent
 
   step "5. Fix it: switch the fault off in every pod"
   set_fault 0

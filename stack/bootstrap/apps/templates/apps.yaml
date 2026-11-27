@@ -1,0 +1,103 @@
+{{- $envs := list }}
+{{- range list "dev" "staging" "prod" }}
+{{- if or (not $.Values.env) (eq $.Values.env .) }}{{ $envs = append $envs . }}{{ end }}
+{{- end }}
+{{- /* One cluster per environment (the AWS design) sets env; locally it's
+     unset, so every environment renders. */}}
+# One Application <app>-<env> per env file apps/<app>/cd/<env>.yaml, in namespace
+# <env>, Helm release <app>. With `version: X` it uses chart X from the
+# in-stack registry; without, apps/<app>/chart from Git (dev-only builds).
+# autoSync defaults to true for dev, false for staging and prod. Wave 40.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: apps
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: platform-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "40"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    # Parameters: the env file's keys plus .path.segments (apps/<app>/cd: the app is segment 1).
+    - git:
+        repoURL: {{ .Values.repo.url }}
+        revision: {{ .Values.repo.revision }}
+        files:
+          {{- range $envs }}
+          - path: apps/*/cd/{{ . }}.yaml
+          {{- end }}
+  template:
+    metadata:
+      name: {{ `'{{ index .path.segments 1 }}-{{ .env }}'` }}
+      namespace: argocd
+      labels:
+        app.kubernetes.io/part-of: platform-demo
+        app.kubernetes.io/name: {{ `'{{ index .path.segments 1 }}'` }}
+      finalizers: [resources-finalizer.argocd.argoproj.io]
+    spec:
+      project: default
+      sources: []
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: {{ `'{{ .env }}'` }}
+      syncPolicy:
+        retry:
+          limit: 5
+          backoff: {duration: 5s, factor: 2, maxDuration: 1m}
+        managedNamespaceMetadata:
+          labels:
+            pod-security.kubernetes.io/enforce: restricted
+            pod-security.kubernetes.io/warn: restricted
+            pod-security.kubernetes.io/audit: restricted
+        syncOptions:
+          - CreateNamespace=true
+          # Prune last, so a renamed object never leaves the env without one.
+          - PruneLast=true
+  templatePatch: |
+    {{`{{- $app := index .path.segments 1 }}
+    {{- $values := printf "%s/values.yaml" .path.path }}
+    {{- $env := printf "%s/%s" .path.path .path.filename }}
+    {{- $auto := eq .env "dev" }}
+    {{- if hasKey . "autoSync" }}{{ $auto = eq (toString .autoSync) "true" }}{{ end }}`}}
+    metadata:
+      labels:
+        # auto or manual (autoSync), for people reading Argo CD.
+        sync-mode: {{`'{{ if $auto }}auto{{ else }}manual{{ end }}'`}}
+      annotations:
+        # The files each rendering reads, so a commit that touches none of
+        # them skips the re-render (pays off with a Git webhook).
+        argocd.argoproj.io/manifest-generate-paths: {{`'{{ if hasKey . "version" }}{{ else }}/apps/{{ $app }}/chart;{{ end }}/{{ $values }};/{{ $env }}'`}}
+    spec:
+    {{`{{- if $auto }}`}}
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+    {{`{{- end }}`}}
+    {{`{{- if hasKey . "version" }}`}}
+      sources:
+        - repoURL: registry.registry.svc.cluster.local:5000/charts
+          chart: {{`'{{ $app }}'`}}
+          targetRevision: {{`'{{ .version }}'`}}
+          helm:
+            releaseName: {{`'{{ $app }}'`}}
+            valueFiles:
+              - {{`'$values/{{ $values }}'`}}
+              - {{`'$values/{{ $env }}'`}}
+        - repoURL: {{ .Values.repo.url }}
+          targetRevision: {{ .Values.repo.revision }}
+          ref: values
+    {{`{{- else }}`}}
+      sources:
+        - repoURL: {{ .Values.repo.url }}
+          targetRevision: {{ .Values.repo.revision }}
+          path: {{`'apps/{{ $app }}/chart'`}}
+          helm:
+            releaseName: {{`'{{ $app }}'`}}
+            valueFiles:
+              - {{`'../../../{{ $values }}'`}}
+              - {{`'../../../{{ $env }}'`}}
+    {{`{{- end }}`}}

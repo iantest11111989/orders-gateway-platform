@@ -35,7 +35,7 @@ expect_denied() { # expect_denied <name> <image> <policy>
   show "kubectl create -f -   # Pod $1, image $2"
   if out=$(policy_pod "$1" "$2" | kubectl create -f - 2>&1); then
     kubectl -n "$NS" delete pod "$1" --wait=false >/dev/null 2>&1 || true
-    die "Kyverno let $2 in (is $3 in Deny? see policies/)"
+    die "Kyverno let $2 in (is $3 in Deny? see stack/kyverno/policies/)"
   fi
   grep -q "$3" <<<"$out" || die "$2 was refused, but not by $3: $out"
   ok "refused by $3: $2"

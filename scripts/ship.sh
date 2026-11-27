@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The deploy half of ./pipeline cd / rollback: edit cd/$APP/ENV.yaml, push it
+# The deploy half of ./pipeline cd / rollback: edit apps/$APP/cd/ENV.yaml, push it
 # to the in-stack Git server, and wait for Argo CD to roll it out.
 #   deploy --env ENV --version V [--force] [--sync]
 #         staging/prod take only a version the previous env has run, and the
@@ -29,8 +29,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 case "$env" in dev|staging|prod) ;; *) die "--env must be dev, staging or prod" ;; esac
-values="$ROOT/cd/$APP/$env.yaml"
-[ -f "$values" ] || die "no cd/$APP/$env.yaml"
+values="$ROOT/apps/$APP/cd/$env.yaml"
+[ -f "$values" ] || die "no apps/$APP/cd/$env.yaml"
 
 in_stack_only() {
   local repo
@@ -57,10 +57,10 @@ release_of() { yq -o json -I0 '{"version": .version, "image": .image}' | jq -cS 
 versions_run_in() { # versions_run_in <env>
   clone_in_stack
   local c
-  showcmd "git log --format=%H -- cd/$APP/$1.yaml   # then each commit's version: line"
-  for c in $(git -C "$tmp/r" log --format=%H -- "cd/$APP/$1.yaml"); do
-    git -C "$tmp/r" cat-file -e "$c:cd/$APP/$1.yaml" 2>/dev/null || continue
-    git -C "$tmp/r" show "$c:cd/$APP/$1.yaml" | yq '.version // ""'
+  showcmd "git log --format=%H -- apps/$APP/cd/$1.yaml   # then each commit's version: line"
+  for c in $(git -C "$tmp/r" log --format=%H -- "apps/$APP/cd/$1.yaml"); do
+    git -C "$tmp/r" cat-file -e "$c:apps/$APP/cd/$1.yaml" 2>/dev/null || continue
+    git -C "$tmp/r" show "$c:apps/$APP/cd/$1.yaml" | yq '.version // ""'
   done | grep -v '^$' | sort -u
 }
 
@@ -80,8 +80,8 @@ set_release() { # set_release <version> <repository> <tag> <digest>
     /^image:[[:space:]]*$/ { n++; if (!hasrepo && ENVIRON["REPO"] != "") print "  repository: " ENVIRON["REPO"] }
     END { if (n != 1 || t != 1 || d != 1 || r > 1 || v > 1) { printf "expected one image: block with one tag, one digest and at most one repository line, and at most one version line; found %d, %d, %d, %d, %d\n", n, t, d, r, v > "/dev/stderr"; exit 1 } }
   ' "$values" "$values" >"$values.tmp" || { rm -f "$values.tmp"; die "couldn't update $values"; }
-  showcmd "diff -u cd/$APP/$env.yaml cd/$APP/$env.yaml.tmp   # the file before and after the edit"
-  diff -u --label "cd/$APP/$env.yaml" --label "cd/$APP/$env.yaml" "$values" "$values.tmp" | sed 's/^/      /' >&2 || true
+  showcmd "diff -u apps/$APP/cd/$env.yaml apps/$APP/cd/$env.yaml.tmp   # the file before and after the edit"
+  diff -u --label "apps/$APP/cd/$env.yaml" --label "apps/$APP/cd/$env.yaml" "$values" "$values.tmp" | sed 's/^/      /' >&2 || true
   cat "$values.tmp" >"$values" && rm -f "$values.tmp"
 }
 
@@ -164,7 +164,7 @@ case "$cmd" in
       d=$(bash "$(dirname "$0")/registry.sh" digest "$APP" "$tag")
       step "Pointing dev at the dev-only build $REPO:$tag: $values"
       set_release "" "$REPO" "$tag" "$d"
-      ok "no version (Argo CD renders helm/$APP from Git), image $REPO:$tag"
+      ok "no version (Argo CD renders apps/$APP/chart from Git), image $REPO:$tag"
       roll_out "$(image_ref "$REPO" "$tag" "$d")"
       exit 0
     fi
@@ -177,7 +177,7 @@ case "$cmd" in
       if $force; then
         warn "--force: not checking that $from ran $version, nor the promotion gate"
       else
-        step "Has $from run $APP $version? (in-stack history of cd/$APP/$from.yaml)"
+        step "Has $from run $APP $version? (in-stack history of apps/$APP/cd/$from.yaml)"
         versions_run_in "$from" | grep -qxF "$version" ||
           die "$from has never run $APP $version: promote in order (dev, staging, prod), or --force"
         ok "yes"
@@ -200,10 +200,10 @@ case "$cmd" in
     # rollbacks walk further back instead of toggling.
     cur=$(release_of <"$values")
     rels=()
-    for c in $(git -C "$tmp/r" log --reverse --format=%H -- "cd/$APP/$env.yaml"); do
+    for c in $(git -C "$tmp/r" log --reverse --format=%H -- "apps/$APP/cd/$env.yaml"); do
       # Skip commits where the file is gone (hello-world's teardown deletes it).
-      git -C "$tmp/r" cat-file -e "$c:cd/$APP/$env.yaml" 2>/dev/null || continue
-      rels+=("$(git -C "$tmp/r" show "$c:cd/$APP/$env.yaml" | release_of)")
+      git -C "$tmp/r" cat-file -e "$c:apps/$APP/cd/$env.yaml" 2>/dev/null || continue
+      rels+=("$(git -C "$tmp/r" show "$c:apps/$APP/cd/$env.yaml" | release_of)")
     done
     first=-1
     for i in "${!rels[@]}"; do [ "${rels[$i]}" = "$cur" ] && { first=$i; break; }; done
@@ -217,7 +217,7 @@ case "$cmd" in
     r=$(jq -r '.image.repository // ""' <<<"$prev")
     t=$(jq -r '.image.tag' <<<"$prev"); d=$(jq -r '.image.digest // ""' <<<"$prev")
     set_release "$v" "$r" "$t" "$d"
-    r=${r:-$(yq '.image.repository' "$ROOT/cd/$APP/values.yaml")}
+    r=${r:-$(yq '.image.repository' "$ROOT/apps/$APP/cd/values.yaml")}
     ok "back to ${v:+version $v, }$r:$t${d:+@${d:0:19}…}"
     roll_out "$(image_ref "$r" "$t" "$d")"
     ;;

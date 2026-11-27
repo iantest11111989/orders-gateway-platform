@@ -90,7 +90,7 @@ create_app() { # create_app <source app> <image tag> [helm-param=value ...]
   step "Creating $APP: a copy of the $src Application, image $tag"
   local manifest
   show "kubectl -n argocd get applications.argoproj.io $src -o json | jq '<copy: name $APP, namespace $NS, entrypoint demo, image orders-gateway:$tag, $*>'"
-  note "the same chart (helm/orders-gateway) and values files as $src; only the fields above differ"
+  note "the same chart (apps/orders-gateway/chart) and values files as $src; only the fields above differ"
   manifest=$(kubectl -n argocd get applications.argoproj.io "$src" -o json | jq --arg app "$APP" --arg ns "$NS" \
     --arg tag "$tag" --arg src "$src" --arg rev "${DEMO_REVISION:-}" --args '
     {apiVersion, kind,
@@ -98,7 +98,7 @@ create_app() { # create_app <source app> <image tag> [helm-param=value ...]
                 labels: {"app.kubernetes.io/part-of": "platform-demo", "demo": "true", "demo-source": $src},
                 # deleting the Application deletes what it created
                 finalizers: ["resources-finalizer.argocd.argoproj.io"]},
-     # One source: helm/orders-gateway from Git with the source
+     # One source: apps/orders-gateway/chart from Git with the source
      # environment'"'"'s values files, whatever the source Application uses
      # (it may take its chart from the in-stack registry), and the demo
      # images v1/v2 from GHCR.
@@ -113,10 +113,10 @@ create_app() { # create_app <source app> <image tag> [helm-param=value ...]
        | .source = {
            repoURL: ($git.repoURL // $vals.repoURL),
            targetRevision: (if $rev != "" then $rev else ($git.targetRevision // $vals.targetRevision) end),
-           path: "helm/orders-gateway",
+           path: "apps/orders-gateway/chart",
            helm: {
              releaseName: "orders-gateway",
-             valueFiles: ["../../cd/orders-gateway/values.yaml", ("../../cd/orders-gateway/" + ($src | sub("^orders-gateway-"; "")) + ".yaml")],
+             valueFiles: ["../cd/values.yaml", ("../cd/" + ($src | sub("^orders-gateway-"; "")) + ".yaml")],
              parameters: ([
                {name: "ingress.entrypoint", value: "demo"},
                {name: "image.repository", value: "ghcr.io/iantest11111989/orders-gateway"},
@@ -211,11 +211,11 @@ start_load() { # start_load [requests/s, default 10]
   done
   printf '      %s (after %s s)\n' "$code" "$((i - 1))"
   [ "$code" = 200 ] || die "Traefik doesn't route $URL to $APP after 60 s (it answers $code)"
-  note "k6 is a load-testing tool (not part of the app); apps/orders-gateway/k6/load.js was written for this repo"
+  note "k6 is a load-testing tool (not part of the app); apps/orders-gateway/app/k6/load.js was written for this repo"
   note "its mix: 60% GET /work, 30% POST /echo, 10% GET /version, through Traefik to the demo copy"
-  show "k6 run --quiet --summary-mode=compact -e BASE_URL=$URL -e RATE=$rate -e DURATION=30m apps/orders-gateway/k6/load.js > $K6_LOG 2>&1 &"
+  show "k6 run --quiet --summary-mode=compact -e BASE_URL=$URL -e RATE=$rate -e DURATION=30m apps/orders-gateway/app/k6/load.js > $K6_LOG 2>&1 &"
   k6 run --quiet --summary-mode=compact \
-    -e BASE_URL="$URL" -e RATE="$rate" -e DURATION=30m "$ROOT/apps/orders-gateway/k6/load.js" >"$K6_LOG" 2>&1 &
+    -e BASE_URL="$URL" -e RATE="$rate" -e DURATION=30m "$ROOT/apps/orders-gateway/app/k6/load.js" >"$K6_LOG" 2>&1 &
   K6_PID=$!
   sleep 15
   kill -0 "$K6_PID" 2>/dev/null || { cat "$K6_LOG"; die "k6 stopped (see above)"; }

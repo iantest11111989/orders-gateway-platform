@@ -1,0 +1,33 @@
+{{- if .Values.serviceMonitor.enabled }}
+# Scraped by Prometheus. The SLO recording rules and burn-rate alerts are
+# cluster-wide, per namespace (stack/observability/alerts/orders-gateway-slo.yaml), so the chart
+# ships no PrometheusRule of its own.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "orders-gateway.name" . }}
+  labels:
+    {{- include "orders-gateway.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "orders-gateway.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.serviceMonitor.interval }}
+      # Unknown paths (scanners, typos) arrive with their raw path as
+      # `route`. Keep only the app's own routes, so they can't explode
+      # cardinality; they stay in the logs. Dropped, not
+      # renamed: renaming would collide series within one scrape.
+      metricRelabelings:
+        - sourceLabels: [__name__, route]
+          regex: 'http_request(s_total|_duration_seconds_(bucket|sum|count));(/work|/echo|/version|/admin)'
+          targetLabel: __tmp_keep
+          replacement: 'true'
+        - sourceLabels: [__name__, __tmp_keep]
+          regex: 'http_request(s_total|_duration_seconds_(bucket|sum|count));'
+          action: drop
+        - regex: __tmp_keep
+          action: labeldrop
+{{- end }}

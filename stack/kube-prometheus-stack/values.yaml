@@ -1,0 +1,229 @@
+# kube-prometheus-stack values, sized for the 6 CPU / 12 GB budget.
+# Every pod except node-exporter runs restricted.
+
+# CRDs come from the prometheus-operator-crds Application (wave -10).
+crds:
+  enabled: false
+
+# Our own SLO and platform alerts live in stack/observability/alerts/.
+defaultRules:
+  create: true
+  rules:
+    # kind has no Windows nodes
+    windows: false
+  runbookUrl: https://runbooks.prometheus-operator.dev/runbooks
+
+# ---- Alertmanager ----
+alertmanager:
+  alertmanagerSpec:
+    replicas: 1
+    retention: 48h
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+      limits: {memory: 64Mi}
+    securityContext: &restrictedPod
+      runAsNonRoot: true
+      runAsUser: 65534
+      runAsGroup: 65534
+      fsGroup: 65534
+      seccompProfile: {type: RuntimeDefault}
+  # Every notification goes to alert-receiver, which logs it as JSON for Loki.
+  # The path is the route: /page, /ticket, /log or /watchdog.
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: log
+      group_by: [namespace, alertname]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      routes:
+        # Always firing: proves Prometheus -> Alertmanager -> receiver -> Loki works.
+        - matchers: ['alertname = "Watchdog"']
+          receiver: watchdog
+          group_wait: 0s
+          group_interval: 5m
+          repeat_interval: 5m
+        - matchers: ['alertname = "InfoInhibitor"']
+          receiver: "null"
+        # Ours use page/ticket; the chart's rules use critical/warning/info.
+        - matchers: ['severity =~ "page|critical"']
+          receiver: page
+          group_wait: 10s
+          repeat_interval: 1h
+        - matchers: ['severity =~ "ticket|warning"']
+          receiver: ticket
+    # The chart's defaults, plus page over ticket.
+    inhibit_rules:
+      - source_matchers: ['severity =~ "critical|page"']
+        target_matchers: ['severity =~ "warning|ticket|info"']
+        equal: [namespace, alertname]
+      - source_matchers: ['severity = "warning"']
+        target_matchers: ['severity = "info"']
+        equal: [namespace, alertname]
+      - source_matchers: ['alertname = "InfoInhibitor"']
+        target_matchers: ['severity = "info"']
+        equal: [namespace]
+      - target_matchers: ['alertname = "InfoInhibitor"']
+    receivers:
+      - name: "null"
+      - name: page
+        webhook_configs: [{url: "http://alert-receiver.monitoring.svc:8080/page", send_resolved: true}]
+      - name: ticket
+        webhook_configs: [{url: "http://alert-receiver.monitoring.svc:8080/ticket", send_resolved: true}]
+      - name: log
+        webhook_configs: [{url: "http://alert-receiver.monitoring.svc:8080/log", send_resolved: true}]
+      - name: watchdog
+        webhook_configs: [{url: "http://alert-receiver.monitoring.svc:8080/watchdog", send_resolved: false}]
+    templates:
+      - /etc/alertmanager/config/*.tmpl
+
+# ---- Grafana ----
+grafana:
+  # admin / admin12345, from grafana-admin.sealed.yaml.
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  testFramework:
+    enabled: false
+  # Grafana 13 runs each bundled plugin as a process; 256Mi OOM-killed on start.
+  resources:
+    requests: {cpu: 25m, memory: 256Mi}
+    limits: {memory: 512Mi}
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 472
+    runAsGroup: 472
+    fsGroup: 472
+    seccompProfile: {type: RuntimeDefault}
+  containerSecurityContext: &restrictedContainer
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities: {drop: [ALL]}
+  grafana.ini:
+    server:
+      root_url: http://localhost:3000/
+      serve_from_sub_path: false
+    analytics:
+      reporting_enabled: false
+      check_for_updates: false
+      check_for_plugin_updates: false
+    # Only bundled datasources are used.
+    plugins:
+      preinstall_disabled: true
+    log:
+      mode: console
+    log.console:
+      format: json
+  sidecar:
+    resources:
+      requests: {cpu: 5m, memory: 64Mi}
+      limits: {memory: 128Mi}
+    securityContext: *restrictedContainer
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: ALL
+    datasources:
+      enabled: true
+  additionalDataSources:
+    - name: Loki
+      uid: loki
+      type: loki
+      access: proxy
+      url: http://loki.logging.svc:3100
+      jsonData:
+        maxLines: 1000
+
+# ---- Prometheus Operator ----
+prometheusOperator:
+  resources:
+    requests: {cpu: 10m, memory: 64Mi}
+    limits: {memory: 128Mi}
+  # The webhook needs certs from a hook Job; promtool validates rules in CI instead.
+  admissionWebhooks:
+    enabled: false
+  tls:
+    enabled: false
+  securityContext: *restrictedPod
+  containerSecurityContext: *restrictedContainer
+  prometheusConfigReloader:
+    resources:
+      requests: {cpu: 5m, memory: 16Mi}
+      limits: {memory: 32Mi}
+
+# ---- Prometheus ----
+prometheus:
+  prometheusSpec:
+    replicas: 1
+    # 24 h covers the 6 h burn-rate alerts.
+    retention: 24h
+    retentionSize: 4GB
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    resources:
+      requests: {cpu: 200m, memory: 768Mi}
+      limits: {memory: 1536Mi}
+    securityContext: *restrictedPod
+    # Select monitors and rules cluster-wide, not only this release's.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    scrapeConfigSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: standard # kind's local-path provisioner
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 5Gi
+    # Keep Prometheus away from Loki so a log burst can't starve it.
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              topologyKey: kubernetes.io/hostname
+              namespaceSelector: {}
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: loki
+
+# ---- Exporters ----
+kube-state-metrics:
+  resources:
+    requests: {cpu: 10m, memory: 64Mi}
+    limits: {memory: 128Mi}
+
+prometheus-node-exporter:
+  resources:
+    requests: {cpu: 10m, memory: 32Mi}
+    limits: {memory: 64Mi}
+
+# ---- Control-plane scraping (exposed by stack/cluster/kind.yaml patches) ----
+kubeEtcd:
+  service:
+    port: 2381
+    targetPort: 2381
+
+# Drop high-cardinality series nothing here uses.
+kubeApiServer:
+  serviceMonitor:
+    metricRelabelings:
+      - sourceLabels: [__name__]
+        regex: apiserver_request_body_size_bytes_bucket|apiserver_response_sizes_bucket|apiserver_watch_events_sizes_bucket|apiserver_request_sli_duration_seconds_bucket|apiserver_admission_.*_bucket
+        action: drop
+kubelet:
+  serviceMonitor:
+    cAdvisorMetricRelabelings:
+      - sourceLabels: [__name__]
+        regex: container_(tasks_state|memory_failures_total|blkio_device_usage_total|fs_.*|network_tcp_usage_total|network_udp_usage_total)
+        action: drop
+      # cAdvisor reports a series per pod sandbox ("pause") container too.
+      - sourceLabels: [container]
+        regex: POD
+        action: drop
