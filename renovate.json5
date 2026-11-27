@@ -37,7 +37,7 @@
     {
       customType: 'regex',
       description: 'Toolbox tool versions',
-      managerFilePatterns: ['/^stack/toolbox/versions\\.env$/'],
+      managerFilePatterns: ['/^stack/docker/versions\\.env$/'],
       matchStrings: [
         '# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\n[A-Z0-9_]+=(?<currentValue>\\S+)',
       ],

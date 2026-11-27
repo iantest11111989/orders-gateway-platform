@@ -13,7 +13,7 @@ Status: **done** means built and checked by a demo, `./platform verify` or CI. *
 | Healthy in under 15 minutes | done | About 10 minutes on a first start, mostly pulling images. The nightly E2E starts from scratch on x86-64 and arm64 |
 | The interesting part runs inside Kubernetes; justify the choice of kind, k3d, k3s or minikube | done | kind. See [Key decisions](#key-decisions) below |
 | Everything in the cluster installed declaratively with Helm or Kustomize, automatically | done | Argo CD installs every component from a Helm chart, itself included: [`stack/delivery/bootstrap/`](../stack/delivery/bootstrap/README.md) |
-| Open-source tools only, with pinned versions | done | Tools: [`stack/toolbox/versions.env`](../stack/toolbox/versions.env). Charts: `stack/delivery/bootstrap/apps/templates/`. Images and actions are pinned by digest. Renovate keeps them current |
+| Open-source tools only, with pinned versions | done | Tools: [`stack/docker/versions.env`](../stack/docker/versions.env). Charts: `stack/delivery/bootstrap/apps/templates/`. Images and actions are pinned by digest. Renovate keeps them current |
 | Don't change the app except by configuration | done | `server.js` is byte-for-byte the original. It moved from `app/` to `apps/orders-gateway/app/` so a second app can sit beside it. The Dockerfile is new |
 | Mark what you skipped and why | done | [Skipped, and why](#skipped-and-why) below |
 

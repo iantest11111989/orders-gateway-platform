@@ -8,7 +8,7 @@ CI/CD runs locally too: `./pipeline` tests, builds and scans an app, then promot
 
 ## What you need
 
-Docker, and nothing else. Every other tool (kind, kubectl, helm, kubeseal, cosign, k6, the argocd CLI, jq, yq) is pinned in a [toolbox image](stack/toolbox/README.md) that `./platform` runs for you.
+Docker, and nothing else. Every other tool (kind, kubectl, helm, kubeseal, cosign, k6, the argocd CLI, jq, yq) is pinned in a [toolbox image](stack/docker/README.md) that `./platform` runs for you.
 
 | | Linux | Mac (Apple silicon) |
 | --- | --- | --- |
@@ -230,7 +230,7 @@ stack/                      the platform, grouped by job
                             Application per component), git-server/, registry/
   networking/               traefik/, edge/ (what's reachable from outside)
   cluster/                  the kind cluster config
-  toolbox/                  the image every command runs in
+  docker/                   the toolbox image every command runs in
 demo/                       one folder per demo
 docs/                       learning guides and production notes
 scripts/                    what ./platform and ./pipeline run

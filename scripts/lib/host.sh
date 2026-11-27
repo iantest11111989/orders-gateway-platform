@@ -12,14 +12,14 @@ check_docker() {
     die "Docker is installed but not running (or you lack permission to use it). Start Docker and re-run. On macOS with Colima: colima start --cpu 6 --memory 12"
 }
 
-# Tag = hash of stack/toolbox/; CI publishes it, otherwise it's built locally.
+# Tag = hash of stack/docker/; CI publishes it, otherwise it's built locally.
 toolbox_image() {
   if [ -n "${TOOLBOX_IMAGE:-}" ]; then
     echo "$TOOLBOX_IMAGE"
     return
   fi
   if command -v sha256sum >/dev/null 2>&1; then sum=sha256sum; else sum="shasum -a 256"; fi
-  hash=$(cd stack/toolbox && find . -type f | LC_ALL=C sort | xargs cat | $sum | cut -c1-12)
+  hash=$(cd stack/docker && find . -type f | LC_ALL=C sort | xargs cat | $sum | cut -c1-12)
   echo "$TOOLBOX_REPO:sha-$hash"
 }
 
